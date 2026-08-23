@@ -1,0 +1,114 @@
+import { Navigate, Route, Routes } from 'react-router-dom';
+import { useAuth } from './auth';
+import Shell from './layout/Shell';
+import Login from './pages/Login';
+import Forgot from './pages/Forgot';
+import Reset from './pages/Reset';
+import Dashboard from './pages/Dashboard';
+import AdmissionsChannelPage from './pages/admissions/AdmissionsChannelPage';
+import LegacyAdmissionsRedirect from './pages/admissions/LegacyAdmissionsRedirect';
+import RegistrationsChannelPage from './pages/registrations/RegistrationsChannelPage';
+import Users from './pages/Users';
+import Roles from './pages/Roles';
+import Permissions from './pages/Permissions';
+import Profile from './pages/Profile';
+import OfficeSetup from './pages/OfficeSetup';
+import AcademicLayout from './pages/academic/AcademicLayout';
+import { AcademicResourceGuard } from './pages/academic/AcademicResourceGuard';
+import {
+  CampusesPage, CollegesPage, CoursesPage, DepartmentsPage, IntakesPage,
+  LevelsPage, OlevelPage, ProgrammesPage, SessionsPage,
+} from './pages/academic/pages';
+import { CandidateDataPage } from './pages/academic/CandidateDataPage';
+import ApplicationSettings from './pages/ApplicationSettings';
+import Resources from './pages/Resources';
+import ResourceView from './pages/ResourceView';
+import HostelManagement from './pages/HostelManagement';
+import {
+  Announcements, Audit, Documents, Finance, Institution,
+  Integrations, Medical, Notifications, Pg, Reports, Students,
+} from './pages/Modules';
+
+const STUDENT_PORTAL = import.meta.env.VITE_STUDENT_URL || 'http://localhost:5174/student';
+
+function Guard({ children }: { children: React.ReactNode }) {
+  const { auth, loading } = useAuth();
+  if (loading) return <div className="p-10 text-slate-500">Loading…</div>;
+  if (!auth) return <Navigate to="/login" replace />;
+  if (!auth.is_staff) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-sky-50">
+        <div className="bg-white border rounded-2xl p-8 max-w-md text-center space-y-4">
+          <h1 className="text-lg font-semibold text-slate-800">Student portal required</h1>
+          <p className="text-sm text-slate-600">
+            This sign-in is for staff only. Applicants and students should use the student portal to apply or access their record.
+          </p>
+          <a href={STUDENT_PORTAL} className="inline-block bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-lg text-sm">
+            Open student portal
+          </a>
+        </div>
+      </div>
+    );
+  }
+  return <>{children}</>;
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<Forgot />} />
+      <Route path="/reset-password" element={<Reset />} />
+      <Route
+        path="/"
+        element={
+          <Guard>
+            <Shell />
+          </Guard>
+        }
+      >
+        <Route index element={<Dashboard />} />
+        <Route path="applications" element={<Navigate to="undergraduate" replace />} />
+        <Route path="applications/:channel" element={<AdmissionsChannelPage />} />
+        <Route path="admissions" element={<Navigate to="/applications/undergraduate" replace />} />
+        <Route path="admissions/:channel" element={<LegacyAdmissionsRedirect />} />
+        <Route path="registrations" element={<Navigate to="undergraduate" replace />} />
+        <Route path="registrations/:channel" element={<RegistrationsChannelPage />} />
+        <Route path="students" element={<Students />} />
+        <Route path="academic" element={<AcademicLayout />}>
+          <Route index element={<Navigate to="campuses" replace />} />
+          <Route path="campuses" element={<AcademicResourceGuard resourceKey="campuses"><CampusesPage /></AcademicResourceGuard>} />
+          <Route path="colleges" element={<AcademicResourceGuard resourceKey="colleges"><CollegesPage /></AcademicResourceGuard>} />
+          <Route path="departments" element={<AcademicResourceGuard resourceKey="departments"><DepartmentsPage /></AcademicResourceGuard>} />
+          <Route path="sessions" element={<AcademicResourceGuard resourceKey="sessions"><SessionsPage /></AcademicResourceGuard>} />
+          <Route path="programmes" element={<AcademicResourceGuard resourceKey="programmes"><ProgrammesPage /></AcademicResourceGuard>} />
+          <Route path="levels" element={<AcademicResourceGuard resourceKey="levels"><LevelsPage /></AcademicResourceGuard>} />
+          <Route path="courses" element={<AcademicResourceGuard resourceKey="courses"><CoursesPage /></AcademicResourceGuard>} />
+          <Route path="intakes" element={<AcademicResourceGuard resourceKey="intakes"><IntakesPage /></AcademicResourceGuard>} />
+          <Route path="candidate-data" element={<AcademicResourceGuard resourceKey="candidate-data"><CandidateDataPage /></AcademicResourceGuard>} />
+          <Route path="olevel" element={<AcademicResourceGuard resourceKey="olevel"><OlevelPage /></AcademicResourceGuard>} />
+        </Route>
+        <Route path="academic-setup" element={<Navigate to="/academic/campuses" replace />} />
+        <Route path="pg" element={<Pg />} />
+        <Route path="finance" element={<Finance />} />
+        <Route path="medical" element={<Medical />} />
+        <Route path="hostel" element={<HostelManagement />} />
+        <Route path="documents" element={<Documents />} />
+        <Route path="users" element={<Users />} />
+        <Route path="profile" element={<Profile />} />
+        <Route path="roles" element={<Roles />} />
+        <Route path="permissions" element={<Permissions />} />
+        <Route path="office-setup" element={<OfficeSetup />} />
+        <Route path="institution" element={<Institution />} />
+        <Route path="audit" element={<Audit />} />
+        <Route path="reports" element={<Reports />} />
+        <Route path="notifications" element={<Notifications />} />
+        <Route path="announcements" element={<Announcements />} />
+        <Route path="integrations" element={<Integrations />} />
+        <Route path="application-settings" element={<ApplicationSettings />} />
+        <Route path="resources" element={<Resources />} />
+        <Route path="resources/:slug" element={<ResourceView />} />
+      </Route>
+    </Routes>
+  );
+}

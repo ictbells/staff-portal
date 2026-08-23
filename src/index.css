@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #0EA5E9;
+  --color-brand-dark: #0284C7;
+  --color-crest-green: #166534;
+  --color-crest-gold: #C9A227;
+}
+
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  @apply antialiased text-slate-900;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.35);
+  border-radius: 9999px;
+}
+
+.sop-prose h1 {
+  @apply text-2xl font-semibold text-slate-800 mt-0 mb-4;
+}
+
+.sop-prose h2 {
+  @apply text-lg font-semibold text-sky-900 mt-8 mb-3 pb-2 border-b border-slate-200;
+}
+
+.sop-prose h3 {
+  @apply text-base font-semibold text-slate-800 mt-6 mb-2;
+}
+
+.sop-prose p {
+  @apply text-sm leading-relaxed mb-3;
+}
+
+.sop-prose ul,
+.sop-prose ol {
+  @apply text-sm mb-4 pl-5 space-y-1;
+}
+
+.sop-prose ul {
+  @apply list-disc;
+}
+
+.sop-prose ol {
+  @apply list-decimal;
+}
+
+.sop-prose li {
+  @apply leading-relaxed;
+}
+
+.sop-prose table {
+  @apply w-full text-sm border border-slate-200 rounded-lg overflow-hidden mb-4;
+}
+
+.sop-prose thead {
+  @apply bg-slate-50;
+}
+
+.sop-prose th,
+.sop-prose td {
+  @apply border border-slate-200 px-3 py-2 text-left align-top;
+}
+
+.sop-prose th {
+  @apply font-semibold text-slate-700;
+}
+
+.sop-prose code {
+  @apply text-xs bg-slate-100 px-1.5 py-0.5 rounded font-mono text-slate-800;
+}
+
+.sop-prose hr {
+  @apply my-6 border-slate-200;
+}
+
+.sop-prose strong {
+  @apply font-semibold text-slate-800;
+}
+
+.sop-prose a {
+  @apply text-sky-600 hover:underline;
+}
+
+.ant-form-item {
+  margin-bottom: 1.25rem;
+}
+
+.ant-modal-body {
+  padding-top: 1.25rem;
+}
