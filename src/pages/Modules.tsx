@@ -40,8 +40,7 @@ export function Students() {
     if (!confer) return;
     setConferring(true);
     try {
-      const { data } = await api.post('/api/academic/graduation/confer', {
-        student_ids: [confer.id],
+      const { data } = await api.post(`/api/students/${confer.id}/confer`, {
         graduated_at: conferDate.format('YYYY-MM-DD'),
         require_final_year: false,
       });
