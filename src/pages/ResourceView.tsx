@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Download, FileDown } from 'lucide-react';
+import { ArrowLeft, Download, FileDown, FileText } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import api from '../api';
 import { useAuth } from '../auth';
 import { AccessDeniedPanel } from '../components/AccessDeniedPanel';
 import { getNavItemAccess } from '../lib/portalAccess';
-import { Badge, Btn, Card, PageHeader, Spinner } from '../components/ui';
+import { Btn, Card, Spinner, WorkspaceHero } from '../components/ui';
 
 type ResourceDetail = {
   slug: string;
@@ -103,45 +103,43 @@ export default function ResourceView() {
           Back to resources
         </Link>
 
-        <PageHeader
+        <WorkspaceHero
+          eyebrow={`Resources · v${resource.version}`}
           title={resource.title}
           description={resource.description}
+          icon={FileText}
         >
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="info">v{resource.version}</Badge>
-            <span className="text-xs text-slate-500">Updated {resource.updated_at}</span>
-            <Btn
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={downloading === 'pdf'}
-              className="inline-flex items-center gap-1.5"
-              onClick={() => download('pdf')}
-            >
-              {downloading === 'pdf' ? <Spinner label="Preparing PDF…" /> : (
-                <>
-                  <FileDown className="h-3.5 w-3.5" aria-hidden />
-                  Download PDF
-                </>
-              )}
-            </Btn>
-            <Btn
-              type="button"
-              size="sm"
-              variant="ghost"
-              disabled={downloading === 'md'}
-              className="inline-flex items-center gap-1.5"
-              onClick={() => download('md')}
-            >
-              {downloading === 'md' ? <Spinner label="Downloading…" /> : (
-                <>
-                  <Download className="h-3.5 w-3.5" aria-hidden />
-                  Markdown
-                </>
-              )}
-            </Btn>
-          </div>
-        </PageHeader>
+          <Btn
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={downloading === 'pdf'}
+            className="inline-flex items-center gap-1.5 !text-white"
+            onClick={() => download('pdf')}
+          >
+            {downloading === 'pdf' ? <Spinner label="Preparing PDF…" /> : (
+              <>
+                <FileDown className="h-3.5 w-3.5" aria-hidden />
+                Download PDF
+              </>
+            )}
+          </Btn>
+          <Btn
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={downloading === 'md'}
+            className="inline-flex items-center gap-1.5 !text-white hover:!bg-white/10"
+            onClick={() => download('md')}
+          >
+            {downloading === 'md' ? <Spinner label="Downloading…" /> : (
+              <>
+                <Download className="h-3.5 w-3.5" aria-hidden />
+                Markdown
+              </>
+            )}
+          </Btn>
+        </WorkspaceHero>
       </div>
 
       {error && <p className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>}

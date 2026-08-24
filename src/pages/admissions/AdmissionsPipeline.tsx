@@ -1,14 +1,32 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Button, Input, Popconfirm, Select, Space, Table, Tag, message,
+  Button, Dropdown, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, message,
 } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
-import { ArrowRight } from 'lucide-react';
+import type { MenuProps } from 'antd';
+import {
+  ArrowRight,
+  Award,
+  BadgeCheck,
+  BookOpen,
+  CircleX,
+  ClipboardList,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Layers,
+  Eye,
+  Printer,
+  School,
+  Search,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import api from '../../api';
 import { useAuth } from '../../auth';
 import { RefreshButton } from '../../components/RefreshButton';
-import { PageHeader } from '../../components/ui';
-import type { AdmissionsChannel } from './constants';
+import { StatCard, WorkspaceHero } from '../../components/ui';
+import { ApplicationFileDrawer } from './ApplicationFileDrawer';
+import type { AdmissionsChannel, AdmissionsChannelKey, AdmissionsReferenceColumn } from './constants';
 import { ENTRY_MODES } from '../academic/constants';
 
 const NEXT_STAGE: Record<string, string> = {
@@ -31,7 +49,6 @@ const STAGE_PERMISSION: Record<string, string> = {
 };
 
 const STAGE_OPTIONS = [
-  { value: '', label: 'All stages' },
   { value: 'submitted', label: 'Submitted' },
   { value: 'screening', label: 'Screening' },
   { value: 'verification', label: 'Verification' },
@@ -43,17 +60,64 @@ const STAGE_OPTIONS = [
   { value: 'rejected', label: 'Rejected' },
 ];
 
+const FEE_OPTIONS = [
+  { value: 'paid', label: 'Paid' },
+  { value: 'unpaid', label: 'Unpaid' },
+  { value: 'partial', label: 'Partial' },
+];
+
+const REVIEW_STAGES = ['submitted', 'screening', 'verification', 'shortlisting', 'recommended'];
+const OFFER_STAGES = ['approved', 'offer_issued', 'awaiting_acceptance_fee'];
+const REJECTED_STAGES = ['rejected'];
+
+const CHANNEL_ICON: Record<AdmissionsChannelKey, LucideIcon> = {
+  undergraduate: School,
+  jupeb: BookOpen,
+  postgraduate: Award,
+};
+
+function countStages(byStage: Record<string, number> | undefined, stages: string[]) {
+  if (!byStage) return 0;
+  return stages.reduce((sum, stage) => sum + Number(byStage[stage] || 0), 0);
+}
+
+function stagesKey(stages: string[]) {
+  return [...stages].sort().join(',');
+}
+
+function isStageGroupActive(filter: string, stages: string[]) {
+  const current = filter.split(',').map((item) => item.trim()).filter(Boolean).sort().join(',');
+  return current === stagesKey(stages);
+}
+
 type ApplicationRow = {
   id: number;
   application_number?: string | null;
+  jamb_registration?: string | null;
+  offer_reference?: string | null;
   entry_mode: string;
   stage: string;
   submitted_at?: string | null;
-  user?: { name?: string; email?: string };
-  program?: { name?: string; code?: string };
-  intake?: { name?: string; term?: { session_label?: string } };
+  user?: { name?: string; email?: string; jamb_registration?: string | null };
+  program?: {
+    name?: string;
+    code?: string;
+    department?: { id?: number; name?: string; faculty?: { id?: number; name?: string } };
+  };
+  intake?: { name?: string; acceptance_fee_amount?: number | string; term?: { session_label?: string } };
   application_fee_invoice?: { status?: string };
 };
+
+function referenceColumnTitle(kind: AdmissionsReferenceColumn) {
+  return kind === 'jamb' ? 'JAMB number' : 'Application number';
+}
+
+function referenceColumnValue(row: ApplicationRow, kind: AdmissionsReferenceColumn) {
+  if (kind === 'jamb') {
+    return row.jamb_registration || row.user?.jamb_registration || '—';
+  }
+  return row.application_number || '—';
+}
 
 function entryModeLabel(mode: string) {
   return ENTRY_MODES.find((m) => m.value === mode)?.label ?? mode.toUpperCase();
@@ -79,9 +143,9 @@ function formatStage(stage?: string) {
   return (stage || '—').replace(/_/g, ' ');
 }
 
-function formatDate(value?: string | null) {
+function formatDateTime(value?: string | null) {
   if (!value) return '—';
-  return new Date(value).toLocaleDateString();
+  return new Date(value).toLocaleString();
 }
 
 type Props = {
@@ -93,44 +157,207 @@ export function AdmissionsPipeline({ channel }: Props) {
   const [rows, setRows] = useState<ApplicationRow[]>([]);
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('');
+  const [entryModeFilter, setEntryModeFilter] = useState('');
+  const [sessionFilter, setSessionFilter] = useState<number | undefined>(undefined);
+  const [programFilter, setProgramFilter] = useState<number | undefined>(undefined);
+  const [collegeFilter, setCollegeFilter] = useState<number | undefined>(undefined);
+  const [departmentFilter, setDepartmentFilter] = useState<number | undefined>(undefined);
+  const [fileId, setFileId] = useState<number | null>(null);
+  const [feeStatusFilter, setFeeStatusFilter] = useState('');
+  const [sessions, setSessions] = useState<{ id: number; session_label: string; name?: string; is_current?: boolean }[]>([]);
+  const [programs, setPrograms] = useState<{
+    id: number;
+    name: string;
+    code?: string | null;
+    department?: { id?: number; name?: string; faculty?: { id?: number; name?: string } };
+  }[]>([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 25, total: 0 });
+  const [exporting, setExporting] = useState(false);
+  const [printingId, setPrintingId] = useState<number | null>(null);
+  const [docModal, setDocModal] = useState<{ title: string; html: string } | null>(null);
+  const [offerModal, setOfferModal] = useState<ApplicationRow | null>(null);
+  const [acceptanceAmount, setAcceptanceAmount] = useState<number | undefined>();
+  const [summary, setSummary] = useState<{ by_stage?: Record<string, number>; total?: number } | null>(null);
 
-  const load = useCallback(async (page = 1) => {
+  const entryModeOptions = useMemo(
+    () => channel.entryModes.map((mode) => ({
+      value: mode,
+      label: entryModeLabel(mode),
+    })),
+    [channel.entryModes],
+  );
+
+  const sessionOptions = useMemo(
+    () => sessions.map((term) => ({
+      value: term.id,
+      label: term.is_current ? `${term.session_label} (current)` : term.session_label,
+    })),
+    [sessions],
+  );
+
+  const collegeOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    programs.forEach((program) => {
+      const faculty = program.department?.faculty;
+      if (faculty?.id && faculty.name) map.set(faculty.id, faculty.name);
+    });
+    return [...map.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [programs]);
+
+  const departmentOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    programs.forEach((program) => {
+      const department = program.department;
+      if (!department?.id || !department.name) return;
+      if (collegeFilter && department.faculty?.id !== collegeFilter) return;
+      map.set(department.id, department.name);
+    });
+    return [...map.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [collegeFilter, programs]);
+
+  const programOptions = useMemo(
+    () => programs
+      .filter((program) => {
+        if (departmentFilter && program.department?.id !== departmentFilter) return false;
+        if (collegeFilter && program.department?.faculty?.id !== collegeFilter) return false;
+        return true;
+      })
+      .map((program) => ({
+        value: program.id,
+        label: program.code ? `${program.code} — ${program.name}` : program.name,
+      })),
+    [collegeFilter, departmentFilter, programs],
+  );
+
+  const searchPlaceholder = channel.referenceColumn === 'jamb'
+    ? 'Search name, email, JAMB number…'
+    : 'Search name, email, application number…';
+
+  const hasActiveFilters = !!(search || stageFilter || entryModeFilter || sessionFilter || programFilter || collegeFilter || departmentFilter || feeStatusFilter);
+  const fileRow = rows.find((row) => row.id === fileId) ?? null;
+
+  const load = useCallback(async (
+    page = 1,
+    pageSize = pagination.pageSize,
+    overrides?: {
+      search?: string;
+      stage?: string;
+      entryMode?: string;
+      session?: number | undefined;
+      program?: number | undefined;
+      college?: number | undefined;
+      department?: number | undefined;
+      feeStatus?: string;
+    },
+  ) => {
     setLoading(true);
     try {
+      const nextSearch = overrides && 'search' in overrides ? overrides.search ?? '' : search;
+      const nextStage = overrides && 'stage' in overrides ? overrides.stage ?? '' : stageFilter;
+      const nextEntryMode = overrides && 'entryMode' in overrides ? overrides.entryMode ?? '' : entryModeFilter;
+      const nextSession = overrides && 'session' in overrides ? overrides.session : sessionFilter;
+      const nextProgram = overrides && 'program' in overrides ? overrides.program : programFilter;
+      const nextCollege = overrides && 'college' in overrides ? overrides.college : collegeFilter;
+      const nextDepartment = overrides && 'department' in overrides ? overrides.department : departmentFilter;
+      const nextFeeStatus = overrides && 'feeStatus' in overrides ? overrides.feeStatus ?? '' : feeStatusFilter;
       const { data } = await api.get('/api/applications', {
         params: {
           entry_modes: channel.entryModes.join(','),
-          stage: stageFilter || undefined,
+          entry_mode: nextEntryMode || undefined,
+          academic_session_id: nextSession || undefined,
+          faculty_id: nextCollege || undefined,
+          department_id: nextDepartment || undefined,
+          program_id: nextProgram || undefined,
+          stage: nextStage || undefined,
+          fee_status: nextFeeStatus || undefined,
+          search: nextSearch || undefined,
           page,
+          per_page: pageSize,
         },
       });
       const list = Array.isArray(data) ? data : data.data ?? [];
       setRows(list);
-      setPagination((prev) => ({
-        ...prev,
+      setSummary(Array.isArray(data) ? null : data.summary ?? null);
+      setPagination({
         current: data.current_page ?? page,
         total: data.total ?? list.length,
-        pageSize: data.per_page ?? prev.pageSize,
-      }));
+        pageSize: data.per_page ?? pageSize,
+      });
     } catch {
       message.error('Unable to load applications.');
     } finally {
       setLoading(false);
     }
-  }, [channel.entryModes, stageFilter]);
+  }, [channel.entryModes, collegeFilter, departmentFilter, entryModeFilter, feeStatusFilter, pagination.pageSize, programFilter, search, sessionFilter, stageFilter]);
+
+  useEffect(() => {
+    api.get('/api/applications/sessions')
+      .then(({ data }) => setSessions(Array.isArray(data) ? data : []))
+      .catch(() => setSessions([]));
+  }, []);
+
+  useEffect(() => {
+    setProgramFilter(undefined);
+    setCollegeFilter(undefined);
+    setDepartmentFilter(undefined);
+    const modes = entryModeFilter
+      ? [entryModeFilter]
+      : channel.entryModes;
+    api.get('/api/programs', { params: { entry_modes: modes.join(',') } })
+      .then(({ data }) => setPrograms(Array.isArray(data) ? data : []))
+      .catch(() => setPrograms([]));
+  }, [channel.entryModes, channel.key, entryModeFilter]);
+
+  useEffect(() => {
+    setSearchInput('');
+    setSearch('');
+    setStageFilter('');
+    setEntryModeFilter('');
+    setSessionFilter(undefined);
+    setProgramFilter(undefined);
+    setCollegeFilter(undefined);
+    setDepartmentFilter(undefined);
+    setFileId(null);
+    setFeeStatusFilter('');
+    setReason('');
+    load(1, pagination.pageSize, {
+      search: '',
+      stage: '',
+      entryMode: '',
+      session: undefined,
+      program: undefined,
+      college: undefined,
+      department: undefined,
+      feeStatus: '',
+    });
+  }, [channel.key]);
 
   useEffect(() => {
     load(1);
-  }, [channel.key, stageFilter, load]);
+  }, [search, stageFilter, entryModeFilter, sessionFilter, programFilter, collegeFilter, departmentFilter, feeStatusFilter]);
 
-  const move = useCallback(async (id: number, to: string, decision?: string) => {
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const next = searchInput.trim();
+      setSearch((prev) => (prev === next ? prev : next));
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  const move = useCallback(async (id: number, to: string, decision?: string, acceptanceFeeAmount?: number) => {
     try {
       await api.post(`/api/applications/${id}/transition`, {
         to_stage: to,
         decision,
         reason: reason || undefined,
+        acceptance_fee_amount: acceptanceFeeAmount,
       });
       message.success(decision === 'rejected' ? 'Application rejected.' : 'Application advanced.');
       setReason('');
@@ -147,45 +374,209 @@ export function AdmissionsPipeline({ channel }: Props) {
     return has(permission);
   }, [has]);
 
+  const openDocument = useCallback(async (id: number, kind: 'form' | 'offer') => {
+    if (!has('admissions.view')) {
+      message.error('You do not have permission to print this document.');
+      return;
+    }
+    setPrintingId(id);
+    try {
+      const path = kind === 'form' ? 'form-print' : 'offer-letter';
+      const { data } = await api.get(`/api/applications/${id}/${path}`, { responseType: 'text' });
+      setDocModal({
+        title: kind === 'form' ? 'Application form' : 'Admission letter',
+        html: data,
+      });
+    } catch (err: any) {
+      message.error(err.response?.data?.message || 'Unable to open document.');
+    } finally {
+      setPrintingId(null);
+    }
+  }, [has]);
+
+  const printDocModal = () => {
+    const frame = document.getElementById('admissions-doc-frame') as HTMLIFrameElement | null;
+    frame?.contentWindow?.focus();
+    frame?.contentWindow?.print();
+  };
+
+  const downloadDocModal = () => {
+    if (!docModal) return;
+    const blob = new Blob([docModal.html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${docModal.title.replace(/\s+/g, '-').toLowerCase()}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const filterParams = useMemo(() => ({
+    entry_modes: channel.entryModes.join(','),
+    entry_mode: entryModeFilter || undefined,
+    academic_session_id: sessionFilter || undefined,
+    faculty_id: collegeFilter || undefined,
+    department_id: departmentFilter || undefined,
+    program_id: programFilter || undefined,
+    stage: stageFilter || undefined,
+    fee_status: feeStatusFilter || undefined,
+    search: search || undefined,
+  }), [channel.entryModes, collegeFilter, departmentFilter, entryModeFilter, feeStatusFilter, programFilter, search, sessionFilter, stageFilter]);
+
+  const download = useCallback(async (format: 'pdf' | 'excel' | 'word') => {
+    if (!has('admissions.view')) {
+      message.error('You do not have permission to download applications.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const { data } = await api.get('/api/applications/export', {
+        params: {
+          ...filterParams,
+          format,
+          title: channel.title,
+          reference_kind: channel.referenceColumn,
+        },
+        responseType: 'blob',
+      });
+      const mime = format === 'pdf'
+        ? 'application/pdf'
+        : format === 'excel'
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      const extension = format === 'pdf' ? 'pdf' : format === 'excel' ? 'xlsx' : 'docx';
+      const blob = new Blob([data], { type: mime });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      link.href = url;
+      link.download = `${channel.key}-applications-${stamp}.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      message.success(`Download started (${format.toUpperCase()}).`);
+    } catch (err: any) {
+      const blob = err.response?.data;
+      if (blob instanceof Blob) {
+        try {
+          const text = await blob.text();
+          const parsed = JSON.parse(text);
+          message.error(parsed.message || 'Unable to download report.');
+        } catch {
+          message.error('Unable to download report.');
+        }
+      } else {
+        message.error(err.response?.data?.message || 'Unable to download report.');
+      }
+    } finally {
+      setExporting(false);
+    }
+  }, [channel.key, channel.referenceColumn, channel.title, filterParams, has]);
+
+  const downloadMenu: MenuProps['items'] = [
+    {
+      key: 'pdf',
+      icon: <FileText size={14} />,
+      label: 'PDF',
+      onClick: () => download('pdf'),
+    },
+    {
+      key: 'excel',
+      icon: <FileSpreadsheet size={14} />,
+      label: 'Excel (.xlsx)',
+      onClick: () => download('excel'),
+    },
+    {
+      key: 'word',
+      icon: <FileText size={14} />,
+      label: 'MS Word (.docx)',
+      onClick: () => download('word'),
+    },
+  ];
+
   const columns: ColumnsType<ApplicationRow> = useMemo(() => {
     const cols: ColumnsType<ApplicationRow> = [
       {
         title: 'Applicant',
         key: 'applicant',
+        width: 200,
+        ellipsis: true,
         render: (_, row) => (
-          <div>
-            <div className="font-medium text-slate-800">{row.user?.name || '—'}</div>
-            <div className="text-xs text-slate-500">{row.user?.email || '—'}</div>
-            {row.application_number && (
-              <div className="text-xs font-mono text-slate-400">{row.application_number}</div>
-            )}
+          <div className="overflow-hidden">
+            <button
+              type="button"
+              className="font-medium text-sky-700 hover:underline truncate block max-w-full text-left"
+              onClick={() => setFileId(row.id)}
+            >
+              {row.user?.name || '—'}
+            </button>
+            <div className="text-xs text-slate-500 truncate">{row.user?.email || '—'}</div>
           </div>
         ),
       },
       {
-        title: 'Programme',
-        key: 'program',
-        render: (_, row) => row.program?.name || row.program?.code || '—',
+        title: referenceColumnTitle(channel.referenceColumn),
+        key: 'reference',
+        width: 150,
+        ellipsis: true,
+        render: (_, row) => (
+          <span className="font-mono text-xs text-slate-700">
+            {referenceColumnValue(row, channel.referenceColumn)}
+          </span>
+        ),
       },
       {
-        title: 'Application window',
+        title: 'College',
+        key: 'college',
+        width: 160,
+        ellipsis: true,
+        render: (_, row) => row.program?.department?.faculty?.name || '—',
+      },
+      {
+        title: 'Department',
+        key: 'department',
+        width: 160,
+        ellipsis: true,
+        render: (_, row) => row.program?.department?.name || '—',
+      },
+      {
+        title: 'Programme',
+        key: 'program',
+        width: 180,
+        ellipsis: true,
+        render: (_, row) => (
+          <div className="overflow-hidden">
+            <div className="text-slate-800 truncate">{row.program?.name || '—'}</div>
+            {row.program?.code && <div className="text-xs text-slate-400 truncate">{row.program.code}</div>}
+          </div>
+        ),
+      },
+      {
+        title: 'Session',
         key: 'intake',
+        width: 140,
+        ellipsis: true,
         render: (_, row) => {
           const session = row.intake?.term?.session_label;
           const name = row.intake?.name;
-          if (session && name) return `${session} · ${name}`;
-          return name || session || '—';
+          return (
+            <div className="overflow-hidden text-sm">
+              <div className="text-slate-800 truncate">{session || '—'}</div>
+              {name && <div className="text-xs text-slate-400 truncate">{name}</div>}
+            </div>
+          );
         },
       },
     ];
 
     if (channel.showEntryMode) {
       cols.push({
-        title: 'Entry mode',
+        title: 'Category',
         dataIndex: 'entry_mode',
         key: 'entry_mode',
-        width: 120,
-        render: (mode: string) => <Tag>{entryModeLabel(mode)}</Tag>,
+        width: 110,
+        render: (mode: string) => <Tag color="blue">{entryModeLabel(mode)}</Tag>,
       });
     }
 
@@ -194,8 +585,10 @@ export function AdmissionsPipeline({ channel }: Props) {
         title: 'Submitted',
         dataIndex: 'submitted_at',
         key: 'submitted_at',
-        width: 110,
-        render: (value?: string | null) => formatDate(value),
+        width: 160,
+        render: (value?: string | null) => (
+          <span className="text-xs text-slate-700 whitespace-nowrap">{formatDateTime(value)}</span>
+        ),
       },
       {
         title: 'App. fee',
@@ -211,26 +604,77 @@ export function AdmissionsPipeline({ channel }: Props) {
         title: 'Stage',
         dataIndex: 'stage',
         key: 'stage',
-        width: 150,
+        width: 140,
         render: (stage: string) => <Tag color={stageTagColor(stage)}>{formatStage(stage)}</Tag>,
       },
       {
         title: 'Actions',
         key: 'actions',
-        width: 200,
+        width: 260,
         render: (_, row) => {
           const next = NEXT_STAGE[row.stage];
           return (
             <Space size="small" wrap>
+              {has('admissions.view') && (
+                <Button size="small" icon={<Eye size={14} />} onClick={() => setFileId(row.id)}>
+                  File
+                </Button>
+              )}
+              {has('admissions.view') && (
+                <Button
+                  size="small"
+                  icon={<Printer size={14} />}
+                  loading={printingId === row.id}
+                  onClick={() => openDocument(row.id, 'form')}
+                >
+                  Form
+                </Button>
+              )}
+              {has('admissions.view') && row.offer_reference && (
+                <Button
+                  size="small"
+                  icon={<FileText size={14} />}
+                  loading={printingId === row.id}
+                  onClick={() => openDocument(row.id, 'offer')}
+                >
+                  Letter
+                </Button>
+              )}
               {next && canAdvanceTo(row.stage) && (
-                <Button size="small" type="primary" icon={<ArrowRight size={14} />} onClick={() => move(row.id, next)}>
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<ArrowRight size={14} />}
+                  onClick={() => {
+                    if (next === 'offer_issued') {
+                      setAcceptanceAmount(
+                        row.intake?.acceptance_fee_amount != null
+                          ? Number(row.intake.acceptance_fee_amount)
+                          : undefined,
+                      );
+                      setOfferModal(row);
+                    } else {
+                      move(row.id, next);
+                    }
+                  }}
+                >
                   Advance
                 </Button>
               )}
               {row.stage !== 'rejected' && has('admissions.view') && (
                 <Popconfirm
                   title="Reject this application?"
-                  description="Provide a rejection reason above before confirming."
+                  description={(
+                    <div className="w-64 space-y-2 pt-1">
+                      <p className="text-xs text-slate-500">Optional reason for the applicant record.</p>
+                      <Input.TextArea
+                        rows={2}
+                        placeholder="Rejection reason"
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                      />
+                    </div>
+                  )}
                   okText="Reject"
                   cancelText="Cancel"
                   okButtonProps={{ danger: true }}
@@ -246,55 +690,321 @@ export function AdmissionsPipeline({ channel }: Props) {
     );
 
     return cols;
-  }, [canAdvanceTo, channel.showEntryMode, has, move]);
+  }, [canAdvanceTo, channel.referenceColumn, channel.showEntryMode, has, move, openDocument, printingId, reason]);
 
   const onTableChange = (next: TablePaginationConfig) => {
     const page = next.current ?? 1;
-    setPagination((prev) => ({ ...prev, current: page, pageSize: next.pageSize ?? prev.pageSize }));
-    load(page);
+    const pageSize = next.pageSize ?? pagination.pageSize;
+    setPagination((prev) => ({ ...prev, current: page, pageSize }));
+    load(page, pageSize);
   };
+
+  const toggleStageGroup = (stages: string[]) => {
+    setStageFilter((prev) => (isStageGroupActive(prev, stages) ? '' : stages.join(',')));
+  };
+
+  const inReviewCount = countStages(summary?.by_stage, REVIEW_STAGES);
+  const offerCount = countStages(summary?.by_stage, OFFER_STAGES);
+  const rejectedCount = countStages(summary?.by_stage, REJECTED_STAGES);
+  const pipelineTotal = summary?.total ?? pagination.total;
+  const stageSelectValue = STAGE_OPTIONS.some((option) => option.value === stageFilter)
+    ? stageFilter
+    : undefined;
 
   return (
     <div className="space-y-5">
-      <PageHeader title={channel.title} description={channel.description}>
-        <RefreshButton onClick={() => load()} loading={loading} />
-      </PageHeader>
+      <WorkspaceHero
+        eyebrow="Applications"
+        title={channel.title}
+        description={channel.description}
+        icon={CHANNEL_ICON[channel.key]}
+      >
+        <Dropdown menu={{ items: downloadMenu }} trigger={['click']} disabled={exporting || loading}>
+          <Button
+            type="primary"
+            icon={<Download size={14} />}
+            loading={exporting}
+          >
+            Download
+          </Button>
+        </Dropdown>
+        <RefreshButton onClick={() => load(pagination.current)} loading={loading} />
+      </WorkspaceHero>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-[200px]">
-          <label className="block text-sm font-medium text-slate-700 mb-1">Stage filter</label>
-          <Select
-            className="w-full"
-            value={stageFilter}
-            onChange={(value) => setStageFilter(value)}
-            options={STAGE_OPTIONS}
-          />
-        </div>
-        <div className="flex-1 min-w-[240px] max-w-md">
-          <label className="block text-sm font-medium text-slate-700 mb-1">Rejection reason</label>
-          <Input
-            placeholder="Required when rejecting an applicant"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-          />
-        </div>
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        <StatCard
+          label="In pipeline"
+          value={pipelineTotal}
+          hint={hasActiveFilters && !stageFilter ? 'Matching current filters' : 'All applications in this list'}
+          icon={Layers}
+          tone="sky"
+          active={!stageFilter}
+          onClick={() => setStageFilter('')}
+        />
+        <StatCard
+          label="In review"
+          value={inReviewCount}
+          hint="Submitted through recommended"
+          icon={ClipboardList}
+          tone="amber"
+          active={isStageGroupActive(stageFilter, REVIEW_STAGES)}
+          onClick={() => toggleStageGroup(REVIEW_STAGES)}
+        />
+        <StatCard
+          label="Offers"
+          value={offerCount}
+          hint="Approved, issued, or awaiting fee"
+          icon={BadgeCheck}
+          tone="emerald"
+          active={isStageGroupActive(stageFilter, OFFER_STAGES)}
+          onClick={() => toggleStageGroup(OFFER_STAGES)}
+        />
+        <StatCard
+          label="Rejected"
+          value={rejectedCount}
+          hint="Closed applications"
+          icon={CircleX}
+          tone="rose"
+          active={isStageGroupActive(stageFilter, REJECTED_STAGES)}
+          onClick={() => toggleStageGroup(REJECTED_STAGES)}
+        />
       </div>
 
-      <Table<ApplicationRow>
-        rowKey="id"
-        loading={loading}
-        columns={columns}
-        dataSource={rows}
-        scroll={{ x: 1100 }}
-        pagination={{
-          current: pagination.current,
-          pageSize: pagination.pageSize,
-          total: pagination.total,
-          showSizeChanger: false,
-          showTotal: (total) => `${total} application${total === 1 ? '' : 's'}`,
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-4 sm:px-5">
+          <div className="flex flex-col gap-3">
+            <div className="relative w-full min-w-0">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10" />
+              <Input
+                allowClear
+                size="large"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onPressEnter={() => setSearch(searchInput.trim())}
+                placeholder={searchPlaceholder}
+                className="!pl-9 w-full"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                className="w-full min-w-[180px] sm:w-auto sm:min-w-[200px]"
+                size="large"
+                placeholder="College"
+                value={collegeFilter}
+                onChange={(value) => {
+                  setCollegeFilter(value);
+                  setDepartmentFilter(undefined);
+                  setProgramFilter(undefined);
+                }}
+                options={collegeOptions}
+              />
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                className="w-full min-w-[180px] sm:w-auto sm:min-w-[200px]"
+                size="large"
+                placeholder="Department"
+                value={departmentFilter}
+                onChange={(value) => {
+                  setDepartmentFilter(value);
+                  setProgramFilter(undefined);
+                }}
+                options={departmentOptions}
+              />
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                className="w-full min-w-[200px] sm:w-auto sm:min-w-[220px]"
+                size="large"
+                placeholder="Programme"
+                value={programFilter}
+                onChange={(value) => setProgramFilter(value)}
+                options={programOptions}
+              />
+              <Select
+                allowClear
+                className="w-full min-w-[140px] sm:w-auto sm:min-w-[160px]"
+                size="large"
+                placeholder="Session"
+                value={sessionFilter}
+                onChange={(value) => setSessionFilter(value)}
+                options={sessionOptions}
+              />
+              {channel.showEntryMode && (
+                <Select
+                  allowClear
+                  className="w-full min-w-[140px] sm:w-auto sm:min-w-[150px]"
+                  size="large"
+                  placeholder="Category"
+                  value={entryModeFilter || undefined}
+                  onChange={(value) => setEntryModeFilter(value || '')}
+                  options={entryModeOptions}
+                />
+              )}
+              <Select
+                allowClear
+                className="w-full min-w-[140px] sm:w-auto sm:min-w-[170px]"
+                size="large"
+                placeholder="Stage"
+                value={stageSelectValue}
+                onChange={(value) => setStageFilter(value || '')}
+                options={STAGE_OPTIONS}
+              />
+              <Select
+                allowClear
+                className="w-full min-w-[140px] sm:w-auto sm:min-w-[150px]"
+                size="large"
+                placeholder="Fee status"
+                value={feeStatusFilter || undefined}
+                onChange={(value) => setFeeStatusFilter(value || '')}
+                options={FEE_OPTIONS}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 py-3 sm:px-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-white">
+          <p className="text-sm text-slate-600">
+            <span className="font-semibold text-slate-800">{pagination.total}</span>
+            {' '}application{pagination.total === 1 ? '' : 's'}
+            {hasActiveFilters ? ' matching filters' : ' in pipeline'}
+          </p>
+          <p className="text-xs text-slate-400">
+            Downloads include institution header and current filters (up to 5,000 rows).
+          </p>
+        </div>
+
+        <Table<ApplicationRow>
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={rows}
+          scroll={{ x: 1760 }}
+          tableLayout="fixed"
+          className="applications-table"
+          pagination={{
+            current: pagination.current,
+            pageSize: pagination.pageSize,
+            total: pagination.total,
+            showSizeChanger: true,
+            pageSizeOptions: ['10', '25', '50'],
+            showTotal: (total, range) => `${range[0]}–${range[1]} of ${total}`,
+          }}
+          onChange={onTableChange}
+          locale={{ emptyText: hasActiveFilters ? 'No applications match your filters.' : 'No applications in the pipeline.' }}
+        />
+      </section>
+
+      <Modal
+        open={!!docModal}
+        title={docModal?.title || 'Document'}
+        onCancel={() => setDocModal(null)}
+        width={920}
+        centered
+        destroyOnClose
+        footer={[
+          <Button key="print" onClick={printDocModal}>Print</Button>,
+          <Button key="download" onClick={downloadDocModal}>Download</Button>,
+          <Button key="close" type="primary" onClick={() => setDocModal(null)}>Close</Button>,
+        ]}
+        styles={{ body: { padding: 0, background: '#f1f5f9' } }}
+      >
+        {docModal && (
+          <iframe
+            id="admissions-doc-frame"
+            title={docModal.title}
+            srcDoc={docModal.html}
+            className="w-full border-0 bg-white"
+            style={{ height: 'min(70vh, 720px)' }}
+          />
+        )}
+      </Modal>
+
+      <Modal
+        open={!!offerModal}
+        title="Issue admission offer"
+        okText="Issue offer"
+        onCancel={() => setOfferModal(null)}
+        onOk={async () => {
+          if (!offerModal) return;
+          await move(offerModal.id, 'offer_issued', undefined, acceptanceAmount);
+          setOfferModal(null);
         }}
-        onChange={onTableChange}
-        locale={{ emptyText: 'No applications in the pipeline.' }}
+        destroyOnClose
+      >
+        <p className="text-sm text-slate-600 mb-4">
+          Set the acceptance fee for this applicant. Leave blank to use the window default or fee catalog amount.
+        </p>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Acceptance fee (₦)</label>
+        <InputNumber
+          min={0}
+          className="w-full"
+          placeholder="Optional"
+          value={acceptanceAmount}
+          onChange={(value) => setAcceptanceAmount(value ?? undefined)}
+        />
+      </Modal>
+
+      <ApplicationFileDrawer
+        applicationId={fileId}
+        open={fileId != null}
+        onClose={() => setFileId(null)}
+        onPrintForm={() => fileId && openDocument(fileId, 'form')}
+        onPrintLetter={fileRow?.offer_reference ? () => fileId && openDocument(fileId, 'offer') : undefined}
+        printing={fileId != null && printingId === fileId}
+        onSaved={() => load(pagination.current)}
+        extra={fileRow ? (
+          <Space wrap>
+            {NEXT_STAGE[fileRow.stage] && canAdvanceTo(fileRow.stage) && (
+              <Button
+                type="primary"
+                icon={<ArrowRight size={14} />}
+                onClick={() => {
+                  const next = NEXT_STAGE[fileRow.stage];
+                  if (next === 'offer_issued') {
+                    setAcceptanceAmount(
+                      fileRow.intake?.acceptance_fee_amount != null
+                        ? Number(fileRow.intake.acceptance_fee_amount)
+                        : undefined,
+                    );
+                    setOfferModal(fileRow);
+                  } else if (next) {
+                    move(fileRow.id, next);
+                  }
+                }}
+              >
+                Advance
+              </Button>
+            )}
+            {fileRow.stage !== 'rejected' && has('admissions.view') && (
+              <Popconfirm
+                title="Reject this application?"
+                description={(
+                  <div className="w-64 space-y-2 pt-1">
+                    <p className="text-xs text-slate-500">Optional reason for the applicant record.</p>
+                    <Input.TextArea
+                      rows={2}
+                      placeholder="Rejection reason"
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                    />
+                  </div>
+                )}
+                okText="Reject"
+                cancelText="Cancel"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => move(fileRow.id, 'rejected', 'rejected')}
+              >
+                <Button danger>Reject</Button>
+              </Popconfirm>
+            )}
+          </Space>
+        ) : null}
       />
     </div>
   );

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Select, Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { Search, X } from 'lucide-react';
+import { KeyRound, Search, X } from 'lucide-react';
 import api from '../api';
 import { RefreshButton } from '../components/RefreshButton';
-import { Btn, inputClass, PageHeader } from '../components/ui';
+import { Btn, inputClass, StatCard, WorkspaceHero } from '../components/ui';
 
 type PermissionRow = {
   id: number;
@@ -100,12 +100,19 @@ export default function Permissions() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
+      <WorkspaceHero
+        eyebrow="Administration"
         title="Permission catalog"
         description="Read-only. Permissions are defined by the application — assign them on the Roles screen."
+        icon={KeyRound}
       >
         <RefreshButton onClick={() => load(pagination.current, search, module)} loading={loading} />
-      </PageHeader>
+      </WorkspaceHero>
+      <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+        <StatCard label="Permissions" value={pagination.total} hint="Matching current filters" icon={KeyRound} />
+        <StatCard label="Modules" value={modules.length} hint="Permission groups" icon={KeyRound} />
+        <StatCard label="This page" value={rows.length} icon={KeyRound} />
+      </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
         <div className="flex flex-wrap items-center gap-3">

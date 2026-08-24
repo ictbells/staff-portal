@@ -2,7 +2,6 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Award,
   BarChart3,
-  Bell,
   BookOpen,
   Building2,
   FileText,
@@ -58,7 +57,6 @@ export function isNavGroup(entry: NavEntry): entry is NavGroup {
 export type NavSection = {
   title: string;
   items: NavEntry[];
-  titleClassName?: string;
 };
 
 function academicNavItem(resource: AcademicResource, icon: LucideIcon = BookOpen): NavItem {
@@ -107,7 +105,6 @@ export const navSections: NavSection[] = [
   },
   {
     title: 'Applications',
-    titleClassName: 'text-sm',
     items: ADMISSIONS_CHANNELS.map((channel) => ({
       key: channel.navKey,
       to: channel.path,
@@ -118,7 +115,6 @@ export const navSections: NavSection[] = [
   },
   {
     title: 'Registrations',
-    titleClassName: 'text-sm',
     items: REGISTRATION_CHANNELS.map((channel) => ({
       key: channel.navKey,
       to: channel.path,
@@ -148,8 +144,21 @@ export const navSections: NavSection[] = [
   {
     title: 'Services',
     items: [
-      { key: 'finance', to: '/finance', label: 'Fees & payments', perm: 'finance.invoices.manage', icon: Wallet },
-      { key: 'medical', to: '/medical', label: 'Medical', perm: 'medical.view_any', icon: Stethoscope },
+      {
+        key: 'finance',
+        label: 'Fees & payments',
+        icon: Wallet,
+        items: [
+          { key: 'finance', to: '/finance', label: 'Fee catalog', perm: 'finance.invoices.manage', icon: Wallet },
+          { key: 'finance', to: '/finance/sundry', label: 'Sundry fees', perm: 'finance.invoices.manage', icon: Wallet },
+          { key: 'finance', to: '/finance/rebates', label: 'Rebates', perm: 'finance.invoices.manage', icon: Wallet },
+          { key: 'finance', to: '/finance/programme-fees', label: 'Programme fees', perm: 'finance.invoices.manage', icon: Wallet },
+          { key: 'finance', to: '/finance/generate', label: 'Generate invoice', perm: 'finance.invoices.manage', icon: Wallet },
+          { key: 'finance', to: '/finance/invoices', label: 'Invoices', perm: 'finance.invoices.manage', icon: Wallet },
+          { key: 'finance', to: '/finance/student-status', label: 'Students Financial Status', perm: 'finance.invoices.manage', icon: Wallet },
+        ],
+      },
+      { key: 'medical', to: '/medical', label: 'Clinic', perm: 'medical.view_any', icon: Stethoscope },
       { key: 'hostel', to: '/hostel', label: 'Hostel', perm: 'hostel.view', icon: Building2 },
       { key: 'documents', to: '/documents', label: 'Documents', perm: 'documents.issue', icon: FileText },
     ],
@@ -169,7 +178,6 @@ export const navSections: NavSection[] = [
     items: [
       { key: 'audit', to: '/audit', label: 'Audit', perm: 'audit.view', icon: History },
       { key: 'reports', to: '/reports', label: 'Reports', perm: 'reports.view', icon: BarChart3 },
-      { key: 'notifications', to: '/notifications', label: 'Notifications', perm: null, icon: Bell },
       { key: 'announcements', to: '/announcements', label: 'Announcements', perm: null, icon: Megaphone },
       { key: 'integrations', to: '/integrations', label: 'Integrations', perm: 'integrations.view', icon: Plug },
       { key: 'application-settings', to: '/application-settings', label: 'Application settings', perm: 'settings.manage', icon: Settings2 },

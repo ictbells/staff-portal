@@ -8,6 +8,7 @@ export type AuditRow = {
   summary?: string;
   occurred_at?: string;
   actor_email?: string;
+  actor_name?: string;
   module?: string;
   entity_type?: string | null;
   entity_id?: number | null;
@@ -54,7 +55,10 @@ export function AuditDetailModal({
           </div>
           <div>
             <dt className="text-xs uppercase tracking-wide text-slate-500">Actor</dt>
-            <dd className="text-slate-700">{entry.actor_email || '—'}</dd>
+            <dd className="text-slate-700">{entry.actor_email || entry.actor_name || '—'}</dd>
+            {entry.actor_name && entry.actor_email ? (
+              <div className="text-xs text-slate-500 mt-0.5">{entry.actor_name}</div>
+            ) : null}
           </div>
           {entry.reason && (
             <div className="sm:col-span-2">

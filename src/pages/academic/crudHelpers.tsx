@@ -23,6 +23,13 @@ export function fromDateValue(value: unknown) {
   return value ?? null;
 }
 
+export function fromDateTimeValue(value: unknown) {
+  if (value && typeof value === 'object' && 'format' in value && typeof (value as { format: (f: string) => string }).format === 'function') {
+    return (value as { format: (f: string) => string }).format('YYYY-MM-DD HH:mm:ss');
+  }
+  return value ?? null;
+}
+
 export function actionColumn<T extends { id: number }>(
   onEdit: (row: T) => void,
   onDelete: (row: T) => Promise<void>,

@@ -6,7 +6,7 @@ import api from '../api';
 import { useAuth } from '../auth';
 import { ConfirmDeleteButton } from '../components/ConfirmDeleteButton';
 import { RefreshButton } from '../components/RefreshButton';
-import { fieldHelpClass, fieldLabelClass, formStackClass, inputClass, PageHeader } from '../components/ui';
+import { fieldHelpClass, fieldLabelClass, formStackClass, inputClass, StatCard, WorkspaceHero } from '../components/ui';
 
 type Permission = { id: number; key: string; label: string; module: string };
 
@@ -365,19 +365,28 @@ export default function Roles() {
     },
   ];
 
+  const systemCount = roles.filter((r) => r.is_system).length;
+  const activeCount = roles.filter((r) => r.is_active).length;
+
   return (
     <div className="space-y-5">
-      <PageHeader
+      <WorkspaceHero
+        eyebrow="Administration"
         title="Roles"
         description="Create roles and assign permissions from the catalog."
+        icon={Shield}
       >
-        <Space wrap>
-          <RefreshButton onClick={() => loadRoles(pagination.current, search)} loading={loading} />
-          <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
-            Create role
-          </Button>
-        </Space>
-      </PageHeader>
+        <RefreshButton onClick={() => loadRoles(pagination.current, search)} loading={loading} />
+        <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
+          Create role
+        </Button>
+      </WorkspaceHero>
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        <StatCard label="Roles" value={pagination.total} hint="Matching current search" icon={Shield} />
+        <StatCard label="This page" value={roles.length} icon={Shield} />
+        <StatCard label="Active" value={activeCount} hint="On this page" icon={Shield} tone="emerald" />
+        <StatCard label="System" value={systemCount} hint="Built-in roles" icon={Shield} tone="amber" />
+      </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
         <div className="relative w-72 max-w-full">

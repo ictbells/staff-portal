@@ -25,9 +25,15 @@ import Resources from './pages/Resources';
 import ResourceView from './pages/ResourceView';
 import HostelManagement from './pages/HostelManagement';
 import {
-  Announcements, Audit, Documents, Finance, Institution,
-  Integrations, Medical, Notifications, Pg, Reports, Students,
+  Documents, Finance, Institution,
+  GenerateInvoice, Integrations, Invoices, Medical, Notifications, Pg, ProgrammeFees, Rebates, Students, StudentFinance, SundryFees,
 } from './pages/Modules';
+import Announcements from './pages/Announcements';
+import Audit from './pages/Audit';
+import ReportsHome from './pages/reports/ReportsHome';
+import ReportBuilder from './pages/reports/ReportBuilder';
+import ReportRun from './pages/reports/ReportRun';
+import PaymentCallback from './pages/PaymentCallback';
 
 const STUDENT_PORTAL = import.meta.env.VITE_STUDENT_URL || 'http://localhost:5174/student';
 
@@ -59,6 +65,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/forgot-password" element={<Forgot />} />
       <Route path="/reset-password" element={<Reset />} />
+      <Route path="/payments/callback" element={<PaymentCallback />} />
       <Route
         path="/"
         element={
@@ -91,6 +98,12 @@ export default function App() {
         <Route path="academic-setup" element={<Navigate to="/academic/campuses" replace />} />
         <Route path="pg" element={<Pg />} />
         <Route path="finance" element={<Finance />} />
+        <Route path="finance/sundry" element={<SundryFees />} />
+        <Route path="finance/rebates" element={<Rebates />} />
+        <Route path="finance/programme-fees" element={<ProgrammeFees />} />
+        <Route path="finance/generate" element={<GenerateInvoice />} />
+        <Route path="finance/invoices" element={<Invoices />} />
+        <Route path="finance/student-status" element={<StudentFinance />} />
         <Route path="medical" element={<Medical />} />
         <Route path="hostel" element={<HostelManagement />} />
         <Route path="documents" element={<Documents />} />
@@ -101,7 +114,10 @@ export default function App() {
         <Route path="office-setup" element={<OfficeSetup />} />
         <Route path="institution" element={<Institution />} />
         <Route path="audit" element={<Audit />} />
-        <Route path="reports" element={<Reports />} />
+        <Route path="reports" element={<ReportsHome />} />
+        <Route path="reports/new" element={<ReportBuilder />} />
+        <Route path="reports/:id/edit" element={<ReportBuilder />} />
+        <Route path="reports/:id" element={<ReportRun />} />
         <Route path="notifications" element={<Notifications />} />
         <Route path="announcements" element={<Announcements />} />
         <Route path="integrations" element={<Integrations />} />

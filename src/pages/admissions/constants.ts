@@ -1,5 +1,7 @@
 export type AdmissionsChannelKey = 'undergraduate' | 'jupeb' | 'postgraduate';
 
+export type AdmissionsReferenceColumn = 'jamb' | 'application_number';
+
 export type AdmissionsChannel = {
   key: AdmissionsChannelKey;
   navKey: string;
@@ -9,6 +11,7 @@ export type AdmissionsChannel = {
   description: string;
   entryModes: string[];
   showEntryMode: boolean;
+  referenceColumn: AdmissionsReferenceColumn;
 };
 
 export const ADMISSIONS_CHANNELS: AdmissionsChannel[] = [
@@ -21,6 +24,7 @@ export const ADMISSIONS_CHANNELS: AdmissionsChannel[] = [
     description: 'Review and process UTME, Direct Entry, and Transfer applications.',
     entryModes: ['utme', 'de', 'transfer'],
     showEntryMode: true,
+    referenceColumn: 'jamb',
   },
   {
     key: 'jupeb',
@@ -31,6 +35,7 @@ export const ADMISSIONS_CHANNELS: AdmissionsChannel[] = [
     description: 'Review and process JUPEB foundation programme applications.',
     entryModes: ['jupeb'],
     showEntryMode: false,
+    referenceColumn: 'application_number',
   },
   {
     key: 'postgraduate',
@@ -41,6 +46,7 @@ export const ADMISSIONS_CHANNELS: AdmissionsChannel[] = [
     description: 'Review and process postgraduate programme applications.',
     entryModes: ['pg'],
     showEntryMode: false,
+    referenceColumn: 'application_number',
   },
 ];
 

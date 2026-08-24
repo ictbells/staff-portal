@@ -2,12 +2,14 @@ import {
   Alert, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tag,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { Plus } from 'lucide-react';
-import { PageHeader } from '../../components/ui';
+import { Award, BookOpen, Building2, GraduationCap, Plus } from 'lucide-react';
+import { useState } from 'react';
+import { ConfirmDeleteButton } from '../../components/ConfirmDeleteButton';
+import { StatCard, WorkspaceHero } from '../../components/ui';
 import { RefreshButton } from '../../components/RefreshButton';
 import { ENTRY_MODES, STUDY_LEVELS } from './constants';
-import { actionColumn, formatDisplayDate, fromDateValue, toDateValue, useCrudModal } from './crudHelpers';
-import { useResourceList } from './useResourceList';
+import { actionColumn, formatDisplayDate, fromDateTimeValue, fromDateValue, toDateValue, useCrudModal } from './crudHelpers';
+import { patchResource, useResourceList } from './useResourceList';
 
 function entryModeLabel(mode: string) {
   return ENTRY_MODES.find((m) => m.value === mode)?.label ?? mode.toUpperCase();
@@ -46,10 +48,29 @@ function courseTags(courses?: CourseRef[]) {
 type Campus = { id: number; name: string; code?: string; city?: string; address?: string; is_active?: boolean };
 type Faculty = { id: number; name: string; code?: string; campus_id?: number; campus?: Campus };
 type Department = { id: number; name: string; code?: string; faculty_id?: number; faculty?: Faculty };
-type Term = { id: number; name: string; session_label: string; starts_on?: string; ends_on?: string; is_current: boolean };
+type Term = {
+  id: number;
+  name: string;
+  session_label: string;
+  academic_session_id?: number;
+  starts_on?: string;
+  ends_on?: string;
+  normal_registration_closes_at?: string;
+  late_registration_closes_at?: string;
+  is_current: boolean;
+  auto_schedule?: boolean;
+};
+type AcademicSessionRow = {
+  id: number;
+  label: string;
+  starts_on?: string;
+  ends_on?: string;
+  is_current?: boolean;
+  semesters?: Term[];
+};
 type Program = {
   id: number; name: string; code?: string; award_type: string; study_level: string;
-  entry_modes?: string[]; duration_years: number; is_active: boolean;
+  entry_modes?: string[]; duration_years: number; tuition_amount?: number | string; is_active: boolean;
   department_id?: number; department?: Department; courses?: CourseRef[];
 };
 type Course = {
@@ -60,29 +81,38 @@ type Level = { id: number; name: string; code?: string; study_level: string; sor
 type OlevelSubject = { id: number; name: string; code?: string; is_active: boolean };
 type Intake = {
   id: number; name: string; entry_mode: string; academic_term_id?: number;
-  opens_on?: string; closes_on?: string; is_open: boolean; application_fee_amount?: number | string;
+  opens_on?: string; closes_on?: string; is_open: boolean;
+  application_fee_amount?: number | string;
+  acceptance_fee_amount?: number | string;
   term?: Term;
 };
 
 function ResourceShell({
   title, description, loading, onRefresh, onAdd, canAdd = true, accessError, children,
+  count, countLabel = 'Records', eyebrow = 'Academic setup', stats,
 }: {
   title: string; description: string; loading: boolean; onRefresh: () => void;
   onAdd?: () => void; canAdd?: boolean; accessError?: string | null; children: React.ReactNode;
+  count?: number; countLabel?: string; eyebrow?: string; stats?: React.ReactNode;
 }) {
   return (
     <div className="space-y-4">
       {accessError && (
         <Alert type="warning" showIcon message="No access" description={accessError} />
       )}
-      <PageHeader title={title} description={description}>
+      <WorkspaceHero eyebrow={eyebrow} title={title} description={description} icon={BookOpen}>
         <div className="flex gap-2">
           <RefreshButton onClick={onRefresh} loading={loading} />
           {canAdd && onAdd && (
             <Button type="primary" icon={<Plus size={14} />} onClick={onAdd}>Add</Button>
           )}
         </div>
-      </PageHeader>
+      </WorkspaceHero>
+      {stats ?? (count != null && (
+        <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+          <StatCard label={countLabel} value={count} hint="Records in this list" icon={BookOpen} />
+        </div>
+      ))}
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">{children}</div>
     </div>
   );
@@ -130,7 +160,7 @@ export function CampusesPage() {
   };
 
   return (
-    <ResourceShell title="Campuses" description="Physical campuses where colleges and departments are located." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ is_active: true })} accessError={accessError}>
+    <ResourceShell title="Campuses" description="Physical campuses where colleges and departments are located." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ is_active: true })} accessError={accessError} count={rows.length} countLabel="Campuses">
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 700 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No campuses yet.' }} />
       <CrudModal title="campus" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="name" label="Name" rules={[{ required: true }]}><Input /></Form.Item>
@@ -146,6 +176,7 @@ export function CampusesPage() {
 export function CollegesPage() {
   const { rows, loading, reload } = useResourceList<Faculty>('/api/academic/faculties');
   const { rows: campuses } = useResourceList<Campus>('/api/academic/campuses');
+  const { rows: departments } = useResourceList<Department>('/api/academic/departments');
   const crud = useCrudModal<Faculty>();
 
   const columns: ColumnsType<Faculty> = [
@@ -164,7 +195,20 @@ export function CollegesPage() {
   };
 
   return (
-    <ResourceShell title="Colleges" description="Academic colleges (faculties) within each campus." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate()} canAdd={campuses.length > 0}>
+    <ResourceShell
+      title="Colleges"
+      description="Academic colleges (faculties) within each campus."
+      loading={loading}
+      onRefresh={reload}
+      onAdd={() => crud.openCreate()}
+      canAdd={campuses.length > 0}
+      stats={(
+        <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+          <StatCard label="Colleges" value={rows.length} hint="Faculties in this list" icon={BookOpen} />
+          <StatCard label="Departments" value={departments.length} hint="Total departments across all colleges" icon={Building2} />
+        </div>
+      )}
+    >
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 700 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No colleges yet.' }} />
       <CrudModal title="college" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="campus_id" label="Campus" rules={[{ required: true }]}>
@@ -180,6 +224,7 @@ export function CollegesPage() {
 export function DepartmentsPage() {
   const { rows, loading, reload } = useResourceList<Department>('/api/academic/departments');
   const { rows: faculties } = useResourceList<Faculty>('/api/academic/faculties');
+  const { rows: programmes } = useResourceList<Program>('/api/academic/programs');
   const crud = useCrudModal<Department>();
 
   const columns: ColumnsType<Department> = [
@@ -199,7 +244,20 @@ export function DepartmentsPage() {
   };
 
   return (
-    <ResourceShell title="Departments" description="Academic departments under each college." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate()} canAdd={faculties.length > 0}>
+    <ResourceShell
+      title="Departments"
+      description="Academic departments under each college."
+      loading={loading}
+      onRefresh={reload}
+      onAdd={() => crud.openCreate()}
+      canAdd={faculties.length > 0}
+      stats={(
+        <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+          <StatCard label="Departments" value={rows.length} hint="Departments in this list" icon={Building2} />
+          <StatCard label="Programmes" value={programmes.length} hint="Total programmes across all departments" icon={GraduationCap} />
+        </div>
+      )}
+    >
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 800 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No departments yet.' }} />
       <CrudModal title="department" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="faculty_id" label="College" rules={[{ required: true }]}>
@@ -213,46 +271,311 @@ export function DepartmentsPage() {
 }
 
 export function SessionsPage() {
-  const { rows, loading, reload } = useResourceList<Term>('/api/academic/terms');
-  const crud = useCrudModal<Term>();
+  const { rows, loading, reload } = useResourceList<AcademicSessionRow>('/api/academic/sessions');
+  const sessionCrud = useCrudModal<AcademicSessionRow>();
+  const semesterCrud = useCrudModal<Term>();
+  const [semesterSessionId, setSemesterSessionId] = useState<number | null>(null);
+  const [togglingSemesterId, setTogglingSemesterId] = useState<number | null>(null);
 
-  const columns: ColumnsType<Term> = [
-    { title: 'Session', dataIndex: 'session_label', key: 'session_label' },
-    { title: 'Term', dataIndex: 'name', key: 'name' },
+  const setSemesterCurrent = async (semester: Term, isCurrent: boolean) => {
+    setTogglingSemesterId(semester.id);
+    try {
+      await patchResource(`/api/terms/${semester.id}`, { is_current: isCurrent });
+      reload();
+    } finally {
+      setTogglingSemesterId(null);
+    }
+  };
+
+  const columns: ColumnsType<AcademicSessionRow> = [
+    { title: 'Session', dataIndex: 'label', key: 'label', width: 140 },
+    {
+      title: 'Semesters',
+      key: 'semesters',
+      render: (_, row) => (
+        <Space size={[4, 4]} wrap>
+          {(row.semesters || []).map((s) => (
+            <Tag key={s.id} color={s.is_current ? 'blue' : undefined}>
+              {s.name}{s.is_current ? ' · current' : ''}
+            </Tag>
+          ))}
+        </Space>
+      ),
+    },
     { title: 'Starts', dataIndex: 'starts_on', key: 'starts_on', width: 120, render: (v) => formatDisplayDate(v) },
     { title: 'Ends', dataIndex: 'ends_on', key: 'ends_on', width: 120, render: (v) => formatDisplayDate(v) },
-    { title: 'Current', dataIndex: 'is_current', key: 'is_current', width: 90, render: (v) => (v ? <Tag color="blue">Current</Tag> : '—') },
-    actionColumn(
-      (row) => crud.openEdit(row, {
-        session_label: row.session_label,
-        name: row.name,
-        starts_on: toDateValue(row.starts_on),
-        ends_on: toDateValue(row.ends_on),
-        is_current: row.is_current,
-      }),
-      (row) => crud.remove(`/api/terms/${row.id}`, reload),
-    ),
+    {
+      title: 'Status',
+      key: 'is_current',
+      width: 110,
+      render: (_, row) => (row.is_current ? <Tag color="blue">Active session</Tag> : '—'),
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 220,
+      fixed: 'right',
+      render: (_, row) => (
+        <Space size={4} wrap>
+          <Button type="link" size="small" onClick={() => sessionCrud.openEdit(row, {
+            label: row.label,
+            starts_on: toDateValue(row.starts_on),
+            ends_on: toDateValue(row.ends_on),
+          })}>
+            Edit session
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => {
+              setSemesterSessionId(row.id);
+              semesterCrud.openCreate({ is_current: false, auto_schedule: false, academic_session_id: row.id });
+            }}
+          >
+            Add semester
+          </Button>
+          <ConfirmDeleteButton onConfirm={() => sessionCrud.remove(`/api/academic/sessions/${row.id}`, reload)} />
+        </Space>
+      ),
+    },
   ];
 
-  const submit = async () => {
-    const values = await crud.form.validateFields();
-    await crud.save('/api/terms', (id) => `/api/terms/${id}`, {
-      ...values,
+  const expandedRowRender = (session: AcademicSessionRow) => {
+    const semesterColumns: ColumnsType<Term> = [
+      { title: 'Semester', dataIndex: 'name', key: 'name' },
+      { title: 'Starts', dataIndex: 'starts_on', key: 'starts_on', width: 120, render: (v) => formatDisplayDate(v) },
+      { title: 'Ends', dataIndex: 'ends_on', key: 'ends_on', width: 120, render: (v) => formatDisplayDate(v) },
+      {
+        title: 'Current',
+        dataIndex: 'is_current',
+        key: 'is_current',
+        width: 100,
+        render: (isCurrent, row) => (
+          <Switch
+            checked={!!isCurrent}
+            loading={togglingSemesterId === row.id}
+            onChange={(checked) => setSemesterCurrent(row, checked)}
+          />
+        ),
+      },
+      actionColumn(
+        (row) => {
+          setSemesterSessionId(session.id);
+          semesterCrud.openEdit(row, {
+            name: row.name,
+            starts_on: toDateValue(row.starts_on),
+            ends_on: toDateValue(row.ends_on),
+            normal_registration_closes_at: toDateValue(row.normal_registration_closes_at),
+            late_registration_closes_at: toDateValue(row.late_registration_closes_at),
+            is_current: row.is_current,
+            auto_schedule: row.auto_schedule ?? true,
+            academic_session_id: session.id,
+          });
+        },
+        (row) => semesterCrud.remove(`/api/terms/${row.id}`, reload),
+      ),
+    ];
+
+    return (
+      <Table
+        rowKey="id"
+        columns={semesterColumns}
+        dataSource={session.semesters || []}
+        pagination={false}
+        size="small"
+        locale={{ emptyText: 'No semesters in this session.' }}
+      />
+    );
+  };
+
+  const submitSession = async () => {
+    const values = await sessionCrud.form.validateFields();
+    if (sessionCrud.isEdit) {
+      await sessionCrud.save('/api/academic/sessions', (id) => `/api/academic/sessions/${id}`, {
+        label: values.label,
+        starts_on: fromDateValue(values.starts_on),
+        ends_on: fromDateValue(values.ends_on),
+      }, reload);
+      return;
+    }
+
+    const semesters = (values.semesters || []).map((s: {
+      name: string; starts_on?: unknown; ends_on?: unknown; is_current?: boolean;
+    }) => ({
+      name: s.name,
+      starts_on: fromDateValue(s.starts_on),
+      ends_on: fromDateValue(s.ends_on),
+      is_current: !!s.is_current,
+    }));
+
+    await sessionCrud.save('/api/academic/sessions', (id) => `/api/academic/sessions/${id}`, {
+      label: values.label,
       starts_on: fromDateValue(values.starts_on),
       ends_on: fromDateValue(values.ends_on),
-      is_current: values.is_current ?? false,
+      semesters,
     }, reload);
   };
 
+  const submitSemester = async () => {
+    const values = await semesterCrud.form.validateFields();
+    const sessionId = values.academic_session_id || semesterSessionId;
+    await semesterCrud.save('/api/terms', (id) => `/api/terms/${id}`, {
+      academic_session_id: sessionId,
+      name: values.name,
+      starts_on: fromDateValue(values.starts_on),
+      ends_on: fromDateValue(values.ends_on),
+      normal_registration_closes_at: fromDateTimeValue(values.normal_registration_closes_at),
+      late_registration_closes_at: fromDateTimeValue(values.late_registration_closes_at),
+      is_current: values.is_current ?? false,
+      auto_schedule: values.auto_schedule ?? true,
+    }, () => {
+      setSemesterSessionId(null);
+      reload();
+    });
+  };
+
   return (
-    <ResourceShell title="Academic sessions" description="Sessions and terms (e.g. 2025/2026 Harmattan)." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ is_current: false })}>
-      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 800 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No sessions yet.' }} />
-      <CrudModal title="session / term" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
-        <Form.Item name="session_label" label="Session label" rules={[{ required: true }]}><Input placeholder="2025/2026" /></Form.Item>
-        <Form.Item name="name" label="Term name" rules={[{ required: true }]}><Input placeholder="Harmattan 2025/2026" /></Form.Item>
-        <Form.Item name="starts_on" label="Starts on"><DatePicker className="w-full" /></Form.Item>
-        <Form.Item name="ends_on" label="Ends on"><DatePicker className="w-full" /></Form.Item>
-        <Form.Item name="is_current" label="Set as current" valuePropName="checked"><Switch /></Form.Item>
+    <ResourceShell
+      title="Sessions & semesters"
+      description="Create one academic session (e.g. 2025/2026) with at least two semesters (First and Second). Use the Current switch on a semester to set the live session shown in the student portal. Turn off Auto-switch for admission-only semesters so the nightly job does not activate them by start date."
+      loading={loading}
+      onRefresh={reload}
+      onAdd={() => sessionCrud.openCreate({
+        semesters: [
+          { name: 'First', is_current: true },
+          { name: 'Second', is_current: false },
+        ],
+      })}
+      count={rows.length}
+      countLabel="Sessions"
+    >
+      <Table
+        rowKey="id"
+        columns={columns}
+        dataSource={rows}
+        loading={loading}
+        scroll={{ x: 900 }}
+        pagination={{ pageSize: 15 }}
+        expandable={{ expandedRowRender, defaultExpandAllRows: true }}
+        locale={{ emptyText: 'No academic sessions yet.' }}
+      />
+
+      <Modal
+        title={sessionCrud.isEdit ? 'Edit session' : 'Add session'}
+        open={sessionCrud.open}
+        onCancel={sessionCrud.close}
+        onOk={submitSession}
+        confirmLoading={sessionCrud.saving}
+        destroyOnClose
+        width={640}
+      >
+        <Form form={sessionCrud.form} layout="vertical" className="mt-4">
+          <Form.Item
+            name="label"
+            label="Session"
+            extra="Academic year, e.g. 2025/2026"
+            rules={[{ required: true, message: 'Enter the session' }]}
+          >
+            <Input placeholder="2025/2026" />
+          </Form.Item>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3">
+            <Form.Item name="starts_on" label="Session starts"><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item>
+            <Form.Item name="ends_on" label="Session ends"><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item>
+          </div>
+
+          {!sessionCrud.isEdit && (
+            <Form.List
+              name="semesters"
+              rules={[{
+                validator: async (_, value) => {
+                  if (!value || value.length < 2) {
+                    return Promise.reject(new Error('Add at least two semesters'));
+                  }
+                },
+              }]}
+            >
+              {(fields, { add, remove }, { errors }) => (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-slate-800 m-0">Semesters</p>
+                    <Button type="dashed" size="small" onClick={() => add({ is_current: false })}>Add semester</Button>
+                  </div>
+                  {fields.map((field) => (
+                    <div key={field.key} className="rounded-lg border border-slate-200 p-3 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <Form.Item
+                          {...field}
+                          name={[field.name, 'name']}
+                          label="Semester name"
+                          className="flex-1 mb-2"
+                          rules={[{ required: true, message: 'Required' }]}
+                        >
+                          <Input placeholder="First" />
+                        </Form.Item>
+                        {fields.length > 2 && (
+                          <Button type="link" danger size="small" className="mt-7" onClick={() => remove(field.name)}>
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3">
+                        <Form.Item {...field} name={[field.name, 'starts_on']} label="Starts" className="mb-2">
+                          <DatePicker className="w-full" format="DD/MM/YYYY" />
+                        </Form.Item>
+                        <Form.Item {...field} name={[field.name, 'ends_on']} label="Ends" className="mb-2">
+                          <DatePicker className="w-full" format="DD/MM/YYYY" />
+                        </Form.Item>
+                      </div>
+                      <Form.Item {...field} name={[field.name, 'is_current']} label="Current semester" valuePropName="checked" className="mb-0">
+                        <Switch />
+                      </Form.Item>
+                    </div>
+                  ))}
+                  <Form.ErrorList errors={errors} />
+                </div>
+              )}
+            </Form.List>
+          )}
+        </Form>
+      </Modal>
+
+      <CrudModal
+        title="semester"
+        open={semesterCrud.open}
+        saving={semesterCrud.saving}
+        isEdit={semesterCrud.isEdit}
+        form={semesterCrud.form}
+        onClose={() => { setSemesterSessionId(null); semesterCrud.close(); }}
+        onSubmit={submitSemester}
+      >
+        <Form.Item name="academic_session_id" hidden><Input /></Form.Item>
+        <Form.Item name="name" label="Semester name" rules={[{ required: true }]}>
+          <Input placeholder="First" />
+        </Form.Item>
+        <Form.Item name="starts_on" label="Starts on"><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item>
+        <Form.Item name="ends_on" label="Ends on"><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item>
+        <Form.Item name="normal_registration_closes_at" label="Normal registration closes">
+          <DatePicker className="w-full" showTime format="DD/MM/YYYY HH:mm" />
+        </Form.Item>
+        <Form.Item name="late_registration_closes_at" label="Late registration closes">
+          <DatePicker className="w-full" showTime format="DD/MM/YYYY HH:mm" />
+        </Form.Item>
+        <Form.Item
+          name="is_current"
+          label="Set as current semester"
+          extra="Only one semester can be current across the university."
+          valuePropName="checked"
+        >
+          <Switch />
+        </Form.Item>
+        <Form.Item
+          name="auto_schedule"
+          label="Auto-switch by dates"
+          extra="When enabled, the nightly scheduler can open or close this semester based on its start and end dates."
+          valuePropName="checked"
+        >
+          <Switch />
+        </Form.Item>
       </CrudModal>
     </ResourceShell>
   );
@@ -263,12 +586,27 @@ export function ProgrammesPage() {
   const { rows: departments } = useResourceList<Department>('/api/academic/departments');
   const { rows: allCourses } = useResourceList<Course>('/api/academic/courses');
   const crud = useCrudModal<Program>();
+  const [modeFilter, setModeFilter] = useState<string | null>(null);
+
+  const hasMode = (row: Program, mode: string) => (row.entry_modes ?? []).includes(mode);
+  const utmeCount = rows.filter((row) => hasMode(row, 'utme')).length;
+  const jupebCount = rows.filter((row) => hasMode(row, 'jupeb')).length;
+  const pgCount = rows.filter((row) => hasMode(row, 'pg')).length;
+  const visibleRows = modeFilter ? rows.filter((row) => hasMode(row, modeFilter)) : rows;
+  const toggleMode = (mode: string) => setModeFilter((current) => (current === mode ? null : mode));
 
   const columns: ColumnsType<Program> = [
     { title: 'Programme', dataIndex: 'name', key: 'name' },
     { title: 'Code', dataIndex: 'code', key: 'code', width: 90, render: (v) => v || '—' },
     { title: 'Award', dataIndex: 'award_type', key: 'award_type', width: 90 },
     { title: 'Years', dataIndex: 'duration_years', key: 'duration_years', width: 70 },
+    {
+      title: 'School fees total',
+      dataIndex: 'tuition_amount',
+      key: 'tuition_amount',
+      width: 140,
+      render: (value?: number | string) => (value != null ? `₦${Number(value).toLocaleString()}` : '—'),
+    },
     { title: 'Admission categories', key: 'entry_modes', width: 180, render: (_, r) => entryModeTags(r.entry_modes) },
     { title: 'Courses', key: 'courses', width: 160, render: (_, r) => courseTags(r.courses) },
     { title: 'Department', key: 'department', render: (_, r) => r.department?.name || '—' },
@@ -295,8 +633,53 @@ export function ProgrammesPage() {
   };
 
   return (
-    <ResourceShell title="Programmes" description="Define programmes, map courses to the curriculum, and set admission categories." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ duration_years: 4, is_active: true, entry_modes: ['utme'], course_ids: [] })} canAdd={departments.length > 0}>
-      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1200 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No programmes yet.' }} />
+    <ResourceShell
+      title="Programmes"
+      description="Define programmes and curriculum. School fees (tuition and related lines) are assigned under Fees & payments → Programme fees."
+      loading={loading}
+      onRefresh={reload}
+      onAdd={() => crud.openCreate({ duration_years: 4, is_active: true, entry_modes: ['utme'], course_ids: [] })}
+      canAdd={departments.length > 0}
+      stats={(
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+          <StatCard
+            label="Programmes"
+            value={rows.length}
+            hint="All programmes in the catalog"
+            icon={BookOpen}
+            active={!modeFilter}
+            onClick={() => setModeFilter(null)}
+          />
+          <StatCard
+            label="UTME"
+            value={utmeCount}
+            hint="Undergraduate UTME programmes"
+            icon={GraduationCap}
+            active={modeFilter === 'utme'}
+            onClick={() => toggleMode('utme')}
+          />
+          <StatCard
+            label="JUPEB"
+            value={jupebCount}
+            hint="JUPEB foundation programmes"
+            icon={BookOpen}
+            tone="amber"
+            active={modeFilter === 'jupeb'}
+            onClick={() => toggleMode('jupeb')}
+          />
+          <StatCard
+            label="PG"
+            value={pgCount}
+            hint="Postgraduate programmes"
+            icon={Award}
+            tone="emerald"
+            active={modeFilter === 'pg'}
+            onClick={() => toggleMode('pg')}
+          />
+        </div>
+      )}
+    >
+      <Table rowKey="id" columns={columns} dataSource={visibleRows} loading={loading} scroll={{ x: 1300 }} pagination={{ pageSize: 15 }} locale={{ emptyText: modeFilter ? 'No programmes in this category.' : 'No programmes yet.' }} />
       <CrudModal title="programme" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="department_id" label="Department" rules={[{ required: true }]}>
           <Select options={departments.map((d) => ({ value: d.id, label: d.name }))} showSearch optionFilterProp="label" />
@@ -321,6 +704,12 @@ export function ProgrammesPage() {
           />
         </Form.Item>
         <Form.Item name="is_active" label="Active" valuePropName="checked"><Switch /></Form.Item>
+        <Alert
+          type="info"
+          showIcon
+          message="School fees"
+          description="Assign tuition, library, medical, and other school-fee lines per programme, level, and semester on Fees & payments → Programme fees."
+        />
       </CrudModal>
     </ResourceShell>
   );
@@ -348,7 +737,7 @@ export function LevelsPage() {
   };
 
   return (
-    <ResourceShell title="Levels" description="Study levels such as 100, 200, or Year 1." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ sort_order: 1, is_active: true })}>
+    <ResourceShell title="Levels" description="Study levels such as 100, 200, or Year 1." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ sort_order: 1, is_active: true })} count={rows.length} countLabel="Levels">
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 700 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No levels yet.' }} />
       <CrudModal title="level" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="name" label="Level name" rules={[{ required: true }]}><Input placeholder="100 Level" /></Form.Item>
@@ -391,7 +780,7 @@ export function CoursesPage() {
   };
 
   return (
-    <ResourceShell title="Courses" description="Course catalog — each course must be linked to one or more programmes." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ units: 3, program_ids: [] })} canAdd={departments.length > 0 && programs.length > 0}>
+    <ResourceShell title="Courses" description="Course catalog — each course must be linked to one or more programmes." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ units: 3, program_ids: [] })} canAdd={departments.length > 0 && programs.length > 0} count={rows.length} countLabel="Courses">
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 900 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No courses yet.' }} />
       <CrudModal title="course" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="department_id" label="Department" rules={[{ required: true }]}>
@@ -432,6 +821,13 @@ export function IntakesPage() {
       width: 130,
       render: (value?: number | string) => (value != null ? `₦${Number(value).toLocaleString()}` : '—'),
     },
+    {
+      title: 'Default acceptance',
+      dataIndex: 'acceptance_fee_amount',
+      key: 'acceptance_fee_amount',
+      width: 150,
+      render: (value?: number | string) => (value != null ? `₦${Number(value).toLocaleString()}` : 'Set at offer'),
+    },
     { title: 'Open', dataIndex: 'is_open', key: 'is_open', width: 90, render: (v) => <Tag color={v ? 'success' : 'default'}>{v ? 'Open' : 'Closed'}</Tag> },
     actionColumn(
       (row) => crud.openEdit(row, {
@@ -441,6 +837,7 @@ export function IntakesPage() {
         opens_on: toDateValue(row.opens_on),
         closes_on: toDateValue(row.closes_on),
         application_fee_amount: row.application_fee_amount != null ? Number(row.application_fee_amount) : undefined,
+        acceptance_fee_amount: row.acceptance_fee_amount != null ? Number(row.acceptance_fee_amount) : undefined,
         is_open: row.is_open,
       }),
       (row) => crud.remove(`/api/intakes/${row.id}`, reload),
@@ -458,10 +855,10 @@ export function IntakesPage() {
   };
 
   return (
-    <ResourceShell title="Application windows" description="Control when the application form opens and closes, which session it applies to, the application fee, and whether it is for UTME, DE, JUPEB, PG, or Transfer." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ is_open: true })} canAdd={terms.length > 0}>
-      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1000 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No application windows yet.' }} />
+    <ResourceShell title="Application windows" description="Set the application fee per window (required). Acceptance fee is optional here — you can set or change it when issuing admission offers." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ is_open: true })} canAdd={terms.length > 0} count={rows.length} countLabel="Windows" eyebrow="Application setup">
+      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1100 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No application windows yet.' }} />
       <CrudModal title="application window" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
-        <Form.Item name="academic_term_id" label="Academic session" rules={[{ required: true }]}>
+        <Form.Item name="academic_term_id" label="Semester" rules={[{ required: true }]}>
           <Select options={terms.map((t) => ({ value: t.id, label: `${t.session_label} — ${t.name}` }))} />
         </Form.Item>
         <Form.Item name="name" label="Window name" rules={[{ required: true }]}><Input placeholder="UTME 2025/2026" /></Form.Item>
@@ -477,6 +874,13 @@ export function IntakesPage() {
           extra="Applicants pay this amount before they can complete the form."
         >
           <InputNumber min={0} className="w-full" />
+        </Form.Item>
+        <Form.Item
+          name="acceptance_fee_amount"
+          label="Default acceptance fee (₦)"
+          extra="Optional. Leave blank to set the amount when you issue an offer, or use the fee catalog default."
+        >
+          <InputNumber min={0} className="w-full" placeholder="Optional" />
         </Form.Item>
         <Form.Item name="is_open" label="Accepting applications" valuePropName="checked"><Switch /></Form.Item>
       </CrudModal>
@@ -504,7 +908,7 @@ export function OlevelPage() {
   };
 
   return (
-    <ResourceShell title="O'level subjects" description="Subjects applicants pick when entering WAEC/NECO results." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ is_active: true })}>
+    <ResourceShell title="O'level subjects" description="Subjects applicants pick when entering WAEC/NECO results." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ is_active: true })} count={rows.length} countLabel="Subjects" eyebrow="Application setup">
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 600 }} pagination={{ pageSize: 20 }} locale={{ emptyText: "No O'level subjects yet." }} />
       <CrudModal title="O'level subject" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="name" label="Subject name" rules={[{ required: true }]}><Input placeholder="English Language" /></Form.Item>

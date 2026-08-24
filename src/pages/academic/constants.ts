@@ -23,7 +23,7 @@ export const ADMISSION_SETUP_RESOURCES: AcademicResource[] = [
   { key: 'campuses', path: '/academic/campuses', label: 'Campuses', perm: 'academic.campuses.manage' },
   { key: 'colleges', path: '/academic/colleges', label: 'Colleges', perm: 'academic.colleges.manage' },
   { key: 'departments', path: '/academic/departments', label: 'Departments', perm: 'academic.departments.manage' },
-  { key: 'sessions', path: '/academic/sessions', label: 'Sessions', perm: 'academic.sessions.manage' },
+  { key: 'sessions', path: '/academic/sessions', label: 'Sessions & semesters', perm: 'academic.sessions.manage' },
   { key: 'levels', path: '/academic/levels', label: 'Levels', perm: 'academic.levels.manage' },
   { key: 'courses', path: '/academic/courses', label: 'Courses', perm: 'academic.courses.manage' },
 ];

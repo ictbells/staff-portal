@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
-import { ArrowRight, GraduationCap, Receipt, TrendingUp, Wallet } from 'lucide-react';
+import { ArrowRight, GraduationCap, Home, Receipt, TrendingUp, Wallet } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../auth';
 import { PortalAccessNotice } from '../components/PortalAccessNotice';
+import { StatCard, WorkspaceHero } from '../components/ui';
 import { navSections, canShowNavItem, flattenNavEntries, type NavItem } from '../layout/navConfig';
 
 const statIcons: Record<string, LucideIcon> = {
@@ -19,8 +20,11 @@ export default function Dashboard() {
   const [summary, setSummary] = useState<any>(null);
 
   useEffect(() => {
-    if (has('reports.view')) api.get('/api/reports/summary').then((r) => setSummary(r.data)).catch(() => {});
-  }, [has]);
+    const reportsItem: NavItem = { key: 'reports', to: '/reports', label: 'Reports', perm: 'reports.view', icon: Home };
+    if (canShowNavItem(reportsItem, has, auth?.nav_unrestricted, auth?.nav_link_keys)) {
+      api.get('/api/reports/summary').then((r) => setSummary(r.data)).catch(() => {});
+    }
+  }, [auth?.nav_link_keys, auth?.nav_unrestricted, has]);
 
   const quickLinks: NavItem[] = navSections
     .flatMap((s) => flattenNavEntries(s.items))
@@ -43,52 +47,30 @@ export default function Dashboard() {
     return 'No portal links have been assigned to your office yet. Contact an administrator to configure your access.';
   })();
 
+  const hero = (
+    <WorkspaceHero
+      eyebrow="Staff portal"
+      title={`Welcome back, ${firstName}`}
+      description={welcomeDescription}
+      icon={Home}
+    />
+  );
+
   if (!auth?.nav_unrestricted && quickLinks.length === 0) {
-    return (
-      <div className="space-y-6">
-        <section className="rounded-2xl bg-gradient-to-r from-sky-600 to-sky-700 text-white p-5 sm:p-6 md:p-8 shadow-sm">
-          <p className="text-sky-100 text-sm font-medium">Staff portal</p>
-          <h1 className="mt-1 text-xl sm:text-2xl md:text-3xl font-semibold tracking-tight">Welcome back, {firstName}</h1>
-          <p className="mt-2 text-sky-100 max-w-2xl text-sm md:text-base">{welcomeDescription}</p>
-        </section>
-      </div>
-    );
+    return <div className="space-y-6">{hero}</div>;
   }
 
   return (
     <div className="space-y-6">
       {!auth?.nav_unrestricted && quickLinks.length > 0 && <PortalAccessNotice />}
-      <section className="rounded-2xl bg-gradient-to-r from-sky-600 to-sky-700 text-white p-5 sm:p-6 md:p-8 shadow-sm">
-        <p className="text-sky-100 text-sm font-medium">Staff portal</p>
-        <h1 className="mt-1 text-xl sm:text-2xl md:text-3xl font-semibold tracking-tight">Welcome back, {firstName}</h1>
-        <p className="mt-2 text-sky-100 max-w-2xl text-sm md:text-base">
-          {welcomeDescription}
-        </p>
-      </section>
+      {hero}
 
       {summary && (
-        <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          {[
-            ['Students', summary.students],
-            ['Collected', summary.payments_collected],
-            ['Outstanding', summary.invoices_outstanding],
-            ['Wallet total', summary.wallet_total],
-          ].map(([label, value]) => {
-            const Icon = statIcons[String(label)] || TrendingUp;
-            return (
-              <div key={String(label)} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</div>
-                    <div className="mt-2 text-2xl font-semibold text-slate-800">{value}</div>
-                  </div>
-                  <div className="rounded-lg bg-sky-50 p-2 text-sky-600">
-                    <Icon className="h-5 w-5" aria-hidden />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+          <StatCard label="Students" value={summary.students ?? '—'} icon={GraduationCap} />
+          <StatCard label="Collected" value={summary.payments_collected ?? '—'} icon={TrendingUp} tone="emerald" />
+          <StatCard label="Outstanding" value={summary.invoices_outstanding ?? '—'} icon={Receipt} tone="amber" />
+          <StatCard label="Wallet total" value={summary.wallet_total ?? '—'} icon={Wallet} />
         </div>
       )}
 

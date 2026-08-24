@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BookOpen, Download, FileDown, FileText } from 'lucide-react';
+import { BookOpen, Download, FileDown, FileText, FolderOpen } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../auth';
 import { AccessDeniedPanel } from '../components/AccessDeniedPanel';
 import { getNavItemAccess } from '../lib/portalAccess';
 import { RefreshButton } from '../components/RefreshButton';
-import { Badge, Btn, Card, DataTable, PageHeader, Spinner, tdClass, thClass, trClass } from '../components/ui';
+import { Badge, Btn, Card, DataTable, Spinner, StatCard, WorkspaceHero, tdClass, thClass, trClass } from '../components/ui';
 
 type ResourceItem = {
   slug: string;
@@ -84,12 +84,18 @@ export default function Resources() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <WorkspaceHero
+        eyebrow="System"
         title="Resources"
         description="Operational documents and standard operating procedures for authorised staff."
+        icon={FolderOpen}
       >
         <RefreshButton onClick={load} loading={loading} />
-      </PageHeader>
+      </WorkspaceHero>
+      <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+        <StatCard label="Documents" value={items.length} hint="SOPs available to your account" icon={FileText} />
+        <StatCard label="API docs" value="Swagger" hint="Interactive route explorer" icon={BookOpen} />
+      </div>
 
       <Card title="API documentation" description="Interactive Swagger UI for all registered API routes.">
         <p className="text-sm text-slate-600 mb-4">

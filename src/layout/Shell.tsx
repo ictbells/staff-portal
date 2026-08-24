@@ -92,6 +92,7 @@ function SidebarNavGroup({
             <NavLink
               key={item.to}
               to={item.to}
+              end
               onClick={onNavigate}
               className={({ isActive }) =>
                 `flex items-center rounded-lg px-3 py-2 text-sm transition-colors ${
@@ -245,7 +246,7 @@ export default function Shell() {
             if (!entries.length) return null;
             return (
               <div key={section.title}>
-                <div className={`mb-1.5 px-3 font-semibold uppercase tracking-wider text-sky-200/80 ${section.titleClassName ?? 'text-[10px]'}`}>
+                <div className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-sky-200/80">
                   {section.title}
                 </div>
                 <div className="space-y-0.5">

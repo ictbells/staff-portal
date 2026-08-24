@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Modal, Select, Space, Table, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { Pencil, Search, UserPlus, X } from 'lucide-react';
+import { Pencil, Search, UserCheck, UserPlus, UserX, Users as UsersIcon, X } from 'lucide-react';
 import api from '../api';
 import { RefreshButton } from '../components/RefreshButton';
 import { ConfirmDeleteButton } from '../components/ConfirmDeleteButton';
-import { fieldHelpClass, fieldLabelClass, formStackClass, inputClass, PageHeader } from '../components/ui';
+import { fieldHelpClass, fieldLabelClass, formStackClass, inputClass, StatCard, WorkspaceHero } from '../components/ui';
 import { PasswordHints } from './Reset';
 
 type OfficeTree = {
@@ -596,19 +596,27 @@ export default function Users() {
     },
   ];
 
+  const activeOnPage = rows.filter((u) => u.status !== 'disabled').length;
+
   return (
     <div className="space-y-5">
-      <PageHeader
+      <WorkspaceHero
+        eyebrow="Administration"
         title="Users"
         description="Create staff accounts, assign roles (what they can do), and place them in an office (where they work and which portal links they see)."
+        icon={UsersIcon}
       >
-        <Space wrap>
-          <RefreshButton onClick={() => load(pagination.current, filters)} loading={loading} />
-          <Button type="primary" icon={<UserPlus size={14} />} onClick={openCreate}>
-            Create user
-          </Button>
-        </Space>
-      </PageHeader>
+        <RefreshButton onClick={() => load(pagination.current, filters)} loading={loading} />
+        <Button type="primary" icon={<UserPlus size={14} />} onClick={openCreate}>
+          Create user
+        </Button>
+      </WorkspaceHero>
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        <StatCard label="Accounts" value={pagination.total} hint="Matching current filters" icon={UsersIcon} />
+        <StatCard label="This page" value={rows.length} hint="Visible in the table" icon={UsersIcon} />
+        <StatCard label="Active" value={activeOnPage} hint="On this page" icon={UserCheck} tone="emerald" />
+        <StatCard label="Disabled" value={rows.length - activeOnPage} hint="On this page" icon={UserX} tone="rose" />
+      </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
         <div className="flex flex-wrap items-center gap-3">

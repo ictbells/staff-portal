@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Form, Input, Select, Table, Upload, message } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload';
-import { Upload as UploadIcon } from 'lucide-react';
+import { BookOpen, ClipboardList, GraduationCap, Upload as UploadIcon } from 'lucide-react';
 import api from '../../api';
-import { PageHeader } from '../../components/ui';
+import { StatCard, WorkspaceHero } from '../../components/ui';
 import { RefreshButton } from '../../components/RefreshButton';
 
 type CandidateRow = {
@@ -136,12 +136,19 @@ export function CandidateDataPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
+      <WorkspaceHero
+        eyebrow="Admission setup"
         title="Candidate data"
         description="Upload JAMB candidate lists before applicants sign up. Students must verify their registration number against this list."
+        icon={GraduationCap}
       >
         <RefreshButton onClick={() => load()} loading={loading} />
-      </PageHeader>
+      </WorkspaceHero>
+      <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+        <StatCard label="Candidates" value={pagination.total} hint="Matching current filters" icon={GraduationCap} />
+        <StatCard label="On this page" value={rows.length} hint="Current table page" icon={ClipboardList} />
+        <StatCard label="Sessions" value={sessions.length} hint="Available academic years" icon={BookOpen} />
+      </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
         <h2 className="text-sm font-semibold text-slate-800">Upload spreadsheet</h2>

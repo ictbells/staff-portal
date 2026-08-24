@@ -8,7 +8,7 @@ type RefreshButtonProps = {
 
 export function RefreshButton({ onClick, loading }: RefreshButtonProps) {
   return (
-    <Button icon={<RefreshCw size={14} />} onClick={onClick} loading={loading}>
+    <Button type="primary" icon={<RefreshCw size={14} />} onClick={onClick} loading={loading}>
       Refresh
     </Button>
   );

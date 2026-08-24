@@ -34,7 +34,12 @@ export function useResourceList<T>(endpoint: string, enabled = true) {
 }
 
 function apiError(err: unknown, fallback: string) {
-  return (err as { response?: { data?: { message?: string } } })?.response?.data?.message || fallback;
+  const data = (err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } })?.response?.data;
+  if (data?.errors) {
+    const first = Object.values(data.errors).flat()[0];
+    if (first) return first;
+  }
+  return data?.message || fallback;
 }
 
 export async function postResource(url: string, body: Record<string, unknown>) {

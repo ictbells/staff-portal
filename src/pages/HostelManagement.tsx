@@ -1,24 +1,38 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, Button, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tabs, Tag, message,
+  Alert, Button, Dropdown, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag, message,
 } from 'antd';
+import type { MenuProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { Plus, Users } from 'lucide-react';
+import { BedDouble, Building2, ClipboardList, Download, FileSpreadsheet, FileText, Layers, Plus, Users } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../auth';
+import { ConfirmDeleteButton } from '../components/ConfirmDeleteButton';
 import { RefreshButton } from '../components/RefreshButton';
-import { PageHeader } from '../components/ui';
+import { StatCard, WorkspaceHero } from '../components/ui';
+
+type HostelBlockRow = {
+  id: number;
+  name: string;
+  rooms_count?: number;
+  rooms?: { id: number; number: string; beds: { id: number; label: string; status: string }[] }[];
+};
+
+type HostelCategory = 'undergraduate' | 'jupeb' | 'postgraduate';
 
 type HostelRow = {
   id: number;
   name: string;
   gender: string;
-  category: 'undergraduate' | 'jupeb';
+  category: HostelCategory;
   is_active: boolean;
+  due_required?: boolean;
+  due_amount?: number | null;
   total_beds: number;
   available_beds: number;
   occupied_beds: number;
-  blocks?: { id: number; name: string; rooms: { id: number; number: string; beds: { id: number; label: string; status: string }[] }[] }[];
+  blocks?: HostelBlockRow[];
 };
 
 type LevelWindow = {
@@ -43,9 +57,12 @@ type AllocationRow = {
   id: number;
   status: string;
   student_name?: string;
+  matric_number?: string;
   student_level?: number;
+  program?: string;
   hostel_name?: string;
   hostel_category?: string;
+  block_name?: string;
   bed_label?: string;
   room_number?: string;
   allocated_at?: string;
@@ -75,15 +92,45 @@ type RoomRow = {
 const categoryLabels: Record<string, string> = {
   undergraduate: 'Undergraduate',
   jupeb: 'JUPEB',
+  postgraduate: 'Postgraduate',
 };
 
 const categoryColors: Record<string, string> = {
   undergraduate: 'blue',
   jupeb: 'purple',
+  postgraduate: 'geekblue',
 };
+
+const categoryOptions = [
+  { value: 'undergraduate', label: 'Undergraduate' },
+  { value: 'jupeb', label: 'JUPEB' },
+  { value: 'postgraduate', label: 'Postgraduate' },
+];
+
+const hostelTabs: { key: string; label: string; icon: LucideIcon }[] = [
+  { key: 'hostels', label: 'Hostels', icon: Building2 },
+  { key: 'rooms', label: 'Rooms', icon: BedDouble },
+  { key: 'levels', label: 'Level activation', icon: Layers },
+  { key: 'queue', label: 'Priority queue', icon: Users },
+  { key: 'allocations', label: 'Allocations', icon: ClipboardList },
+];
+
+function naira(value?: number | string | null) {
+  if (value == null || value === '') return '—';
+  return `₦${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 function CategoryTag({ category }: { category: string }) {
   return <Tag color={categoryColors[category] || 'default'}>{categoryLabels[category] || category}</Tag>;
+}
+
+function firstApiError(err: unknown, fallback: string) {
+  const data = (err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } })?.response?.data;
+  if (data?.errors) {
+    const first = Object.values(data.errors).flat()[0];
+    if (first) return String(first);
+  }
+  return data?.message || fallback;
 }
 
 export default function HostelManagement() {
@@ -95,12 +142,21 @@ export default function HostelManagement() {
   const [hostels, setHostels] = useState<HostelRow[]>([]);
   const [ugWindows, setUgWindows] = useState<LevelWindow[]>([]);
   const [jupebWindows, setJupebWindows] = useState<LevelWindow[]>([]);
+  const [pgWindows, setPgWindows] = useState<LevelWindow[]>([]);
   const [queue, setQueue] = useState<QueueStudent[]>([]);
   const [allocations, setAllocations] = useState<AllocationRow[]>([]);
+  const [allocSearch, setAllocSearch] = useState('');
+  const [allocHostelId, setAllocHostelId] = useState<number | undefined>();
+  const [allocCategory, setAllocCategory] = useState<string | undefined>();
+  const [allocStatus, setAllocStatus] = useState<string | undefined>();
+  const [exportingAllocations, setExportingAllocations] = useState(false);
   const [rooms, setRooms] = useState<RoomRow[]>([]);
   const [roomHostelFilter, setRoomHostelFilter] = useState<number | undefined>();
-  const [queueCategory, setQueueCategory] = useState<'undergraduate' | 'jupeb'>('undergraduate');
+  const [queueCategory, setQueueCategory] = useState<HostelCategory>('undergraduate');
+  const [tab, setTab] = useState('hostels');
+  const [availableBeds, setAvailableBeds] = useState<{ id: number; label: string; hostel: string; category: string; room: string }[]>([]);
   const [loading, setLoading] = useState(false);
+  const [tabLoading, setTabLoading] = useState(false);
   const [savingWindows, setSavingWindows] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -110,6 +166,8 @@ export default function HostelManagement() {
   const [reserveOpen, setReserveOpen] = useState(false);
   const [selectedHostelId, setSelectedHostelId] = useState<number | null>(null);
   const [selectedBlockId, setSelectedBlockId] = useState<number | null>(null);
+  const [editingHostel, setEditingHostel] = useState<HostelRow | null>(null);
+  const [editingBlock, setEditingBlock] = useState<HostelBlockRow | null>(null);
   const [editingRoom, setEditingRoom] = useState<RoomRow | null>(null);
   const [reservingRoom, setReservingRoom] = useState<RoomRow | null>(null);
   const [savingRoom, setSavingRoom] = useState(false);
@@ -126,58 +184,102 @@ export default function HostelManagement() {
     setRooms(data);
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [overviewRes, hostelsRes, ugRes, jupebRes, allocRes] = await Promise.all([
-        api.get('/api/hostels/overview'),
-        api.get('/api/hostels'),
-        api.get('/api/hostel-level-windows', { params: { category: 'undergraduate' } }),
-        api.get('/api/hostel-level-windows', { params: { category: 'jupeb' } }),
-        api.get('/api/hostel-allocations'),
-      ]);
-      setOverview(overviewRes.data);
-      setHostels(hostelsRes.data);
-      setUgWindows(ugRes.data);
-      setJupebWindows(jupebRes.data);
-      setAllocations(allocRes.data);
-      await loadRooms(roomHostelFilter);
-    } finally {
-      setLoading(false);
-    }
-  }, [loadRooms, roomHostelFilter]);
+  const loadHostelsAndStats = useCallback(async () => {
+    const [overviewRes, hostelsRes] = await Promise.all([
+      api.get('/api/hostels/overview'),
+      api.get('/api/hostels'),
+    ]);
+    setOverview(overviewRes.data);
+    setHostels(hostelsRes.data);
+  }, []);
 
-  const loadQueue = useCallback(async (category: 'undergraduate' | 'jupeb') => {
+  const loadWindows = useCallback(async () => {
+    const [ugRes, jupebRes, pgRes] = await Promise.all([
+      api.get('/api/hostel-level-windows', { params: { category: 'undergraduate' } }),
+      api.get('/api/hostel-level-windows', { params: { category: 'jupeb' } }),
+      api.get('/api/hostel-level-windows', { params: { category: 'postgraduate' } }),
+    ]);
+    setUgWindows(ugRes.data);
+    setJupebWindows(jupebRes.data);
+    setPgWindows(pgRes.data);
+  }, []);
+
+  const allocationParams = useCallback(() => ({
+    search: allocSearch.trim() || undefined,
+    hostel_id: allocHostelId,
+    category: allocCategory,
+    status: allocStatus,
+  }), [allocSearch, allocHostelId, allocCategory, allocStatus]);
+
+  const loadAllocations = useCallback(async () => {
+    const { data } = await api.get('/api/hostel-allocations', { params: allocationParams() });
+    setAllocations(data);
+  }, [allocationParams]);
+
+  const loadAvailableBeds = useCallback(async (category?: HostelCategory) => {
+    const { data } = await api.get('/api/hostel-beds', {
+      params: category ? { category } : undefined,
+    });
+    setAvailableBeds(data);
+  }, []);
+
+  const loadQueue = useCallback(async (category: HostelCategory) => {
     const { data } = await api.get('/api/hostel-queue', { params: { category } });
     setQueue(data);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => { loadQueue(queueCategory); }, [loadQueue, queueCategory]);
+  const loadTabData = useCallback(async (key: string) => {
+    if (key === 'rooms') {
+      await loadRooms(roomHostelFilter);
+      return;
+    }
+    if (key === 'levels') {
+      await loadWindows();
+      return;
+    }
+    if (key === 'queue') {
+      await Promise.all([loadQueue(queueCategory), loadAvailableBeds(queueCategory)]);
+      return;
+    }
+    if (key === 'allocations') {
+      await loadAllocations();
+    }
+  }, [loadAllocations, loadAvailableBeds, loadQueue, loadRooms, loadWindows, queueCategory, roomHostelFilter]);
 
-  const availableBeds = useMemo(() => {
-    const beds: { id: number; label: string; hostel: string; category: string; room: string }[] = [];
-    hostels.forEach((hostel) => {
-      hostel.blocks?.forEach((block) => {
-        block.rooms?.forEach((room) => {
-          room.beds?.forEach((bed) => {
-            if (bed.status === 'available') {
-              beds.push({
-                id: bed.id,
-                label: bed.label,
-                hostel: hostel.name,
-                category: hostel.category,
-                room: room.number,
-              });
-            }
-          });
-        });
-      });
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      await loadHostelsAndStats();
+      await loadTabData(tab);
+    } finally {
+      setLoading(false);
+    }
+  }, [loadHostelsAndStats, loadTabData, tab]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    loadHostelsAndStats().finally(() => {
+      if (!cancelled) setLoading(false);
     });
-    return beds;
-  }, [hostels]);
+    return () => { cancelled = true; };
+  }, [loadHostelsAndStats]);
 
-  const saveWindows = async (category: 'undergraduate' | 'jupeb', levels: LevelWindow[]) => {
+  useEffect(() => {
+    let cancelled = false;
+    setTabLoading(true);
+    loadTabData(tab).finally(() => {
+      if (!cancelled) setTabLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [loadTabData, tab]);
+
+  const refreshAfterChange = useCallback(async () => {
+    await loadHostelsAndStats();
+    await loadTabData(tab);
+  }, [loadHostelsAndStats, loadTabData, tab]);
+
+  const saveWindows = async (category: HostelCategory, levels: LevelWindow[]) => {
     setSavingWindows(true);
     try {
       const { data } = await api.put('/api/hostel-level-windows', {
@@ -188,7 +290,8 @@ export default function HostelManagement() {
         })),
       });
       if (category === 'undergraduate') setUgWindows(data);
-      else setJupebWindows(data);
+      else if (category === 'jupeb') setJupebWindows(data);
+      else setPgWindows(data);
       message.success(`${categoryLabels[category]} level settings saved.`);
       await loadQueue(queueCategory);
     } catch (err: any) {
@@ -198,9 +301,17 @@ export default function HostelManagement() {
     }
   };
 
-  const toggleLevel = (category: 'undergraduate' | 'jupeb', levelId: number, active: boolean) => {
-    const setter = category === 'undergraduate' ? setUgWindows : setJupebWindows;
-    const current = category === 'undergraduate' ? ugWindows : jupebWindows;
+  const toggleLevel = (category: HostelCategory, levelId: number, active: boolean) => {
+    const setter = category === 'undergraduate'
+      ? setUgWindows
+      : category === 'jupeb'
+        ? setJupebWindows
+        : setPgWindows;
+    const current = category === 'undergraduate'
+      ? ugWindows
+      : category === 'jupeb'
+        ? jupebWindows
+        : pgWindows;
     setter(current.map((row) => (row.academic_level_id === levelId ? { ...row, is_active: active } : row)));
   };
 
@@ -208,19 +319,17 @@ export default function HostelManagement() {
     try {
       await api.post('/api/hostel-allocations', { student_id: studentId, hostel_bed_id: bedId });
       message.success('Bed allocated.');
-      await load();
-      await loadQueue(queueCategory);
+      await refreshAfterChange();
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Allocation failed.');
     }
   };
 
-  const autoAllocate = async (bedId: number, category: 'undergraduate' | 'jupeb') => {
+  const autoAllocate = async (bedId: number, category: HostelCategory) => {
     try {
       await api.post('/api/hostel-allocations/auto', { hostel_bed_id: bedId, category });
       message.success('Next priority student allocated.');
-      await load();
-      await loadQueue(queueCategory);
+      await refreshAfterChange();
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Auto allocation failed.');
     }
@@ -230,41 +339,204 @@ export default function HostelManagement() {
     try {
       await api.post(`/api/hostel-allocations/${allocationId}/vacate`);
       message.success('Bed vacated.');
-      await load();
-      await loadQueue(queueCategory);
+      setAllocations((prev) => prev.map((row) => (
+        row.id === allocationId ? { ...row, status: 'vacated' } : row
+      )));
+      void refreshAfterChange();
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to vacate bed.');
     }
   };
 
-  const createHostel = async (values: { name: string; gender: string; category: string }) => {
-    setCreating(true);
+  const approveAllocation = async (allocationId: number) => {
     try {
-      await api.post('/api/hostels', { ...values, is_active: true });
-      message.success('Hostel created.');
-      setCreateOpen(false);
-      form.resetFields();
-      await load();
+      const { data } = await api.post(`/api/hostel-allocations/${allocationId}/approve`);
+      message.success('Bed request approved.');
+      setAllocations((prev) => prev.map((row) => (row.id === allocationId ? { ...row, ...data } : row)));
+      void refreshAfterChange();
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Unable to create hostel.');
+      message.error(err.response?.data?.message || 'Unable to approve request.');
+    }
+  };
+
+  const rejectAllocation = async (allocationId: number) => {
+    try {
+      const { data } = await api.post(`/api/hostel-allocations/${allocationId}/reject`);
+      message.success('Bed request rejected.');
+      setAllocations((prev) => prev.map((row) => (row.id === allocationId ? { ...row, ...data } : row)));
+      void refreshAfterChange();
+    } catch (err: any) {
+      message.error(err.response?.data?.message || 'Unable to reject request.');
+    }
+  };
+
+  const downloadAllocations = async (format: 'pdf' | 'excel' | 'word') => {
+    setExportingAllocations(true);
+    try {
+      const { data } = await api.get('/api/hostel-allocations/export', {
+        params: { format, ...allocationParams() },
+        responseType: 'blob',
+      });
+      const mime = format === 'pdf'
+        ? 'application/pdf'
+        : format === 'excel'
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      const extension = format === 'pdf' ? 'pdf' : format === 'excel' ? 'xlsx' : 'docx';
+      const blob = new Blob([data], { type: mime });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `hostel-allocations-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      message.success(`Download started (${format === 'word' ? 'Word' : format.toUpperCase()}).`);
+    } catch (err: any) {
+      const blob = err.response?.data;
+      if (blob instanceof Blob) {
+        try {
+          message.error(JSON.parse(await blob.text()).message || 'Unable to download allocations.');
+        } catch {
+          message.error('Unable to download allocations.');
+        }
+      } else {
+        message.error(err.response?.data?.message || 'Unable to download allocations.');
+      }
+    } finally {
+      setExportingAllocations(false);
+    }
+  };
+
+  const downloadMenu: MenuProps['items'] = [
+    { key: 'pdf', icon: <FileText size={14} />, label: 'PDF', onClick: () => downloadAllocations('pdf') },
+    { key: 'excel', icon: <FileSpreadsheet size={14} />, label: 'Excel (.xlsx)', onClick: () => downloadAllocations('excel') },
+    { key: 'word', icon: <FileText size={14} />, label: 'MS Word (.docx)', onClick: () => downloadAllocations('word') },
+  ];
+
+  const openCreateHostel = () => {
+    setEditingHostel(null);
+    form.resetFields();
+    form.setFieldsValue({ category: 'undergraduate', gender: 'mixed', is_active: true, due_required: false });
+    setCreateOpen(true);
+  };
+
+  const openEditHostel = (row: HostelRow) => {
+    setEditingHostel(row);
+    form.setFieldsValue({
+      name: row.name,
+      category: row.category,
+      gender: row.gender || 'mixed',
+      is_active: row.is_active,
+      due_required: !!row.due_required,
+      due_amount: row.due_amount ?? undefined,
+    });
+    setCreateOpen(true);
+  };
+
+  const saveHostel = async (values: {
+    name: string;
+    gender: string;
+    category: string;
+    is_active?: boolean;
+    due_required?: boolean;
+    due_amount?: number;
+  }) => {
+    setCreating(true);
+    const payload = {
+      ...values,
+      due_required: !!values.due_required,
+      due_amount: values.due_required ? values.due_amount : null,
+    };
+    try {
+      if (editingHostel) {
+        await api.patch(`/api/hostels/${editingHostel.id}`, payload);
+        message.success('Hostel updated.');
+      } else {
+        await api.post('/api/hostels', { ...payload, is_active: values.is_active ?? true });
+        message.success('Hostel created.');
+      }
+      setCreateOpen(false);
+      setEditingHostel(null);
+      form.resetFields();
+      await refreshAfterChange();
+    } catch (err: unknown) {
+      message.error(firstApiError(err, editingHostel ? 'Unable to update hostel.' : 'Unable to create hostel.'));
     } finally {
       setCreating(false);
     }
   };
 
-  const createBlock = async (values: { name: string }) => {
-    if (!selectedHostelId) return;
+  const removeHostel = async (row: HostelRow) => {
+    try {
+      await api.delete(`/api/hostels/${row.id}`);
+      message.success('Hostel deleted.');
+      setHostels((prev) => prev.filter((hostel) => hostel.id !== row.id));
+      void refreshAfterChange();
+    } catch (err: unknown) {
+      message.error(firstApiError(err, 'Unable to delete hostel.'));
+    }
+  };
+
+  const openCreateBlock = (hostelId: number) => {
+    setSelectedHostelId(hostelId);
+    setEditingBlock(null);
+    blockForm.resetFields();
+    setBlockOpen(true);
+  };
+
+  const openEditBlock = (block: HostelBlockRow, hostelId: number) => {
+    setSelectedHostelId(hostelId);
+    setEditingBlock(block);
+    blockForm.setFieldsValue({ name: block.name });
+    setBlockOpen(true);
+  };
+
+  const saveBlock = async (values: { name: string }) => {
+    if (!editingBlock && !selectedHostelId) return;
     setSavingRoom(true);
     try {
-      await api.post(`/api/hostels/${selectedHostelId}/blocks`, values);
-      message.success('Block added.');
+      if (editingBlock) {
+        await api.patch(`/api/hostel-blocks/${editingBlock.id}`, values);
+        message.success('Block updated.');
+      } else {
+        await api.post(`/api/hostels/${selectedHostelId}/blocks`, values);
+        message.success('Block added.');
+      }
       setBlockOpen(false);
+      setEditingBlock(null);
       blockForm.resetFields();
-      await load();
-    } catch (err: any) {
-      message.error(err.response?.data?.message || 'Unable to add block.');
+      await refreshAfterChange();
+    } catch (err: unknown) {
+      message.error(firstApiError(err, editingBlock ? 'Unable to update block.' : 'Unable to add block.'));
     } finally {
       setSavingRoom(false);
+    }
+  };
+
+  const removeBlock = async (block: HostelBlockRow) => {
+    try {
+      await api.delete(`/api/hostel-blocks/${block.id}`);
+      message.success('Block deleted.');
+      setHostels((prev) => prev.map((hostel) => ({
+        ...hostel,
+        blocks: hostel.blocks?.filter((item) => item.id !== block.id),
+      })));
+      void refreshAfterChange();
+    } catch (err: unknown) {
+      message.error(firstApiError(err, 'Unable to delete block.'));
+    }
+  };
+
+  const removeRoom = async (room: RoomRow) => {
+    try {
+      await api.delete(`/api/hostel-rooms/${room.id}`);
+      message.success('Room deleted.');
+      setRooms((prev) => prev.filter((item) => item.id !== room.id));
+      void refreshAfterChange();
+    } catch (err: unknown) {
+      message.error(firstApiError(err, 'Unable to delete room.'));
     }
   };
 
@@ -281,7 +553,7 @@ export default function HostelManagement() {
       message.success('Room added.');
       setRoomOpen(false);
       roomForm.resetFields();
-      await load();
+      await refreshAfterChange();
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to add room.');
     } finally {
@@ -310,7 +582,7 @@ export default function HostelManagement() {
       message.success('Room updated.');
       setEditRoomOpen(false);
       setEditingRoom(null);
-      await load();
+      await refreshAfterChange();
     } catch (err: any) {
       const errors = err.response?.data?.errors;
       const firstError = errors ? Object.values(errors).flat()[0] : null;
@@ -329,7 +601,7 @@ export default function HostelManagement() {
       setReserveOpen(false);
       setReservingRoom(null);
       reserveForm.resetFields();
-      await load();
+      await refreshAfterChange();
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to reserve room.');
     } finally {
@@ -341,7 +613,7 @@ export default function HostelManagement() {
     try {
       await api.post(`/api/hostel-rooms/${roomId}/release`);
       message.success('Reservation released.');
-      await load();
+      await refreshAfterChange();
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to release room.');
     }
@@ -351,7 +623,7 @@ export default function HostelManagement() {
     try {
       await api.post(`/api/hostel-rooms/${room.id}/${active ? 'enable' : 'disable'}`);
       message.success(active ? 'Room enabled.' : 'Room disabled.');
-      await load();
+      await refreshAfterChange();
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to update room status.');
     }
@@ -361,6 +633,15 @@ export default function HostelManagement() {
     { title: 'Hostel', dataIndex: 'name', key: 'name', render: (name: string) => <span className="font-medium">{name}</span> },
     { title: 'Category', dataIndex: 'category', key: 'category', render: (c: string) => <CategoryTag category={c} /> },
     { title: 'Gender', dataIndex: 'gender', key: 'gender', render: (g: string) => g || '—' },
+    {
+      title: 'Due',
+      key: 'due',
+      render: (_, row) => (
+        row.due_required && Number(row.due_amount) > 0
+          ? naira(row.due_amount)
+          : 'In tuition'
+      ),
+    },
     { title: 'Beds', key: 'beds', render: (_, row) => `${row.available_beds} free / ${row.total_beds} total` },
     {
       title: 'Status',
@@ -373,17 +654,9 @@ export default function HostelManagement() {
       key: 'actions',
       render: (_, row) => (
         canManage ? (
-          <Space size="small">
-            <Button
-              size="small"
-              onClick={() => {
-                setSelectedHostelId(row.id);
-                blockForm.resetFields();
-                setBlockOpen(true);
-              }}
-            >
-              Add block
-            </Button>
+          <Space size="small" wrap>
+            <Button size="small" onClick={() => openEditHostel(row)}>Edit</Button>
+            <Button size="small" onClick={() => openCreateBlock(row.id)}>Add block</Button>
             {row.blocks && row.blocks.length > 0 && (
               <Button
                 size="small"
@@ -392,13 +665,18 @@ export default function HostelManagement() {
                   setSelectedHostelId(row.id);
                   setSelectedBlockId(row.blocks![0].id);
                   roomForm.resetFields();
-                  roomForm.setFieldsValue({ capacity: 4 });
+                  roomForm.setFieldsValue({ capacity: 4, hostel_block_id: row.blocks![0].id });
                   setRoomOpen(true);
                 }}
               >
                 Add room
               </Button>
             )}
+            <ConfirmDeleteButton
+              title={`Delete ${row.name}?`}
+              description="Empty blocks, rooms, and beds will also be removed. Occupied hostels cannot be deleted."
+              onConfirm={() => removeHostel(row)}
+            />
           </Space>
         ) : null
       ),
@@ -453,6 +731,11 @@ export default function HostelManagement() {
               unCheckedChildren="Off"
               onChange={(checked) => toggleRoomActive(row, checked)}
             />
+            <ConfirmDeleteButton
+              title={`Delete room ${row.number}?`}
+              description="Empty beds will also be removed. Occupied rooms cannot be deleted."
+              onConfirm={() => removeRoom(row)}
+            />
           </Space>
         ) : null
       ),
@@ -489,37 +772,73 @@ export default function HostelManagement() {
 
   const allocationColumns: ColumnsType<AllocationRow> = [
     { title: 'Student', dataIndex: 'student_name', key: 'student_name' },
+    { title: 'Matric', dataIndex: 'matric_number', key: 'matric_number', render: (v?: string) => v || '—' },
     { title: 'Level', dataIndex: 'student_level', key: 'student_level', render: (l?: number) => (l ? `${l}L` : '—') },
     { title: 'Hostel', dataIndex: 'hostel_name', key: 'hostel_name' },
     { title: 'Category', dataIndex: 'hostel_category', key: 'hostel_category', render: (c?: string) => (c ? <CategoryTag category={c} /> : '—') },
     { title: 'Room / bed', key: 'bed', render: (_, row) => `${row.room_number || '—'} / ${row.bed_label || '—'}` },
-    { title: 'Status', dataIndex: 'status', key: 'status', render: (s: string) => <Tag color={s === 'allocated' ? 'success' : 'default'}>{s}</Tag> },
+    { title: 'Status', dataIndex: 'status', key: 'status', render: (s: string) => (
+      <Tag color={s === 'allocated' ? 'success' : s === 'pending' ? 'processing' : s === 'rejected' ? 'error' : 'default'}>
+        {s}
+      </Tag>
+    ) },
     {
       title: 'Actions',
       key: 'actions',
-      render: (_, row) => (
-        row.status === 'allocated' && canAllocate ? (
-          <Popconfirm
-            title="Vacate this bed?"
-            description="The student will be removed from this room and the bed will become available."
-            okText="Vacate"
-            cancelText="Cancel"
-            okButtonProps={{ danger: true }}
-            onConfirm={() => vacate(row.id)}
-          >
-            <Button size="small" danger>Vacate</Button>
-          </Popconfirm>
-        ) : null
-      ),
+      render: (_, row) => {
+        if (!canAllocate) return null;
+        if (row.status === 'pending') {
+          return (
+            <Space size="small">
+              <Popconfirm
+                title="Approve this bed request?"
+                description="The student will be allocated this bed. A hostel due invoice is raised only if this hostel charges due."
+                okText="Approve"
+                cancelText="Cancel"
+                onConfirm={() => { void approveAllocation(row.id); }}
+              >
+                <Button size="small" type="primary">Approve</Button>
+              </Popconfirm>
+              <Popconfirm
+                title="Reject this bed request?"
+                description="The bed will become available again and the student can pick another."
+                okText="Reject"
+                cancelText="Cancel"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => { void rejectAllocation(row.id); }}
+              >
+                <Button size="small" danger>Reject</Button>
+              </Popconfirm>
+            </Space>
+          );
+        }
+        if (row.status === 'allocated') {
+          return (
+            <Popconfirm
+              title="Vacate this bed?"
+              description="The student will be removed from this room and the bed will become available."
+              okText="Vacate"
+              cancelText="Cancel"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => { void vacate(row.id); }}
+            >
+              <Button size="small" danger>Vacate</Button>
+            </Popconfirm>
+          );
+        }
+        return null;
+      },
     },
   ];
 
-  const levelTable = (category: 'undergraduate' | 'jupeb', rows: LevelWindow[]) => (
+  const levelTable = (category: HostelCategory, rows: LevelWindow[]) => (
     <div className="space-y-3">
       <Alert
         type="info"
         showIcon
-        message="100 Level students are served first from the allocation queue. Activate only the levels that may apply for beds in this category."
+        message={category === 'postgraduate'
+          ? 'Year 1 postgraduate students are served first from the allocation queue. Activate only the levels that may apply for beds in this category.'
+          : '100 Level students are served first from the allocation queue. Activate only the levels that may apply for beds in this category.'}
       />
       <Table
         rowKey="academic_level_id"
@@ -532,9 +851,9 @@ export default function HostelManagement() {
             title: 'Priority',
             key: 'priority',
             render: (_, row) => (
-              row.level_code === '100'
+              row.level_code === '100' || row.level_code === 'Y1'
                 ? <Tag color="gold">Highest</Tag>
-                : <Tag>{row.level_code}L</Tag>
+                : <Tag>{row.level_code}</Tag>
             ),
           },
           {
@@ -563,61 +882,136 @@ export default function HostelManagement() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
+      <WorkspaceHero
+        eyebrow="Campus services"
         title="Hostel management"
-        description="Undergraduate and JUPEB hostels are managed separately. Open allocation by level — 100 Level has highest priority."
+        description="Undergraduate, JUPEB, and postgraduate hostels are managed separately. Student bed picks wait for staff approval. Open allocation by level — 100 Level / Year 1 has highest priority."
+        icon={Building2}
       >
-        <Space wrap>
-          <RefreshButton onClick={load} loading={loading} />
-          {canManage && (
-            <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>
-              Add hostel
-            </Button>
-          )}
-        </Space>
-      </PageHeader>
+        <RefreshButton onClick={load} loading={loading || tabLoading} />
+        {canManage && (
+          <Button type="primary" icon={<Plus size={14} />} onClick={openCreateHostel}>
+            Add hostel
+          </Button>
+        )}
+      </WorkspaceHero>
 
-      {overview?.stats && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="text-xs text-slate-500">Hostels</div>
-            <div className="text-2xl font-semibold text-slate-800">{overview.stats.hostels}</div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="text-xs text-slate-500">Total beds</div>
-            <div className="text-2xl font-semibold text-slate-800">{overview.stats.total_beds}</div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="text-xs text-slate-500">Available beds</div>
-            <div className="text-2xl font-semibold text-emerald-700">{overview.stats.available_beds}</div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="text-xs text-slate-500">Occupied</div>
-            <div className="text-2xl font-semibold text-slate-800">{overview.stats.occupied_beds}</div>
-          </div>
-        </div>
-      )}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        <StatCard
+          label="Hostels"
+          value={overview?.stats?.hostels ?? 0}
+          hint="Undergraduate, JUPEB, and PG"
+          icon={Building2}
+          tone="sky"
+          active={tab === 'hostels'}
+          onClick={() => setTab('hostels')}
+        />
+        <StatCard
+          label="Total beds"
+          value={overview?.stats?.total_beds ?? 0}
+          hint="All rooms combined"
+          icon={BedDouble}
+          tone="sky"
+          active={tab === 'rooms'}
+          onClick={() => setTab('rooms')}
+        />
+        <StatCard
+          label="Available"
+          value={overview?.stats?.available_beds ?? 0}
+          hint="Free beds ready to assign"
+          icon={BedDouble}
+          tone="emerald"
+          active={tab === 'queue'}
+          onClick={() => setTab('queue')}
+        />
+        <StatCard
+          label="Occupied"
+          value={overview?.stats?.occupied_beds ?? 0}
+          hint="Currently allocated"
+          icon={Users}
+          tone="amber"
+          active={tab === 'allocations'}
+          onClick={() => setTab('allocations')}
+        />
+      </div>
 
-      <Tabs
-        items={[
-          {
-            key: 'hostels',
-            label: 'Hostels',
-            children: (
+      <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm">
+        {hostelTabs.map((item) => {
+          const Icon = item.icon;
+          const active = tab === item.key;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setTab(item.key)}
+              className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition ${
+                active ? 'bg-sky-700 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <Icon className="h-4 w-4" aria-hidden />
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === 'hostels' && (
               <Table<HostelRow>
                 rowKey="id"
-                loading={loading}
+                loading={loading || (tab === 'hostels' && tabLoading)}
                 columns={hostelColumns}
                 dataSource={hostels}
                 pagination={false}
+                expandable={{
+                  defaultExpandAllRows: true,
+                  expandedRowRender: (hostel) => (
+                    <Table
+                      rowKey="id"
+                      size="small"
+                      pagination={false}
+                      dataSource={hostel.blocks || []}
+                      locale={{ emptyText: 'No blocks yet. Add a block to this hostel.' }}
+                      columns={[
+                        { title: 'Block', dataIndex: 'name', key: 'name' },
+                        { title: 'Rooms', key: 'rooms', render: (_: unknown, block: HostelBlockRow) => block.rooms_count ?? block.rooms?.length ?? 0 },
+                        {
+                          title: 'Actions',
+                          key: 'actions',
+                          render: (_: unknown, block: HostelBlockRow) => (
+                            canManage ? (
+                              <Space size="small">
+                                <Button size="small" onClick={() => openEditBlock(block, hostel.id)}>Edit</Button>
+                                <Button
+                                  size="small"
+                                  type="primary"
+                                  onClick={() => {
+                                    setSelectedHostelId(hostel.id);
+                                    setSelectedBlockId(block.id);
+                                    roomForm.resetFields();
+                                    roomForm.setFieldsValue({ capacity: 4, hostel_block_id: block.id });
+                                    setRoomOpen(true);
+                                  }}
+                                >
+                                  Add room
+                                </Button>
+                                <ConfirmDeleteButton
+                                  title={`Delete block ${block.name}?`}
+                                  description="Empty rooms and beds in this block will also be removed. Occupied blocks cannot be deleted."
+                                  onConfirm={() => removeBlock(block)}
+                                />
+                              </Space>
+                            ) : null
+                          ),
+                        },
+                      ]}
+                    />
+                  ),
+                }}
                 locale={{ emptyText: 'No hostels configured yet.' }}
               />
-            ),
-          },
-          {
-            key: 'rooms',
-            label: 'Rooms',
-            children: (
+      )}
+
+      {tab === 'rooms' && (
               <div className="space-y-4">
                 <Alert
                   type="info"
@@ -639,20 +1033,17 @@ export default function HostelManagement() {
                 </div>
                 <Table<RoomRow>
                   rowKey="id"
-                  loading={loading}
+                  loading={loading || (tab === 'rooms' && tabLoading)}
                   columns={roomColumns}
                   dataSource={rooms}
                   pagination={{ pageSize: 20 }}
                   locale={{ emptyText: 'No rooms yet. Add a block and room from the Hostels tab.' }}
                 />
               </div>
-            ),
-          },
-          {
-            key: 'levels',
-            label: 'Level activation',
-            children: (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      )}
+
+      {tab === 'levels' && (
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="rounded-xl border border-slate-200 bg-white p-4">
                   <h3 className="font-semibold text-slate-800 mb-3">Undergraduate</h3>
                   {levelTable('undergraduate', ugWindows)}
@@ -661,13 +1052,14 @@ export default function HostelManagement() {
                   <h3 className="font-semibold text-slate-800 mb-3">JUPEB</h3>
                   {levelTable('jupeb', jupebWindows)}
                 </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <h3 className="font-semibold text-slate-800 mb-3">Postgraduate</h3>
+                  {levelTable('postgraduate', pgWindows)}
+                </div>
               </div>
-            ),
-          },
-          {
-            key: 'queue',
-            label: 'Priority queue',
-            children: (
+      )}
+
+      {tab === 'queue' && (
               <div className="space-y-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <Select
@@ -676,6 +1068,7 @@ export default function HostelManagement() {
                     options={[
                       { value: 'undergraduate', label: 'Undergraduate queue' },
                       { value: 'jupeb', label: 'JUPEB queue' },
+                      { value: 'postgraduate', label: 'Postgraduate queue' },
                     ]}
                     className="min-w-[200px]"
                   />
@@ -701,48 +1094,84 @@ export default function HostelManagement() {
                 />
                 <Table<QueueStudent>
                   rowKey="id"
+                  loading={tab === 'queue' && tabLoading}
                   columns={queueColumns}
                   dataSource={queue}
                   pagination={false}
                   locale={{ emptyText: 'No eligible students. Activate a level or check category match.' }}
                 />
               </div>
-            ),
-          },
-          {
-            key: 'allocations',
-            label: 'Allocations',
-            children: (
-              <Table<AllocationRow>
-                rowKey="id"
-                loading={loading}
-                columns={allocationColumns}
-                dataSource={allocations}
-                pagination={{ pageSize: 20 }}
-                locale={{ emptyText: 'No hostel allocations yet.' }}
-              />
-            ),
-          },
-        ]}
-      />
+      )}
+
+      {tab === 'allocations' && (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-end gap-3">
+                  <Input.Search
+                    allowClear
+                    className="min-w-[220px] max-w-xs flex-1"
+                    placeholder="Name, matric, room, or hostel"
+                    onSearch={(value) => setAllocSearch(value.trim())}
+                  />
+                  <Select
+                    allowClear
+                    placeholder="Hostel"
+                    className="min-w-[180px]"
+                    value={allocHostelId}
+                    onChange={setAllocHostelId}
+                    options={hostels.map((hostel) => ({ value: hostel.id, label: hostel.name }))}
+                  />
+                  <Select
+                    allowClear
+                    placeholder="Category"
+                    className="min-w-[150px]"
+                    value={allocCategory}
+                    onChange={setAllocCategory}
+                    options={categoryOptions}
+                  />
+                  <Select
+                    allowClear
+                    placeholder="Status"
+                    className="min-w-[140px]"
+                    value={allocStatus}
+                    onChange={setAllocStatus}
+                    options={[
+                      { value: 'pending', label: 'Pending' },
+                      { value: 'allocated', label: 'Allocated' },
+                      { value: 'vacated', label: 'Vacated' },
+                      { value: 'rejected', label: 'Rejected' },
+                    ]}
+                  />
+                  <Dropdown menu={{ items: downloadMenu }} trigger={['click']} disabled={exportingAllocations || loading}>
+                    <Button icon={<Download size={14} />} loading={exportingAllocations}>
+                      Download
+                    </Button>
+                  </Dropdown>
+                </div>
+                <Table<AllocationRow>
+                  rowKey="id"
+                  loading={loading || (tab === 'allocations' && tabLoading)}
+                  columns={allocationColumns}
+                  dataSource={allocations}
+                  pagination={{ pageSize: 20 }}
+                  locale={{ emptyText: 'No hostel allocations yet.' }}
+                />
+              </div>
+      )}
 
       <Modal
-        title="Add hostel"
+        title={editingHostel ? 'Edit hostel' : 'Add hostel'}
         open={createOpen}
-        onCancel={() => setCreateOpen(false)}
+        onCancel={() => { setCreateOpen(false); setEditingHostel(null); }}
         onOk={() => form.submit()}
         confirmLoading={creating}
         destroyOnHidden
       >
-        <Form form={form} layout="vertical" onFinish={createHostel} className="mt-4">
+        <Form form={form} layout="vertical" onFinish={saveHostel} className="mt-4">
           <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Name is required' }]}>
             <Input placeholder="e.g. Queen Hall" />
           </Form.Item>
           <Form.Item name="category" label="Category" initialValue="undergraduate" rules={[{ required: true }]}>
-            <Select options={[
-              { value: 'undergraduate', label: 'Undergraduate' },
-              { value: 'jupeb', label: 'JUPEB' },
-            ]} />
+            <Select options={categoryOptions} />
           </Form.Item>
           <Form.Item name="gender" label="Gender" initialValue="mixed" rules={[{ required: true }]}>
             <Select options={[
@@ -751,18 +1180,40 @@ export default function HostelManagement() {
               { value: 'male', label: 'Male' },
             ]} />
           </Form.Item>
+          <Form.Item name="is_active" label="Active" valuePropName="checked" initialValue>
+            <Switch checkedChildren="Active" unCheckedChildren="Inactive" />
+          </Form.Item>
+          <Form.Item
+            name="due_required"
+            label="Due required"
+            valuePropName="checked"
+            extra="Turn on only if students pay a separate hostel charge. Leave off when hostel is covered by tuition."
+          >
+            <Switch checkedChildren="Yes" unCheckedChildren="No" />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.due_required !== cur.due_required}>
+            {({ getFieldValue }) => getFieldValue('due_required') ? (
+              <Form.Item
+                name="due_amount"
+                label="Due amount (₦)"
+                rules={[{ required: true, message: 'Enter the hostel due amount' }]}
+              >
+                <InputNumber min={1} precision={2} className="w-full" />
+              </Form.Item>
+            ) : null}
+          </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title="Add block"
+        title={editingBlock ? 'Edit block' : 'Add block'}
         open={blockOpen}
-        onCancel={() => setBlockOpen(false)}
+        onCancel={() => { setBlockOpen(false); setEditingBlock(null); }}
         onOk={() => blockForm.submit()}
         confirmLoading={savingRoom}
         destroyOnHidden
       >
-        <Form form={blockForm} layout="vertical" onFinish={createBlock} className="mt-4">
+        <Form form={blockForm} layout="vertical" onFinish={saveBlock} className="mt-4">
           <Form.Item name="name" label="Block name" rules={[{ required: true, message: 'Block name is required' }]}>
             <Input placeholder="e.g. Block A" />
           </Form.Item>
