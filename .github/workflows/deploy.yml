@@ -1,5 +1,4 @@
-# Standalone workflow for when this directory is its own git repository.
-# The monorepo runner is /.github/workflows/deploy-frontend.yml
+# Staff SPA deploy (this repo).
 #
 # GitHub environments:
 #   development → S3 + CloudFront (AWS)
@@ -33,8 +32,6 @@ jobs:
     environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || vars.DEPLOY_ENVIRONMENT || 'development' }}
     env:
       GH_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || vars.DEPLOY_ENVIRONMENT || 'development' }}
-          VITE_API_URL: ${{ vars.VITE_API_URL || secrets.VITE_API_URL }}
-          VITE_STUDENT_URL: ${{ vars.VITE_STUDENT_URL || secrets.VITE_STUDENT_URL || '/student' }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -70,7 +67,14 @@ jobs:
           cache: npm
 
       - name: Build
+        env:
+          VITE_API_FROM_VAR: ${{ vars.VITE_API_URL }}
+          VITE_API_FROM_SECRET: ${{ secrets.VITE_API_URL }}
+          VITE_STUDENT_FROM_VAR: ${{ vars.VITE_STUDENT_URL }}
+          VITE_STUDENT_FROM_SECRET: ${{ secrets.VITE_STUDENT_URL }}
         run: |
+          export VITE_API_URL="${VITE_API_FROM_VAR:-$VITE_API_FROM_SECRET}"
+          export VITE_STUDENT_URL="${VITE_STUDENT_FROM_VAR:-${VITE_STUDENT_FROM_SECRET:-/student}}"
           if [[ -f package-lock.json ]]; then npm ci; else npm install; fi
           npm run build
 
@@ -102,11 +106,15 @@ jobs:
           FROM_STAFF_SECRET: ${{ secrets.AWS_S3_STAFF_BUCKET }}
           FROM_SHARED_VAR: ${{ vars.AWS_S3_BUCKET }}
           FROM_SHARED_SECRET: ${{ secrets.AWS_S3_BUCKET }}
-          PROJECT: ${{ vars.PROJECT_NAME || secrets.PROJECT_NAME || 'bells-sis' }}
-          PREFIX: ${{ vars.AWS_S3_FRONTEND_PREFIX || secrets.AWS_S3_FRONTEND_PREFIX }}
+          PROJECT_VAR: ${{ vars.PROJECT_NAME }}
+          PROJECT_SECRET: ${{ secrets.PROJECT_NAME }}
+          PREFIX_VAR: ${{ vars.AWS_S3_FRONTEND_PREFIX }}
+          PREFIX_SECRET: ${{ secrets.AWS_S3_FRONTEND_PREFIX }}
         run: |
           set -euo pipefail
           BUCKET="${FROM_STAFF_VAR:-${FROM_STAFF_SECRET:-${FROM_SHARED_VAR:-${FROM_SHARED_SECRET:-}}}}"
+          PROJECT="${PROJECT_VAR:-${PROJECT_SECRET:-bells-sis}}"
+          PREFIX="${PREFIX_VAR:-${PREFIX_SECRET:-}}"
           if [[ -z "$BUCKET" ]]; then
             ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
             BUCKET="${PROJECT}-staff-${ACCOUNT}"
@@ -120,9 +128,15 @@ jobs:
       - name: Invalidate CloudFront
         if: ${{ steps.resolve.outputs.target == 'aws' }}
         env:
-          DISTRIBUTION: ${{ vars.AWS_CLOUDFRONT_STAFF_ID || vars.AWS_CLOUDFRONT_DISTRIBUTION_ID || secrets.AWS_CLOUDFRONT_STAFF_ID || secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
-          PREFIX: ${{ vars.AWS_S3_FRONTEND_PREFIX || secrets.AWS_S3_FRONTEND_PREFIX }}
+          CF_STAFF_VAR: ${{ vars.AWS_CLOUDFRONT_STAFF_ID }}
+          CF_STAFF_SECRET: ${{ secrets.AWS_CLOUDFRONT_STAFF_ID }}
+          CF_SHARED_VAR: ${{ vars.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
+          CF_SHARED_SECRET: ${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
+          PREFIX_VAR: ${{ vars.AWS_S3_FRONTEND_PREFIX }}
+          PREFIX_SECRET: ${{ secrets.AWS_S3_FRONTEND_PREFIX }}
         run: |
+          DISTRIBUTION="${CF_STAFF_VAR:-${CF_STAFF_SECRET:-${CF_SHARED_VAR:-${CF_SHARED_SECRET:-}}}}"
+          PREFIX="${PREFIX_VAR:-${PREFIX_SECRET:-}}"
           if [[ -z "$DISTRIBUTION" ]]; then
             echo "No CloudFront id set; skipping invalidation."
             exit 0
@@ -136,13 +150,24 @@ jobs:
       - name: Deploy to VPS
         if: ${{ steps.resolve.outputs.target == 'vps' }}
         env:
-          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY || secrets.VPS_SSH_KEY }}
-          HOST: ${{ vars.VPS_HOST }}
-          USER: ${{ vars.VPS_USER }}
-          PORT: ${{ vars.VPS_PORT || '22' }}
-          REMOTE_PATH: ${{ vars.VPS_FRONTEND_PATH || vars.VPS_PATH || secrets.VPS_FRONTEND_PATH || secrets.VPS_PATH }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_KEY_ALT: ${{ secrets.VPS_SSH_KEY }}
+          HOST_VAR: ${{ vars.VPS_HOST }}
+          HOST_SECRET: ${{ secrets.VPS_HOST }}
+          USER_VAR: ${{ vars.VPS_USER }}
+          USER_SECRET: ${{ secrets.VPS_USER }}
+          PORT_VAR: ${{ vars.VPS_PORT }}
+          PATH_VAR: ${{ vars.VPS_FRONTEND_PATH }}
+          PATH_SHARED: ${{ vars.VPS_PATH }}
+          PATH_SECRET: ${{ secrets.VPS_FRONTEND_PATH }}
+          PATH_SHARED_SECRET: ${{ secrets.VPS_PATH }}
         run: |
           set -euo pipefail
+          SSH_KEY="${SSH_KEY:-$SSH_KEY_ALT}"
+          HOST="${HOST_VAR:-$HOST_SECRET}"
+          USER="${USER_VAR:-$USER_SECRET}"
+          PORT="${PORT_VAR:-22}"
+          REMOTE_PATH="${PATH_VAR:-${PATH_SHARED:-${PATH_SECRET:-$PATH_SHARED_SECRET}}}"
           if [[ -z "$HOST" || -z "$USER" || -z "$REMOTE_PATH" ]]; then
             echo "Set VPS_HOST, VPS_USER, and VPS_FRONTEND_PATH." >&2
             exit 1
