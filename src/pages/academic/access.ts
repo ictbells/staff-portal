@@ -27,6 +27,9 @@ export function hasAcademicResourcePermission(
   if (resource.key === 'results-approvals' && (has('results.submit') || has('results.faculty_approve'))) {
     return true;
   }
+  if (resource.key === 'import-students' && has('students.manage')) {
+    return true;
+  }
 
   return false;
 }

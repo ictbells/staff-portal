@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Modal, Select, Space, Table, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { Pencil, Search, UserCheck, UserPlus, UserX, Users as UsersIcon, X } from 'lucide-react';
+import { Building2, Eye, EyeOff, KeyRound, Pencil, Search, Shield, UserCheck, UserPlus, UserRound, UserX, Users as UsersIcon, X, type LucideIcon } from 'lucide-react';
 import api from '../api';
 import { RefreshButton } from '../components/RefreshButton';
 import { ConfirmDeleteButton } from '../components/ConfirmDeleteButton';
-import { fieldHelpClass, fieldLabelClass, formStackClass, inputClass, StatCard, WorkspaceHero } from '../components/ui';
-import { PasswordHints } from './Reset';
+import { fieldHelpClass, fieldLabelClass, inputClass, StatCard, WorkspaceHero } from '../components/ui';
 
 type OfficeTree = {
   id: number;
@@ -102,93 +101,107 @@ function formFromUser(user: UserRow): UserForm {
   };
 }
 
-function OfficePlacementFields({
-  form,
-  setForm,
-  officeTree,
-  units,
-  subunits,
-}: {
-  form: UserForm;
-  setForm: (next: UserForm) => void;
-  officeTree: OfficeTree;
-  units: { id: number; name: string; departmentId: number; departmentName: string; subunits: { id: number; name: string }[] }[];
-  subunits: { id: number; name: string; unitId: number; unitName: string; departmentName: string }[];
-}) {
+function firstError(errors: Record<string, string> | undefined, key: string): string | undefined {
+  return errors?.[key] || undefined;
+}
+
+function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
   return (
-    <div className={formStackClass}>
-      <div>
-        <p className={fieldLabelClass}>Works in (office)</p>
-        <p className={fieldHelpClass}>
-          Puts this person in an administrative office (e.g. Admission, Registry). They inherit the portal menu links configured for that office in Office setup. This is not their job role, and it is not an academic faculty or programme.
-        </p>
-      </div>
-      <label className={fieldLabelClass}>
-        Office department
-        <select
-          className={`${inputClass} mt-1.5`}
-          value={form.office_department_id}
-          onChange={(e) => setForm({ ...form, office_department_id: e.target.value, office_unit_id: '', office_subunit_id: '' })}
-        >
-          <option value="">Optional</option>
-          {officeTree.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-        </select>
-      </label>
-      <label className={fieldLabelClass}>
-        Office unit
-        <select
-          className={`${inputClass} mt-1.5`}
-          value={form.office_unit_id}
-          onChange={(e) => setForm({ ...form, office_unit_id: e.target.value, office_subunit_id: '' })}
-          disabled={!form.office_department_id}
-        >
-          <option value="">Optional</option>
-          {units.filter((u) => String(u.departmentId) === String(form.office_department_id)).map((u) => (
-            <option key={u.id} value={u.id}>{u.name}</option>
-          ))}
-        </select>
-      </label>
-      <label className={fieldLabelClass}>
-        Office subunit
-        <select
-          className={`${inputClass} mt-1.5`}
-          value={form.office_subunit_id}
-          onChange={(e) => setForm({ ...form, office_subunit_id: e.target.value })}
-          disabled={!form.office_unit_id}
-        >
-          <option value="">Optional</option>
-          {subunits.filter((s) => String(s.unitId) === String(form.office_unit_id)).map((s) => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </select>
-      </label>
-    </div>
+    <span className={fieldLabelClass}>
+      {children}
+      {required ? <span className="text-rose-500"> *</span> : null}
+    </span>
   );
 }
 
-function RoleCheckboxes({
-  roles,
-  roleIds,
-  onChange,
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="mt-1.5 text-xs text-rose-600">{message}</p>;
+}
+
+function FormSection({
+  icon: Icon,
+  title,
+  description,
+  children,
 }: {
-  roles: { id: number; name: string }[];
-  roleIds: number[];
-  onChange: (roleIds: number[]) => void;
+  icon: LucideIcon;
+  title: string;
+  description?: string;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="text-sm space-y-2 max-h-40 overflow-auto border border-slate-200 rounded-lg p-4 bg-slate-50/50">
-      {roleOptionsFromResponse(roles).map((r) => (
-        <label key={r.id} className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            className="rounded border-slate-300 text-sky-600 focus:ring-sky-500"
-            checked={roleIds.includes(r.id)}
-            onChange={(e) => onChange(
-              e.target.checked ? [...roleIds, r.id] : roleIds.filter((id) => id !== r.id),
-            )}
-          />
-          {r.name}
-        </label>
+    <section className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 sm:p-5">
+      <div className="mb-4 flex items-start gap-3">
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-sky-700 ring-1 ring-slate-200">
+          <Icon className="h-4 w-4" aria-hidden />
+        </div>
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+          {description ? <p className="mt-0.5 text-xs leading-5 text-slate-500">{description}</p> : null}
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function PasswordField({
+  label,
+  required,
+  value,
+  onChange,
+  placeholder,
+  visible,
+  error,
+  autoComplete,
+}: {
+  label: string;
+  required?: boolean;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  visible: boolean;
+  error?: string;
+  autoComplete?: string;
+}) {
+  return (
+    <label className="block">
+      <FieldLabel required={required}>{label}</FieldLabel>
+      <input
+        type={visible ? 'text' : 'password'}
+        className={`${inputClass} ${error ? 'border-rose-300 focus:border-rose-400 focus:ring-rose-200' : ''}`}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        autoComplete={autoComplete}
+      />
+      <FieldError message={error} />
+    </label>
+  );
+}
+
+function PasswordRulePills({ password, email }: { password: string; email?: string }) {
+  const rules = [
+    { label: '8+ characters', ok: password.length >= 8 },
+    { label: 'Uppercase', ok: /[A-Z]/.test(password) },
+    { label: 'Lowercase', ok: /[a-z]/.test(password) },
+    { label: 'Number', ok: /\d/.test(password) },
+    { label: 'Symbol', ok: /[^A-Za-z0-9]/.test(password) },
+    { label: 'Not the email', ok: Boolean(password) && password !== (email || '') },
+  ];
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {rules.map((rule) => (
+        <span
+          key={rule.label}
+          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+            rule.ok ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-white text-slate-500 ring-1 ring-slate-200'
+          }`}
+        >
+          {rule.ok ? '✓' : '○'} {rule.label}
+        </span>
       ))}
     </div>
   );
@@ -202,6 +215,7 @@ function UserFormFields({
   units,
   subunits,
   mode,
+  errors,
 }: {
   form: UserForm;
   setForm: (next: UserForm) => void;
@@ -210,91 +224,219 @@ function UserFormFields({
   units: { id: number; name: string; departmentId: number; departmentName: string; subunits: { id: number; name: string }[] }[];
   subunits: { id: number; name: string; unitId: number; unitName: string; departmentName: string }[];
   mode: 'create' | 'edit';
+  errors?: Record<string, string>;
 }) {
+  const [showPassword, setShowPassword] = useState(false);
+  const availableRoles = roleOptionsFromResponse(roles);
+  const departmentUnits = units.filter((u) => String(u.departmentId) === String(form.office_department_id));
+  const unitSubunits = subunits.filter((s) => String(s.unitId) === String(form.office_unit_id));
+  const passwordMismatch = Boolean(form.password_confirmation) && form.password !== form.password_confirmation;
+
+  const patch = (next: Partial<UserForm>) => setForm({ ...form, ...next });
+
   return (
-    <div className={formStackClass}>
-      <label className={fieldLabelClass}>
-        Full name
-        <input className={`${inputClass} mt-1.5`} placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-      </label>
-      <label className={fieldLabelClass}>
-        Job title
-        <input className={`${inputClass} mt-1.5`} placeholder="Job title" value={form.staff_title} onChange={(e) => setForm({ ...form, staff_title: e.target.value })} />
-      </label>
-      {mode === 'edit' ? (
-        <div>
-          <label className={fieldLabelClass}>
-            Email
-            <input className={`${inputClass} mt-1.5 bg-slate-50 text-slate-500`} value={form.email} readOnly />
+    <div className="space-y-4">
+      <FormSection icon={UserRound} title="Profile" description="How this person appears on staff lists and in the audit trail.">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <FieldLabel required>Full name</FieldLabel>
+            <input
+              className={`${inputClass} ${firstError(errors, 'name') ? 'border-rose-300' : ''}`}
+              placeholder="Adaeze Okoye"
+              value={form.name}
+              onChange={(e) => patch({ name: e.target.value })}
+              autoComplete="name"
+            />
+            <FieldError message={firstError(errors, 'name')} />
           </label>
-          <p className={fieldHelpClass}>Email cannot be changed after the account is created.</p>
-        </div>
-      ) : (
-        <label className={fieldLabelClass}>
-          Work email
-          <input className={`${inputClass} mt-1.5`} placeholder="Work email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-        </label>
-      )}
-      <label className={fieldLabelClass}>
-        Phone
-        <input className={`${inputClass} mt-1.5`} placeholder="Phone" type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-      </label>
-      {mode === 'edit' && (
-        <>
-          <label className={fieldLabelClass}>
-            Status
-            <select className={`${inputClass} mt-1.5`} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as 'active' | 'disabled', reason: '' })}>
-              <option value="active">Active</option>
-              <option value="disabled">Disabled</option>
-            </select>
+          <label className="block">
+            <FieldLabel>Job title</FieldLabel>
+            <input
+              className={inputClass}
+              placeholder="Admissions officer"
+              value={form.staff_title}
+              onChange={(e) => patch({ staff_title: e.target.value })}
+            />
           </label>
-          {form.status === 'disabled' && (
-            <label className={fieldLabelClass}>
-              Disable reason
-              <textarea
-                className={`${inputClass} mt-1.5`}
-                rows={3}
-                placeholder="Reason for disabling this account"
-                value={form.reason}
-                onChange={(e) => setForm({ ...form, reason: e.target.value })}
+          {mode === 'edit' ? (
+            <div>
+              <FieldLabel>Work email</FieldLabel>
+              <input className={`${inputClass} bg-slate-50 text-slate-500`} value={form.email} readOnly />
+              <p className={fieldHelpClass}>Email cannot be changed after the account is created.</p>
+            </div>
+          ) : (
+            <label className="block">
+              <FieldLabel required>Work email</FieldLabel>
+              <input
+                className={`${inputClass} ${firstError(errors, 'email') ? 'border-rose-300' : ''}`}
+                type="email"
+                placeholder="adaeze.okoye@bellsuniversity.edu.ng"
+                value={form.email}
+                onChange={(e) => patch({ email: e.target.value })}
+                autoComplete="email"
               />
+              <FieldError message={firstError(errors, 'email')} />
             </label>
           )}
-        </>
-      )}
-      <div className={mode === 'edit' ? 'border-t border-slate-100 pt-5 space-y-5' : 'space-y-5'}>
-        {mode === 'edit' && <p className="text-sm font-medium text-slate-700">Reset password (optional)</p>}
-        <label className={fieldLabelClass}>
-          {mode === 'create' ? 'Password' : 'New password'}
-          <input
-            type="password"
-            className={`${inputClass} mt-1.5`}
-            placeholder={mode === 'create' ? 'Password' : 'New password'}
+          <label className="block">
+            <FieldLabel>Phone</FieldLabel>
+            <input
+              className={inputClass}
+              placeholder="0803 000 0000"
+              type="tel"
+              value={form.phone}
+              onChange={(e) => patch({ phone: e.target.value })}
+              autoComplete="tel"
+            />
+            <FieldError message={firstError(errors, 'phone')} />
+          </label>
+        </div>
+        {mode === 'edit' && (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <FieldLabel>Status</FieldLabel>
+              <Select
+                className="w-full"
+                value={form.status}
+                onChange={(status) => patch({ status, reason: '' })}
+                options={[
+                  { value: 'active', label: 'Active' },
+                  { value: 'disabled', label: 'Disabled' },
+                ]}
+              />
+            </label>
+            {form.status === 'disabled' && (
+              <label className="block sm:col-span-2">
+                <FieldLabel required>Disable reason</FieldLabel>
+                <textarea
+                  className={inputClass}
+                  rows={3}
+                  placeholder="Why this account is being disabled"
+                  value={form.reason}
+                  onChange={(e) => patch({ reason: e.target.value })}
+                />
+              </label>
+            )}
+          </div>
+        )}
+      </FormSection>
+
+      <FormSection
+        icon={KeyRound}
+        title={mode === 'create' ? 'Sign-in password' : 'Reset password'}
+        description={mode === 'create'
+          ? 'They will use this password on the staff portal. It must meet the checks below.'
+          : 'Leave blank to keep the current password.'}
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <PasswordField
+            label={mode === 'create' ? 'Password' : 'New password'}
+            required={mode === 'create'}
             value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
+            onChange={(password) => patch({ password })}
+            placeholder={mode === 'create' ? 'Create a password' : 'Optional new password'}
+            visible={showPassword}
+            error={firstError(errors, 'password')}
+            autoComplete="new-password"
           />
-        </label>
-        <label className={fieldLabelClass}>
-          {mode === 'create' ? 'Confirm password' : 'Confirm new password'}
-          <input
-            type="password"
-            className={`${inputClass} mt-1.5`}
-            placeholder={mode === 'create' ? 'Confirm password' : 'Confirm new password'}
+          <PasswordField
+            label={mode === 'create' ? 'Confirm password' : 'Confirm new password'}
+            required={mode === 'create'}
             value={form.password_confirmation}
-            onChange={(e) => setForm({ ...form, password_confirmation: e.target.value })}
+            onChange={(password_confirmation) => patch({ password_confirmation })}
+            placeholder="Repeat password"
+            visible={showPassword}
+            error={passwordMismatch ? 'Passwords do not match.' : firstError(errors, 'password_confirmation')}
+            autoComplete="new-password"
           />
-        </label>
-        {form.password && <PasswordHints password={form.password} email={form.email} />}
-      </div>
-      <OfficePlacementFields form={form} setForm={setForm} officeTree={officeTree} units={units} subunits={subunits} />
-      <div>
-        <p className={fieldLabelClass}>Roles</p>
-        <RoleCheckboxes
-          roles={roles}
-          roleIds={form.role_ids}
-          onChange={(role_ids) => setForm({ ...form, role_ids })}
-        />
-      </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          {(form.password || mode === 'create') ? <PasswordRulePills password={form.password} email={form.email} /> : <span />}
+          <button
+            type="button"
+            onClick={() => setShowPassword((current) => !current)}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-700"
+          >
+            {showPassword ? <EyeOff className="h-3.5 w-3.5" aria-hidden /> : <Eye className="h-3.5 w-3.5" aria-hidden />}
+            {showPassword ? 'Hide passwords' : 'Show passwords'}
+          </button>
+        </div>
+      </FormSection>
+
+      <FormSection
+        icon={Building2}
+        title="Office placement"
+        description="Optional. Places them in an administrative office so they inherit that office’s portal links. This is not a job role, faculty, or programme."
+      >
+        <div className="grid gap-4 sm:grid-cols-3">
+          <label className="block">
+            <FieldLabel>Office</FieldLabel>
+            <Select
+              allowClear
+              className="w-full"
+              placeholder="Select office"
+              value={form.office_department_id || undefined}
+              onChange={(value) => patch({ office_department_id: value ?? '', office_unit_id: '', office_subunit_id: '' })}
+              options={officeTree.map((d) => ({ value: d.id, label: d.name }))}
+            />
+          </label>
+          <label className="block">
+            <FieldLabel>Unit</FieldLabel>
+            <Select
+              allowClear
+              className="w-full"
+              placeholder="Optional"
+              disabled={!form.office_department_id}
+              value={form.office_unit_id || undefined}
+              onChange={(value) => patch({ office_unit_id: value ?? '', office_subunit_id: '' })}
+              options={departmentUnits.map((u) => ({ value: u.id, label: u.name }))}
+            />
+          </label>
+          <label className="block">
+            <FieldLabel>Subunit</FieldLabel>
+            <Select
+              allowClear
+              className="w-full"
+              placeholder="Optional"
+              disabled={!form.office_unit_id}
+              value={form.office_subunit_id || undefined}
+              onChange={(value) => patch({ office_subunit_id: value ?? '' })}
+              options={unitSubunits.map((s) => ({ value: s.id, label: s.name }))}
+            />
+          </label>
+        </div>
+      </FormSection>
+
+      <FormSection icon={Shield} title="Roles" description="What they can do. Super Admin bypasses office menu limits.">
+        {availableRoles.length ? (
+          <div className="flex flex-wrap gap-2">
+            {availableRoles.map((role) => {
+              const selected = form.role_ids.includes(role.id);
+              return (
+                <button
+                  key={role.id}
+                  type="button"
+                  onClick={() => patch({
+                    role_ids: selected
+                      ? form.role_ids.filter((id) => id !== role.id)
+                      : [...form.role_ids, role.id],
+                  })}
+                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                    selected
+                      ? 'bg-sky-600 text-white shadow-sm'
+                      : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {role.name}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">No roles are available yet. Create roles first, then assign them here.</p>
+        )}
+        <FieldError message={firstError(errors, 'role_ids')} />
+      </FormSection>
     </div>
   );
 }
@@ -310,8 +452,10 @@ export default function Users() {
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState<UserForm>(emptyForm());
+  const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [editForm, setEditForm] = useState<UserForm>(emptyForm());
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
   const [savingEdit, setSavingEdit] = useState(false);
 
   const filterParams = useCallback((next: UserFilters) => {
@@ -428,19 +572,39 @@ export default function Users() {
     return payload;
   };
 
+  const flattenErrors = (payload: unknown): Record<string, string> => {
+    if (!payload || typeof payload !== 'object') return {};
+    const next: Record<string, string> = {};
+    Object.entries(payload as Record<string, unknown>).forEach(([key, value]) => {
+      if (Array.isArray(value) && value[0]) next[key] = String(value[0]);
+      else if (typeof value === 'string') next[key] = value;
+    });
+    return next;
+  };
+
   const openCreate = () => {
     setCreateForm(emptyForm());
+    setCreateErrors({});
     setCreateOpen(true);
   };
 
   const closeCreate = () => {
     setCreateOpen(false);
     setCreateForm(emptyForm());
+    setCreateErrors({});
   };
 
   const submitCreate = async () => {
+    const nextErrors: Record<string, string> = {};
+    if (!createForm.name.trim()) nextErrors.name = 'Full name is required.';
+    if (!createForm.email.trim()) nextErrors.email = 'Work email is required.';
+    if (!createForm.password) nextErrors.password = 'Password is required.';
     if (createForm.password && createForm.password !== createForm.password_confirmation) {
-      message.error('Passwords do not match.');
+      nextErrors.password_confirmation = 'Passwords do not match.';
+    }
+    if (Object.keys(nextErrors).length) {
+      setCreateErrors(nextErrors);
+      message.error(Object.values(nextErrors)[0]);
       return;
     }
 
@@ -452,6 +616,7 @@ export default function Users() {
       load(pagination.current, filters);
     } catch (err: any) {
       const errors = err.response?.data?.errors;
+      setCreateErrors(flattenErrors(errors));
       message.error(errors ? Object.values(errors).flat().join(' ') : err.response?.data?.message || 'Unable to create user.');
     } finally {
       setCreating(false);
@@ -461,17 +626,20 @@ export default function Users() {
   const openEdit = (user: UserRow) => {
     setEditing(user);
     setEditForm(formFromUser(user));
+    setEditErrors({});
   };
 
   const closeEdit = () => {
     setEditing(null);
     setEditForm(emptyForm());
+    setEditErrors({});
   };
 
   const submitEdit = async () => {
     if (!editing) return;
 
     if (editForm.password && editForm.password !== editForm.password_confirmation) {
+      setEditErrors({ password_confirmation: 'Passwords do not match.' });
       message.error('Passwords do not match.');
       return;
     }
@@ -496,6 +664,7 @@ export default function Users() {
       load(pagination.current, filters);
     } catch (err: any) {
       const errors = err.response?.data?.errors;
+      setEditErrors(flattenErrors(errors));
       message.error(errors ? Object.values(errors).flat().join(' ') : err.response?.data?.message || 'Unable to update user.');
     } finally {
       setSavingEdit(false);
@@ -706,54 +875,82 @@ export default function Users() {
       </div>
 
       <Modal
-        title="Create user"
+        title={(
+          <div className="flex items-start gap-3 pr-8">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-700 ring-1 ring-sky-100">
+              <UserPlus className="h-5 w-5" aria-hidden />
+            </div>
+            <div>
+              <div className="text-base font-semibold text-slate-900">Create user</div>
+              <p className="mt-0.5 text-sm font-normal text-slate-500">
+                Add a staff account, assign what they can do, and place them in an office.
+              </p>
+            </div>
+          </div>
+        )}
         open={createOpen}
         onCancel={closeCreate}
         onOk={submitCreate}
         okText="Create user"
+        cancelText="Cancel"
         confirmLoading={creating}
         destroyOnHidden
-        width={520}
-        style={{ maxWidth: 'calc(100vw - 2rem)' }}
+        centered
+        width={760}
+        styles={{ body: { paddingTop: 12, maxHeight: 'min(72vh, 680px)', overflowY: 'auto' } }}
       >
-        <p className="text-slate-500 text-sm mb-5">
-          Office placement controls which sidebar links the user sees (unless Super Admin).
-        </p>
         <UserFormFields
           form={createForm}
-          setForm={setCreateForm}
+          setForm={(next) => {
+            setCreateForm(next);
+            setCreateErrors({});
+          }}
           roles={roles}
           officeTree={officeTree}
           units={units}
           subunits={subunits}
           mode="create"
+          errors={createErrors}
         />
       </Modal>
 
       <Modal
-        title="Edit user"
+        title={(
+          <div className="flex items-start gap-3 pr-8">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-700 ring-1 ring-slate-200">
+              <Pencil className="h-5 w-5" aria-hidden />
+            </div>
+            <div>
+              <div className="text-base font-semibold text-slate-900">Edit user</div>
+              <p className="mt-0.5 text-sm font-normal text-slate-500">{editing?.email}</p>
+            </div>
+          </div>
+        )}
         open={editing !== null}
         onCancel={closeEdit}
         onOk={submitEdit}
         okText="Save changes"
+        cancelText="Cancel"
         confirmLoading={savingEdit}
         destroyOnHidden
-        width={520}
-        style={{ maxWidth: 'calc(100vw - 2rem)' }}
+        centered
+        width={760}
+        styles={{ body: { paddingTop: 12, maxHeight: 'min(72vh, 680px)', overflowY: 'auto' } }}
       >
         {editing && (
-          <>
-            <p className="text-slate-500 text-sm mb-5">{editing.email}</p>
-            <UserFormFields
-              form={editForm}
-              setForm={setEditForm}
-              roles={roles}
-              officeTree={officeTree}
-              units={units}
-              subunits={subunits}
-              mode="edit"
-            />
-          </>
+          <UserFormFields
+            form={editForm}
+            setForm={(next) => {
+              setEditForm(next);
+              setEditErrors({});
+            }}
+            roles={roles}
+            officeTree={officeTree}
+            units={units}
+            subunits={subunits}
+            mode="edit"
+            errors={editErrors}
+          />
         )}
       </Modal>
     </div>

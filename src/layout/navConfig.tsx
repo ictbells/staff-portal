@@ -82,14 +82,18 @@ export function canShowNavItem(
   }
 
   if (navUnrestricted) {
-    if (item.perm && !hasPerm(item.perm)) {
-      return false;
-    }
-    return true;
+    return itemIsPermitted(item, hasPerm);
   }
 
   if (!(navLinkKeys ?? []).includes(item.key)) return false;
 
+  return itemIsPermitted(item, hasPerm);
+}
+
+function itemIsPermitted(item: NavItem, hasPerm: (key: string) => boolean): boolean {
+  if (item.permAny?.length) {
+    return item.permAny.some((key) => hasPerm(key));
+  }
   if (item.perm) {
     return hasPerm(item.perm);
   }
@@ -165,8 +169,8 @@ export const navSections: NavSection[] = [
           { key: 'finance', to: '/finance/generate', label: 'Generate invoice', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'finance', to: '/finance/invoices', label: 'Invoices', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'finance', to: '/finance/student-status', label: 'Students Financial Status', perm: 'finance.invoices.manage', icon: Wallet },
-          { key: 'import-invoices', to: '/finance/import-invoices', label: 'Import invoices', perm: 'finance.invoices.manage', icon: Wallet },
-          { key: 'import-wallet', to: '/finance/import-wallet', label: 'Import wallet history', perm: 'finance.invoices.manage', icon: Wallet },
+          { key: 'import-invoices', to: '/finance/import-invoices', label: 'Import invoices', perm: 'finance.invoices.manage', permAny: ['finance.invoices.manage', 'finance.invoices.import'], icon: Wallet },
+          { key: 'import-wallet', to: '/finance/import-wallet', label: 'Import wallet history', perm: 'finance.invoices.manage', permAny: ['finance.invoices.manage', 'finance.invoices.import'], icon: Wallet },
         ],
       },
       { key: 'medical', to: '/medical', label: 'Clinic', perm: 'medical.view_any', icon: Stethoscope },

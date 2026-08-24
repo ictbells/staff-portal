@@ -1,0 +1,10 @@
+# Local Apache: URL points at this repo folder (e.g. /office/frontend/).
+DirectoryIndex dist/index.html
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^dist/ - [L]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ dist/$1 [L]
+</IfModule>

@@ -182,8 +182,10 @@ export function ImportApplicantsPage() {
       <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
         <h2 className="text-sm font-semibold text-slate-800">Upload spreadsheet</h2>
         <p className="text-sm text-slate-600">
-          Download the template for the selected category, fill one row per applicant, then upload. Documents cannot travel in Excel;
-          applicants upload remaining files after they sign in. Leave password blank to generate a new password and email it.
+          Download the template for the selected category, fill one row per applicant on the Applicants sheet, then upload.
+          The workbook also includes Campuses, Colleges, Departments, Programmes, Levels, and O-level subjects so you can copy codes and IDs.
+          Copy first_choice_programme_code from Programmes. Documents cannot travel in Excel; applicants upload remaining files after they sign in.
+          Leave password blank to generate a new password and email it.
           Required columns: email, phone, nin, first_name, last_name, first_choice_programme_code, plus jamb_registration for UTME and Direct Entry.
         </p>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 md:items-end">
