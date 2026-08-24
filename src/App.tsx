@@ -20,6 +20,7 @@ import {
   CampusesPage, CollegesPage, CoursesPage, DepartmentsPage, IntakesPage,
   LevelsPage, OlevelPage, ProgrammesPage, SessionsPage,
 } from './pages/academic/pages';
+import { GraduationPage } from './pages/academic/GraduationPage';
 import {
   CourseRegistrationPage, OfferingsPage, RegistrationExtensionsPage, UnitLimitsPage,
 } from './pages/academic/enrolment';
@@ -94,6 +95,7 @@ export default function App() {
           <Route path="colleges" element={<AcademicResourceGuard resourceKey="colleges"><CollegesPage /></AcademicResourceGuard>} />
           <Route path="departments" element={<AcademicResourceGuard resourceKey="departments"><DepartmentsPage /></AcademicResourceGuard>} />
           <Route path="sessions" element={<AcademicResourceGuard resourceKey="sessions"><SessionsPage /></AcademicResourceGuard>} />
+          <Route path="graduation" element={<AcademicResourceGuard resourceKey="graduation"><GraduationPage /></AcademicResourceGuard>} />
           <Route path="programmes" element={<AcademicResourceGuard resourceKey="programmes"><ProgrammesPage /></AcademicResourceGuard>} />
           <Route path="levels" element={<AcademicResourceGuard resourceKey="levels"><LevelsPage /></AcademicResourceGuard>} />
           <Route path="courses" element={<AcademicResourceGuard resourceKey="courses"><CoursesPage /></AcademicResourceGuard>} />

@@ -5,6 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload';
 import { Award, BookOpen, Building2, Download, GraduationCap, Plus, Upload as UploadIcon } from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import api from '../../api';
 import { ConfirmDeleteButton } from '../../components/ConfirmDeleteButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
@@ -702,12 +703,13 @@ export function SessionsPage() {
       >
         <p className="text-sm text-slate-600">
           All active students move up one level until their programme final year. Final-year students stay unchanged and remain active.
+          Confirm graduation separately on <Link to="/academic/graduation">Academic → Graduation</Link>.
         </p>
         {closeLoading && <p className="text-sm">Loading preview…</p>}
         {closePreview && (
           <ul className="text-sm space-y-1 mt-3">
             <li><strong>{closePreview.promoted_count}</strong> student(s) will be promoted</li>
-            <li><strong>{closePreview.skipped_final_count}</strong> already at final year (unchanged)</li>
+            <li><strong>{closePreview.skipped_final_count}</strong> already at final year (unchanged — ready for Graduation)</li>
             <li><strong>{closePreview.skipped_inactive_count}</strong> inactive (skipped)</li>
             <li><strong>{closePreview.skipped_no_program_count}</strong> without programme (skipped)</li>
           </ul>

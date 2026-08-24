@@ -21,6 +21,7 @@ type SecuritySettings = {
   exam_clearance: ExamClearanceSettings;
   admissions_email: string;
   admissions_phone: string;
+  studentship_years_after_graduation: number;
 };
 
 const DEFAULT_EXAM_CLEARANCE: ExamClearanceSettings = {
@@ -57,6 +58,7 @@ export default function ApplicationSettings() {
     exam_clearance: DEFAULT_EXAM_CLEARANCE,
     admissions_email: '',
     admissions_phone: '',
+    studentship_years_after_graduation: 2,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -69,6 +71,7 @@ export default function ApplicationSettings() {
         exam_clearance: { ...DEFAULT_EXAM_CLEARANCE, ...(data.exam_clearance || {}) },
         admissions_email: data.admissions_email || '',
         admissions_phone: data.admissions_phone || '',
+        studentship_years_after_graduation: data.studentship_years_after_graduation || 2,
       }))
       .catch(() => message.error('Unable to load security settings.'))
       .finally(() => setLoading(false));
@@ -84,6 +87,7 @@ export default function ApplicationSettings() {
         exam_clearance: { ...DEFAULT_EXAM_CLEARANCE, ...(data.exam_clearance || {}) },
         admissions_email: data.admissions_email || '',
         admissions_phone: data.admissions_phone || '',
+        studentship_years_after_graduation: data.studentship_years_after_graduation || 2,
       });
       message.success('Settings saved. Admissions contact is shown on the student login and signup pages.');
     } catch (err: any) {
@@ -108,7 +112,7 @@ export default function ApplicationSettings() {
     <div className="space-y-6 max-w-2xl">
       <PageHeader
         title="Application settings"
-        description="Staff security policies, student exam clearance, and admissions contact for the student portal."
+        description="Staff security policies, student exam clearance, admissions contact, and studentship duration."
       />
 
       <form onSubmit={submit} className="space-y-6">
@@ -138,6 +142,23 @@ export default function ApplicationSettings() {
               />
             </label>
           </div>
+        </Card>
+
+        <Card
+          title="Studentship after graduation"
+          description="Graduates keep student-portal access until this many years after the registrar conferment date. After that they are marked alumni and cannot sign in."
+        >
+          <label className="block text-sm font-medium text-slate-700">
+            Years of studentship after conferment
+            <input
+              type="number"
+              min={1}
+              max={10}
+              className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
+              value={settings.studentship_years_after_graduation}
+              onChange={(e) => setSettings((s) => ({ ...s, studentship_years_after_graduation: Number(e.target.value) }))}
+            />
+          </label>
         </Card>
 
         <Card

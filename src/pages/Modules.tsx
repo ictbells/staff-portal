@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Button, Select } from 'antd';
+import { Button, DatePicker, Modal, Select, message } from 'antd';
+import dayjs from 'dayjs';
 import { Award, Bell, ClipboardCheck, ExternalLink, FileText, GraduationCap, Landmark, Plug } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../auth';
@@ -18,38 +19,82 @@ function isOnlineOnlyFee(category?: string) {
 }
 
 export function Students() {
+  const { has } = useAuth();
   const [rows, setRows] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('current');
+  const [confer, setConfer] = useState<{ id: number; name: string } | null>(null);
+  const [conferDate, setConferDate] = useState(dayjs());
+  const [conferring, setConferring] = useState(false);
+  const canGraduate = has('academic.graduate');
   const load = () => {
     setLoading(true);
-    api.get('/api/students').then((r) => setRows(r.data)).finally(() => setLoading(false));
+    api.get('/api/students', { params: { status: statusFilter } }).then((r) => setRows(r.data)).finally(() => setLoading(false));
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [statusFilter]);
   const list = rows?.data || (rows?.id ? [rows] : rows) || [];
   const items = Array.isArray(list) ? list : [];
   const withMatric = items.filter((s: any) => s.matric_number).length;
+
+  const confirmConfer = async () => {
+    if (!confer) return;
+    setConferring(true);
+    try {
+      const { data } = await api.post('/api/academic/graduation/confer', {
+        student_ids: [confer.id],
+        graduated_at: conferDate.format('YYYY-MM-DD'),
+        require_final_year: false,
+      });
+      if (data?.status === 'pending_approval') {
+        message.info('Graduation is waiting for office approval.');
+      } else {
+        message.success('Graduation recorded.');
+      }
+      setConfer(null);
+      load();
+    } catch (err: any) {
+      message.error(err.response?.data?.message || 'Could not confirm graduation.');
+    } finally {
+      setConferring(false);
+    }
+  };
 
   return (
     <div className="space-y-5">
       <WorkspaceHero
         eyebrow="Overview"
         title="Students"
-        description="Browse enrolled students and their programme assignments."
+        description="Browse student records, studentship status, and programme assignments."
         icon={GraduationCap}
       >
         <RefreshButton onClick={load} loading={loading} />
       </WorkspaceHero>
       <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
-        <StatCard label="Enrolled" value={items.length} hint="Records in this list" icon={GraduationCap} />
+        <StatCard label="Listed" value={items.length} hint="Records in this list" icon={GraduationCap} />
         <StatCard label="With matric" value={withMatric} hint="Assigned matric numbers" icon={ClipboardCheck} tone="emerald" />
         <StatCard label="Awaiting matric" value={items.length - withMatric} hint="Not yet numbered" icon={GraduationCap} tone="amber" />
       </div>
-      <DataTable empty={!items.length} emptyMessage="No student records found." colSpan={3}>
+      <div className="flex flex-wrap gap-2">
+        <Select
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={[
+            { value: 'current', label: 'Current studentship' },
+            { value: 'alumni', label: 'Alumni' },
+            { value: 'all', label: 'All statuses' },
+          ]}
+          className="min-w-[200px]"
+        />
+      </div>
+      <DataTable empty={!items.length} emptyMessage="No student records found." colSpan={canGraduate ? 6 : 5}>
         <thead>
           <tr>
             <th className={thClass}>Name</th>
             <th className={thClass}>Matric no.</th>
             <th className={thClass}>Programme</th>
+            <th className={thClass}>Status</th>
+            <th className={thClass}>Studentship ends</th>
+            {canGraduate && <th className={thClass}>Actions</th>}
           </tr>
         </thead>
         {!items.length ? null : (
@@ -63,11 +108,33 @@ export function Students() {
                   <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">{s.matric_number || '—'}</code>
                 </td>
                 <td className={tdClass}>{s.program?.name || '—'}</td>
+                <td className={`${tdClass} capitalize`}>{s.status || 'active'}</td>
+                <td className={tdClass}>{s.studentship_expires_at || '—'}</td>
+                {canGraduate && (
+                  <td className={tdClass}>
+                    {s.status === 'active' && (
+                      <Button type="link" size="small" className="!px-0" onClick={() => { setConfer({ id: s.id, name: `${s.first_name} ${s.last_name}` }); setConferDate(dayjs()); }}>
+                        Confer
+                      </Button>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         )}
       </DataTable>
+      <Modal
+        title={`Confirm graduation — ${confer?.name || ''}`}
+        open={!!confer}
+        onCancel={() => setConfer(null)}
+        onOk={confirmConfer}
+        confirmLoading={conferring}
+        okText="Confer"
+      >
+        <p className="text-sm text-slate-600 mb-3">Late senate lists can confer a student who is not on the final-year candidate list.</p>
+        <DatePicker className="w-full" value={conferDate} onChange={(value) => value && setConferDate(value)} />
+      </Modal>
     </div>
   );
 }
