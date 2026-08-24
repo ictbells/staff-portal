@@ -19,6 +19,8 @@ type SecuritySettings = {
   password_rotation_days: number;
   inactivity_logout_minutes: number;
   exam_clearance: ExamClearanceSettings;
+  admissions_email: string;
+  admissions_phone: string;
 };
 
 const DEFAULT_EXAM_CLEARANCE: ExamClearanceSettings = {
@@ -53,6 +55,8 @@ export default function ApplicationSettings() {
     password_rotation_days: 0,
     inactivity_logout_minutes: 0,
     exam_clearance: DEFAULT_EXAM_CLEARANCE,
+    admissions_email: '',
+    admissions_phone: '',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -63,6 +67,8 @@ export default function ApplicationSettings() {
       .then(({ data }) => setSettings({
         ...data,
         exam_clearance: { ...DEFAULT_EXAM_CLEARANCE, ...(data.exam_clearance || {}) },
+        admissions_email: data.admissions_email || '',
+        admissions_phone: data.admissions_phone || '',
       }))
       .catch(() => message.error('Unable to load security settings.'))
       .finally(() => setLoading(false));
@@ -76,8 +82,10 @@ export default function ApplicationSettings() {
       setSettings({
         ...data,
         exam_clearance: { ...DEFAULT_EXAM_CLEARANCE, ...(data.exam_clearance || {}) },
+        admissions_email: data.admissions_email || '',
+        admissions_phone: data.admissions_phone || '',
       });
-      message.success('Security settings saved. Changes apply to all staff immediately.');
+      message.success('Settings saved. Admissions contact is shown on the student login and signup pages.');
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to save settings.');
     } finally {
@@ -100,10 +108,38 @@ export default function ApplicationSettings() {
     <div className="space-y-6 max-w-2xl">
       <PageHeader
         title="Application settings"
-        description="Staff security policies and student exam clearance rules."
+        description="Staff security policies, student exam clearance, and admissions contact for the student portal."
       />
 
       <form onSubmit={submit} className="space-y-6">
+        <Card
+          title="Admissions contact"
+          description="This email and phone number appear on the student login and signup pages."
+        >
+          <div className="space-y-4">
+            <label className="block text-sm font-medium text-slate-700">
+              Email
+              <input
+                type="email"
+                className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
+                value={settings.admissions_email}
+                onChange={(e) => setSettings((s) => ({ ...s, admissions_email: e.target.value }))}
+                placeholder="admissions@bellsuniversity.edu.ng"
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Phone
+              <input
+                type="tel"
+                className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
+                value={settings.admissions_phone}
+                onChange={(e) => setSettings((s) => ({ ...s, admissions_phone: e.target.value }))}
+                placeholder="+234 801 000 0000"
+              />
+            </label>
+          </div>
+        </Card>
+
         <Card
           title="Two-factor authentication (2FA)"
           description="When enabled, every staff member must set up an authenticator app and enter a code at sign-in."

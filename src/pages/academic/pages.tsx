@@ -75,7 +75,27 @@ type AcademicSessionRow = {
   starts_on?: string;
   ends_on?: string;
   is_current?: boolean;
+  is_closed?: boolean;
+  closed_at?: string | null;
+  auto_close_on_end?: boolean;
+  last_closure?: {
+    promoted_count: number;
+    skipped_final_count: number;
+    skipped_inactive_count: number;
+    skipped_no_program_count: number;
+    trigger: string;
+    ran_at: string;
+  };
   semesters?: Term[];
+};
+type SessionClosePreview = {
+  session_id: number;
+  session_label: string;
+  promoted_count: number;
+  skipped_final_count: number;
+  skipped_inactive_count: number;
+  skipped_no_program_count: number;
+  samples?: Record<string, Array<{ matric_number?: string; name?: string; from_level?: number; to_level?: number }>>;
 };
 type Program = {
   id: number; name: string; code?: string; award_type: string; study_level: string;
@@ -298,6 +318,45 @@ export function SessionsPage() {
   const semesterCrud = useCrudModal<Term>();
   const [semesterSessionId, setSemesterSessionId] = useState<number | null>(null);
   const [togglingSemesterId, setTogglingSemesterId] = useState<number | null>(null);
+  const [closeSession, setCloseSession] = useState<AcademicSessionRow | null>(null);
+  const [closePreview, setClosePreview] = useState<SessionClosePreview | null>(null);
+  const [closeLoading, setCloseLoading] = useState(false);
+  const [closeSubmitting, setCloseSubmitting] = useState(false);
+
+  const openCloseModal = async (row: AcademicSessionRow) => {
+    setCloseSession(row);
+    setClosePreview(null);
+    setCloseLoading(true);
+    try {
+      const { data } = await api.get<SessionClosePreview>(`/api/academic/sessions/${row.id}/close-preview`);
+      setClosePreview(data);
+    } catch {
+      message.error('Could not load session close preview.');
+      setCloseSession(null);
+    } finally {
+      setCloseLoading(false);
+    }
+  };
+
+  const confirmCloseSession = async () => {
+    if (!closeSession) return;
+    setCloseSubmitting(true);
+    try {
+      const { data } = await api.post(`/api/academic/sessions/${closeSession.id}/close`);
+      message.success(
+        `Session closed. Promoted ${data.promoted_count ?? 0} student(s); `
+        + `${data.skipped_final_count ?? 0} unchanged at final year.`,
+      );
+      setCloseSession(null);
+      setClosePreview(null);
+      reload();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } })?.response?.data;
+      message.error(msg?.errors?.session?.[0] || msg?.message || 'Session close failed.');
+    } finally {
+      setCloseSubmitting(false);
+    }
+  };
 
   const setSemesterCurrent = async (semester: Term, isCurrent: boolean) => {
     setTogglingSemesterId(semester.id);
@@ -328,21 +387,33 @@ export function SessionsPage() {
     { title: 'Ends', dataIndex: 'ends_on', key: 'ends_on', width: 120, render: (v) => formatDisplayDate(v) },
     {
       title: 'Status',
-      key: 'is_current',
-      width: 110,
-      render: (_, row) => (row.is_current ? <Tag color="blue">Active session</Tag> : '—'),
+      key: 'status',
+      width: 140,
+      render: (_, row) => (
+        <Space size={[4, 4]} wrap>
+          {row.is_closed && <Tag color="default">Closed</Tag>}
+          {row.is_current && !row.is_closed && <Tag color="blue">Active session</Tag>}
+          {!row.is_closed && !row.is_current && '—'}
+        </Space>
+      ),
     },
     {
       title: 'Actions',
       key: 'actions',
-      width: 220,
+      width: 280,
       fixed: 'right',
       render: (_, row) => (
         <Space size={4} wrap>
+          {!row.is_closed && (
+            <Button type="link" size="small" danger onClick={() => openCloseModal(row)}>
+              Close session
+            </Button>
+          )}
           <Button type="link" size="small" onClick={() => sessionCrud.openEdit(row, {
             label: row.label,
             starts_on: toDateValue(row.starts_on),
             ends_on: toDateValue(row.ends_on),
+            auto_close_on_end: !!row.auto_close_on_end,
           })}>
             Edit session
           </Button>
@@ -356,7 +427,7 @@ export function SessionsPage() {
           >
             Add semester
           </Button>
-          <ConfirmDeleteButton onConfirm={() => sessionCrud.remove(`/api/academic/sessions/${row.id}`, reload)} />
+          <ConfirmDeleteButton onConfirm={() => sessionCrud.remove(`/api/academic/sessions/${row.id}`, reload)} disabled={!!row.is_closed} />
         </Space>
       ),
     },
@@ -418,6 +489,7 @@ export function SessionsPage() {
         label: values.label,
         starts_on: fromDateValue(values.starts_on),
         ends_on: fromDateValue(values.ends_on),
+        auto_close_on_end: !!values.auto_close_on_end,
       }, reload);
       return;
     }
@@ -435,6 +507,7 @@ export function SessionsPage() {
       label: values.label,
       starts_on: fromDateValue(values.starts_on),
       ends_on: fromDateValue(values.ends_on),
+      auto_close_on_end: !!values.auto_close_on_end,
       semesters,
     }, reload);
   };
@@ -461,7 +534,7 @@ export function SessionsPage() {
   return (
     <ResourceShell
       title="Sessions & semesters"
-      description="Create one academic session (e.g. 2025/2026) with at least two semesters (First and Second). Use the Current switch on a semester to set the live session shown in the student portal. Turn off Auto-switch for admission-only semesters so the nightly job does not activate them by start date."
+      description="Create one academic session (e.g. 2025/2026) with at least two semesters (First and Second). Use Close session at year end to promote active students one level (capped at programme duration). Turn on Auto-close on end date for the nightly job to close and promote automatically."
       loading={loading}
       onRefresh={reload}
       onAdd={() => sessionCrud.openCreate({
@@ -506,6 +579,14 @@ export function SessionsPage() {
             <Form.Item name="starts_on" label="Session starts"><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item>
             <Form.Item name="ends_on" label="Session ends"><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item>
           </div>
+          <Form.Item
+            name="auto_close_on_end"
+            label="Auto-close on end date"
+            valuePropName="checked"
+            extra="When enabled, the nightly calendar job closes this session after the end date and promotes eligible students."
+          >
+            <Switch />
+          </Form.Item>
 
           {!sessionCrud.isEdit && (
             <Form.List
@@ -608,6 +689,30 @@ export function SessionsPage() {
           <Switch />
         </Form.Item>
       </CrudModal>
+
+      <Modal
+        title={closeSession ? `Close session ${closeSession.label}` : 'Close session'}
+        open={!!closeSession}
+        onCancel={() => { setCloseSession(null); setClosePreview(null); }}
+        onOk={confirmCloseSession}
+        okText="Close session and promote"
+        okButtonProps={{ danger: true, loading: closeSubmitting }}
+        confirmLoading={closeLoading || closeSubmitting}
+        destroyOnClose
+      >
+        <p className="text-sm text-slate-600">
+          All active students move up one level until their programme final year. Final-year students stay unchanged and remain active.
+        </p>
+        {closeLoading && <p className="text-sm">Loading preview…</p>}
+        {closePreview && (
+          <ul className="text-sm space-y-1 mt-3">
+            <li><strong>{closePreview.promoted_count}</strong> student(s) will be promoted</li>
+            <li><strong>{closePreview.skipped_final_count}</strong> already at final year (unchanged)</li>
+            <li><strong>{closePreview.skipped_inactive_count}</strong> inactive (skipped)</li>
+            <li><strong>{closePreview.skipped_no_program_count}</strong> without programme (skipped)</li>
+          </ul>
+        )}
+      </Modal>
     </ResourceShell>
   );
 }
