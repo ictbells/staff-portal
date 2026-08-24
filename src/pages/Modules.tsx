@@ -120,14 +120,6 @@ export function WalletPage() {
         <input className={`${inputClass} max-w-[160px]`} value={amount} onChange={(e) => setAmount(e.target.value)} />
         <Btn onClick={fund}>Fund with Paystack</Btn>
       </div>
-      <Card title="Credentials">
-        <DataTable empty={!w.credentials?.length} emptyMessage="No credentials issued." colSpan={1}>
-          <thead><tr><th className={thClass}>Title</th></tr></thead>
-          {!w.credentials?.length ? null : (
-            <tbody>{w.credentials.map((c: any) => <tr key={c.id} className={trClass}><td className={tdClass}>{c.title}</td></tr>)}</tbody>
-          )}
-        </DataTable>
-      </Card>
       <Card title="Ledger">
         <DataTable empty={!w.transactions?.length} emptyMessage="No transactions yet." colSpan={3}>
           <thead>

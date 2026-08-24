@@ -5,10 +5,29 @@ import api from '../api';
 import { useAuth } from '../auth';
 import { Btn, Card, PageHeader, Spinner } from '../components/ui';
 
+type ExamClearanceSettings = {
+  tuition_paid: boolean;
+  tuition_percent: number;
+  courses_registered: boolean;
+  no_outstanding_invoices: boolean;
+  hostel_if_allocated: boolean;
+  clinic_bills_cleared: boolean;
+};
+
 type SecuritySettings = {
   two_factor_enabled: boolean;
   password_rotation_days: number;
   inactivity_logout_minutes: number;
+  exam_clearance: ExamClearanceSettings;
+};
+
+const DEFAULT_EXAM_CLEARANCE: ExamClearanceSettings = {
+  tuition_paid: true,
+  tuition_percent: 100,
+  courses_registered: true,
+  no_outstanding_invoices: true,
+  hostel_if_allocated: false,
+  clinic_bills_cleared: false,
 };
 
 const PASSWORD_ROTATION_OPTIONS = [
@@ -33,6 +52,7 @@ export default function ApplicationSettings() {
     two_factor_enabled: false,
     password_rotation_days: 0,
     inactivity_logout_minutes: 0,
+    exam_clearance: DEFAULT_EXAM_CLEARANCE,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -40,7 +60,10 @@ export default function ApplicationSettings() {
   useEffect(() => {
     api
       .get('/api/security-settings')
-      .then(({ data }) => setSettings(data))
+      .then(({ data }) => setSettings({
+        ...data,
+        exam_clearance: { ...DEFAULT_EXAM_CLEARANCE, ...(data.exam_clearance || {}) },
+      }))
       .catch(() => message.error('Unable to load security settings.'))
       .finally(() => setLoading(false));
   }, []);
@@ -50,7 +73,10 @@ export default function ApplicationSettings() {
     setSaving(true);
     try {
       const { data } = await api.put('/api/security-settings', settings);
-      setSettings(data);
+      setSettings({
+        ...data,
+        exam_clearance: { ...DEFAULT_EXAM_CLEARANCE, ...(data.exam_clearance || {}) },
+      });
       message.success('Security settings saved. Changes apply to all staff immediately.');
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to save settings.');
@@ -74,7 +100,7 @@ export default function ApplicationSettings() {
     <div className="space-y-6 max-w-2xl">
       <PageHeader
         title="Application settings"
-        description="Global security policies for all staff accounts. Students and applicants are not affected."
+        description="Staff security policies and student exam clearance rules."
       />
 
       <form onSubmit={submit} className="space-y-6">
@@ -128,6 +154,80 @@ export default function ApplicationSettings() {
               ))}
             </select>
           </label>
+        </Card>
+
+        <Card
+          title="Exam clearance"
+          description="Choose which conditions a student must meet before they are cleared to sit exams. Only enabled checks are enforced."
+        >
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="font-medium text-slate-800">Tuition paid</div>
+                <p className="text-sm text-slate-500 mt-0.5">Require the selected percentage of billed tuition to be paid.</p>
+              </div>
+              <Switch
+                checked={settings.exam_clearance.tuition_paid}
+                onChange={(checked) => setSettings((s) => ({ ...s, exam_clearance: { ...s.exam_clearance, tuition_paid: checked } }))}
+              />
+            </div>
+            {settings.exam_clearance.tuition_paid && (
+              <label className="block text-sm font-medium text-slate-700">
+                Minimum tuition paid (%)
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
+                  value={settings.exam_clearance.tuition_percent}
+                  onChange={(e) => setSettings((s) => ({
+                    ...s,
+                    exam_clearance: { ...s.exam_clearance, tuition_percent: Number(e.target.value) },
+                  }))}
+                />
+              </label>
+            )}
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="font-medium text-slate-800">Course registration complete</div>
+                <p className="text-sm text-slate-500 mt-0.5">Student must finish registration for the current semester.</p>
+              </div>
+              <Switch
+                checked={settings.exam_clearance.courses_registered}
+                onChange={(checked) => setSettings((s) => ({ ...s, exam_clearance: { ...s.exam_clearance, courses_registered: checked } }))}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="font-medium text-slate-800">No outstanding invoices</div>
+                <p className="text-sm text-slate-500 mt-0.5">All billed school charges (except application/acceptance fees) must be settled.</p>
+              </div>
+              <Switch
+                checked={settings.exam_clearance.no_outstanding_invoices}
+                onChange={(checked) => setSettings((s) => ({ ...s, exam_clearance: { ...s.exam_clearance, no_outstanding_invoices: checked } }))}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="font-medium text-slate-800">Hostel fees if allocated</div>
+                <p className="text-sm text-slate-500 mt-0.5">If the student has a hostel bed, hostel invoices must be paid.</p>
+              </div>
+              <Switch
+                checked={settings.exam_clearance.hostel_if_allocated}
+                onChange={(checked) => setSettings((s) => ({ ...s, exam_clearance: { ...s.exam_clearance, hostel_if_allocated: checked } }))}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="font-medium text-slate-800">Clinic bills cleared</div>
+                <p className="text-sm text-slate-500 mt-0.5">Unpaid clinic bills block exam clearance.</p>
+              </div>
+              <Switch
+                checked={settings.exam_clearance.clinic_bills_cleared}
+                onChange={(checked) => setSettings((s) => ({ ...s, exam_clearance: { ...s.exam_clearance, clinic_bills_cleared: checked } }))}
+              />
+            </div>
+          </div>
         </Card>
 
         <Btn type="submit" disabled={saving}>

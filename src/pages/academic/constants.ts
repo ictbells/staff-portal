@@ -36,9 +36,18 @@ export const APPLICATION_SETUP_RESOURCES: AcademicResource[] = [
   { key: 'olevel', path: '/academic/olevel', label: "O'level", perm: 'academic.olevel.manage' },
 ];
 
+/** Course offerings, registration, unit limits, extensions */
+export const ENROLMENT_RESOURCES: AcademicResource[] = [
+  { key: 'offerings', path: '/academic/offerings', label: 'Offerings', perm: 'academic.offerings.manage' },
+  { key: 'course-registration', path: '/academic/course-registration', label: 'Course registration', perm: 'academic.enrollments.manage' },
+  { key: 'unit-limits', path: '/academic/unit-limits', label: 'Unit limits', perm: 'academic.enrollments.manage' },
+  { key: 'registration-extensions', path: '/academic/registration-extensions', label: 'Registration extensions', perm: 'academic.extensions.review' },
+];
+
 export const ACADEMIC_RESOURCES: AcademicResource[] = [
   ...ADMISSION_SETUP_RESOURCES,
   ...APPLICATION_SETUP_RESOURCES,
+  ...ENROLMENT_RESOURCES,
 ];
 
 export function academicResourceByKey(key: string): AcademicResource | undefined {

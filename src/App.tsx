@@ -19,8 +19,12 @@ import {
   CampusesPage, CollegesPage, CoursesPage, DepartmentsPage, IntakesPage,
   LevelsPage, OlevelPage, ProgrammesPage, SessionsPage,
 } from './pages/academic/pages';
+import {
+  CourseRegistrationPage, OfferingsPage, RegistrationExtensionsPage, UnitLimitsPage,
+} from './pages/academic/enrolment';
 import { CandidateDataPage } from './pages/academic/CandidateDataPage';
 import ApplicationSettings from './pages/ApplicationSettings';
+import ExamClearance from './pages/ExamClearance';
 import Resources from './pages/Resources';
 import ResourceView from './pages/ResourceView';
 import HostelManagement from './pages/HostelManagement';
@@ -94,9 +98,14 @@ export default function App() {
           <Route path="intakes" element={<AcademicResourceGuard resourceKey="intakes"><IntakesPage /></AcademicResourceGuard>} />
           <Route path="candidate-data" element={<AcademicResourceGuard resourceKey="candidate-data"><CandidateDataPage /></AcademicResourceGuard>} />
           <Route path="olevel" element={<AcademicResourceGuard resourceKey="olevel"><OlevelPage /></AcademicResourceGuard>} />
+          <Route path="offerings" element={<AcademicResourceGuard resourceKey="offerings"><OfferingsPage /></AcademicResourceGuard>} />
+          <Route path="course-registration" element={<AcademicResourceGuard resourceKey="course-registration"><CourseRegistrationPage /></AcademicResourceGuard>} />
+          <Route path="unit-limits" element={<AcademicResourceGuard resourceKey="unit-limits"><UnitLimitsPage /></AcademicResourceGuard>} />
+          <Route path="registration-extensions" element={<AcademicResourceGuard resourceKey="registration-extensions"><RegistrationExtensionsPage /></AcademicResourceGuard>} />
         </Route>
         <Route path="academic-setup" element={<Navigate to="/academic/campuses" replace />} />
         <Route path="pg" element={<Pg />} />
+        <Route path="exam-clearance" element={<ExamClearance />} />
         <Route path="finance" element={<Finance />} />
         <Route path="finance/sundry" element={<SundryFees />} />
         <Route path="finance/rebates" element={<Rebates />} />

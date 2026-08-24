@@ -1,15 +1,23 @@
 import {
-  Alert, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tag,
+  Alert, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tag, Upload, message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { Award, BookOpen, Building2, GraduationCap, Plus } from 'lucide-react';
+import type { UploadFile } from 'antd/es/upload';
+import { Award, BookOpen, Building2, Download, GraduationCap, Plus, Upload as UploadIcon } from 'lucide-react';
 import { useState } from 'react';
+import api from '../../api';
 import { ConfirmDeleteButton } from '../../components/ConfirmDeleteButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 import { RefreshButton } from '../../components/RefreshButton';
 import { ENTRY_MODES, STUDY_LEVELS } from './constants';
 import { actionColumn, formatDisplayDate, fromDateTimeValue, fromDateValue, toDateValue, useCrudModal } from './crudHelpers';
 import { patchResource, useResourceList } from './useResourceList';
+
+const COURSE_TYPES = [
+  { value: 'general', label: 'General' },
+  { value: 'faculty', label: 'Faculty' },
+  { value: 'departmental', label: 'Departmental' },
+];
 
 function entryModeLabel(mode: string) {
   return ENTRY_MODES.find((m) => m.value === mode)?.label ?? mode.toUpperCase();
@@ -57,6 +65,7 @@ type Term = {
   ends_on?: string;
   normal_registration_closes_at?: string;
   late_registration_closes_at?: string;
+  extension_price_per_unit?: number | string | null;
   is_current: boolean;
   auto_schedule?: boolean;
 };
@@ -72,9 +81,20 @@ type Program = {
   id: number; name: string; code?: string; award_type: string; study_level: string;
   entry_modes?: string[]; duration_years: number; tuition_amount?: number | string; is_active: boolean;
   department_id?: number; department?: Department; courses?: CourseRef[];
+  is_research_degree?: boolean; workflow_template_id?: number | null;
+  eligibility?: {
+    min_classification?: string | null;
+    nysc_required?: boolean;
+    min_referees?: number | null;
+    min_prior_award?: string | null;
+    qualifying_note?: string | null;
+    notes?: string | null;
+  } | null;
+  workflow_template?: { id: number; name: string; code?: string };
 };
+type WorkflowTemplate = { id: number; name: string; code?: string };
 type Course = {
-  id: number; code: string; title: string; units: number;
+  id: number; code: string; title: string; units: number; course_type?: string;
   department_id?: number; department?: Department; programs?: ProgramRef[];
 };
 type Level = { id: number; name: string; code?: string; study_level: string; sort_order: number; is_active: boolean };
@@ -89,11 +109,11 @@ type Intake = {
 
 function ResourceShell({
   title, description, loading, onRefresh, onAdd, canAdd = true, accessError, children,
-  count, countLabel = 'Records', eyebrow = 'Academic setup', stats,
+  count, countLabel = 'Records', eyebrow = 'Academic setup', stats, extra,
 }: {
   title: string; description: string; loading: boolean; onRefresh: () => void;
   onAdd?: () => void; canAdd?: boolean; accessError?: string | null; children: React.ReactNode;
-  count?: number; countLabel?: string; eyebrow?: string; stats?: React.ReactNode;
+  count?: number; countLabel?: string; eyebrow?: string; stats?: React.ReactNode; extra?: React.ReactNode;
 }) {
   return (
     <div className="space-y-4">
@@ -102,6 +122,7 @@ function ResourceShell({
       )}
       <WorkspaceHero eyebrow={eyebrow} title={title} description={description} icon={BookOpen}>
         <div className="flex gap-2">
+          {extra}
           <RefreshButton onClick={onRefresh} loading={loading} />
           {canAdd && onAdd && (
             <Button type="primary" icon={<Plus size={14} />} onClick={onAdd}>Add</Button>
@@ -119,10 +140,11 @@ function ResourceShell({
 }
 
 function CrudModal({
-  title, open, saving, isEdit, form, onClose, onSubmit, children,
+  title, open, saving, isEdit, form, onClose, onSubmit, children, width = 480,
 }: {
   title: string; open: boolean; saving: boolean; isEdit: boolean;
   form: ReturnType<typeof Form.useForm>[0]; onClose: () => void; onSubmit: () => void; children: React.ReactNode;
+  width?: number;
 }) {
   return (
     <Modal
@@ -132,7 +154,7 @@ function CrudModal({
       onOk={onSubmit}
       confirmLoading={saving}
       destroyOnClose
-      width={480}
+      width={width}
     >
       <Form form={form} layout="vertical" className="mt-4">{children}</Form>
     </Modal>
@@ -367,6 +389,7 @@ export function SessionsPage() {
             ends_on: toDateValue(row.ends_on),
             normal_registration_closes_at: toDateValue(row.normal_registration_closes_at),
             late_registration_closes_at: toDateValue(row.late_registration_closes_at),
+            extension_price_per_unit: row.extension_price_per_unit != null ? Number(row.extension_price_per_unit) : undefined,
             is_current: row.is_current,
             auto_schedule: row.auto_schedule ?? true,
             academic_session_id: session.id,
@@ -426,6 +449,7 @@ export function SessionsPage() {
       ends_on: fromDateValue(values.ends_on),
       normal_registration_closes_at: fromDateTimeValue(values.normal_registration_closes_at),
       late_registration_closes_at: fromDateTimeValue(values.late_registration_closes_at),
+      extension_price_per_unit: values.extension_price_per_unit ?? null,
       is_current: values.is_current ?? false,
       auto_schedule: values.auto_schedule ?? true,
     }, () => {
@@ -561,6 +585,13 @@ export function SessionsPage() {
           <DatePicker className="w-full" showTime format="DD/MM/YYYY HH:mm" />
         </Form.Item>
         <Form.Item
+          name="extension_price_per_unit"
+          label="Extension price per unit (₦)"
+          extra="Charged only when a late-registration extension is approved. Leave blank until you are ready to accept extension requests."
+        >
+          <InputNumber min={0} className="w-full" placeholder="Optional" />
+        </Form.Item>
+        <Form.Item
           name="is_current"
           label="Set as current semester"
           extra="Only one semester can be current across the university."
@@ -585,8 +616,11 @@ export function ProgrammesPage() {
   const { rows, loading, reload } = useResourceList<Program>('/api/academic/programs');
   const { rows: departments } = useResourceList<Department>('/api/academic/departments');
   const { rows: allCourses } = useResourceList<Course>('/api/academic/courses');
+  const { rows: templates } = useResourceList<WorkflowTemplate>('/api/academic/workflow-templates');
   const crud = useCrudModal<Program>();
   const [modeFilter, setModeFilter] = useState<string | null>(null);
+  const watchedModes = Form.useWatch('entry_modes', crud.form) || [];
+  const showPgEligibility = Array.isArray(watchedModes) && watchedModes.includes('pg');
 
   const hasMode = (row: Program, mode: string) => (row.entry_modes ?? []).includes(mode);
   const utmeCount = rows.filter((row) => hasMode(row, 'utme')).length;
@@ -608,6 +642,8 @@ export function ProgrammesPage() {
       render: (value?: number | string) => (value != null ? `₦${Number(value).toLocaleString()}` : '—'),
     },
     { title: 'Admission categories', key: 'entry_modes', width: 180, render: (_, r) => entryModeTags(r.entry_modes) },
+    { title: 'Workflow', key: 'workflow', width: 150, render: (_, r) => r.workflow_template?.name || '—' },
+    { title: 'Research', key: 'research', width: 90, render: (_, r) => r.is_research_degree ? <Tag color="purple">Research</Tag> : '—' },
     { title: 'Courses', key: 'courses', width: 160, render: (_, r) => courseTags(r.courses) },
     { title: 'Department', key: 'department', render: (_, r) => r.department?.name || '—' },
     { title: 'Status', dataIndex: 'is_active', key: 'is_active', width: 90, render: (v) => <Tag color={v ? 'success' : 'default'}>{v ? 'Active' : 'Inactive'}</Tag> },
@@ -622,6 +658,16 @@ export function ProgrammesPage() {
         duration_years: row.duration_years,
         course_ids: row.courses?.map((c) => c.id) ?? [],
         is_active: row.is_active,
+        is_research_degree: !!row.is_research_degree,
+        workflow_template_id: row.workflow_template_id ?? row.workflow_template?.id,
+        eligibility: {
+          min_classification: row.eligibility?.min_classification || undefined,
+          nysc_required: !!row.eligibility?.nysc_required,
+          min_referees: row.eligibility?.min_referees ?? 2,
+          min_prior_award: row.eligibility?.min_prior_award || undefined,
+          qualifying_note: row.eligibility?.qualifying_note || '',
+          notes: row.eligibility?.notes || '',
+        },
       }),
       (row) => crud.remove(`/api/programs/${row.id}`, reload),
     ),
@@ -629,7 +675,20 @@ export function ProgrammesPage() {
 
   const submit = async () => {
     const values = await crud.form.validateFields();
-    await crud.save('/api/programs', (id) => `/api/programs/${id}`, values, reload);
+    const eligibility = values.eligibility || {};
+    await crud.save('/api/programs', (id) => `/api/programs/${id}`, {
+      ...values,
+      is_research_degree: !!values.is_research_degree,
+      workflow_template_id: values.workflow_template_id || null,
+      eligibility: {
+        min_classification: eligibility.min_classification || null,
+        nysc_required: !!eligibility.nysc_required,
+        min_referees: eligibility.min_referees ?? null,
+        min_prior_award: eligibility.min_prior_award || null,
+        qualifying_note: eligibility.qualifying_note || null,
+        notes: eligibility.notes || null,
+      },
+    }, reload);
   };
 
   return (
@@ -638,7 +697,7 @@ export function ProgrammesPage() {
       description="Define programmes and curriculum. School fees (tuition and related lines) are assigned under Fees & payments → Programme fees."
       loading={loading}
       onRefresh={reload}
-      onAdd={() => crud.openCreate({ duration_years: 4, is_active: true, entry_modes: ['utme'], course_ids: [] })}
+      onAdd={() => crud.openCreate({ duration_years: 4, is_active: true, entry_modes: ['utme'], course_ids: [], is_research_degree: false, eligibility: { min_referees: 2, nysc_required: false } })}
       canAdd={departments.length > 0}
       stats={(
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
@@ -679,8 +738,8 @@ export function ProgrammesPage() {
         </div>
       )}
     >
-      <Table rowKey="id" columns={columns} dataSource={visibleRows} loading={loading} scroll={{ x: 1300 }} pagination={{ pageSize: 15 }} locale={{ emptyText: modeFilter ? 'No programmes in this category.' : 'No programmes yet.' }} />
-      <CrudModal title="programme" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
+      <Table rowKey="id" columns={columns} dataSource={visibleRows} loading={loading} scroll={{ x: 1500 }} pagination={{ pageSize: 15 }} locale={{ emptyText: modeFilter ? 'No programmes in this category.' : 'No programmes yet.' }} />
+      <CrudModal title="programme" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit} width={640}>
         <Form.Item name="department_id" label="Department" rules={[{ required: true }]}>
           <Select options={departments.map((d) => ({ value: d.id, label: d.name }))} showSearch optionFilterProp="label" />
         </Form.Item>
@@ -694,6 +753,12 @@ export function ProgrammesPage() {
         <Form.Item name="entry_modes" label="Admission categories" rules={[{ required: true, type: 'array', min: 1 }]} extra="Which entry modes can select this programme on the application form.">
           <Select mode="multiple" options={ENTRY_MODES} placeholder="Select UTME, DE, JUPEB, PG…" />
         </Form.Item>
+        <Form.Item name="workflow_template_id" label="Workflow" extra="Admissions and enrolment stages for this programme.">
+          <Select allowClear options={templates.map((t) => ({ value: t.id, label: t.name }))} placeholder="Default from study level" />
+        </Form.Item>
+        <Form.Item name="is_research_degree" label="Research degree" valuePropName="checked" extra="Requires a proposed area and supervisor preference on the applicant form.">
+          <Switch />
+        </Form.Item>
         <Form.Item name="course_ids" label="Courses in curriculum" extra="Map catalogue courses that belong to this programme.">
           <Select
             mode="multiple"
@@ -704,6 +769,40 @@ export function ProgrammesPage() {
           />
         </Form.Item>
         <Form.Item name="is_active" label="Active" valuePropName="checked"><Switch /></Form.Item>
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Admission eligibility</p>
+        {showPgEligibility && (
+          <>
+            <Form.Item name={['eligibility', 'min_classification']} label="Minimum class">
+              <Select
+                allowClear
+                options={[
+                  { value: 'first', label: 'First Class' },
+                  { value: 'second_upper', label: 'Second Class Upper' },
+                  { value: 'second_lower', label: 'Second Class Lower' },
+                  { value: 'third', label: 'Third Class' },
+                  { value: 'pass', label: 'Pass' },
+                  { value: 'distinction', label: 'Distinction' },
+                  { value: 'merit', label: 'Merit' },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name={['eligibility', 'min_prior_award']} label="Minimum prior award">
+              <Select allowClear options={[{ value: 'bachelor', label: 'Bachelor' }, { value: 'masters', label: 'Masters' }]} />
+            </Form.Item>
+            <Form.Item name={['eligibility', 'min_referees']} label="Minimum referees">
+              <InputNumber min={1} max={3} className="w-full" />
+            </Form.Item>
+            <Form.Item name={['eligibility', 'nysc_required']} label="NYSC required" valuePropName="checked">
+              <Switch />
+            </Form.Item>
+            <Form.Item name={['eligibility', 'qualifying_note']} label="Qualifying note">
+              <Input.TextArea rows={2} placeholder="B.Sc Computer Science or related" />
+            </Form.Item>
+          </>
+        )}
+        <Form.Item name={['eligibility', 'notes']} label="Eligibility notes">
+          <Input.TextArea rows={2} placeholder="Shown to applicants and staff" />
+        </Form.Item>
         <Alert
           type="info"
           showIcon
@@ -755,11 +854,15 @@ export function CoursesPage() {
   const { rows: departments } = useResourceList<Department>('/api/academic/departments');
   const { rows: programs } = useResourceList<Program>('/api/academic/programs');
   const crud = useCrudModal<Course>();
+  const [fileList, setFileList] = useState<UploadFile[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const courseType = Form.useWatch('course_type', crud.form);
 
   const columns: ColumnsType<Course> = [
     { title: 'Code', dataIndex: 'code', key: 'code', width: 110 },
     { title: 'Title', dataIndex: 'title', key: 'title' },
     { title: 'Units', dataIndex: 'units', key: 'units', width: 70 },
+    { title: 'Type', dataIndex: 'course_type', key: 'course_type', width: 130, render: (value) => COURSE_TYPES.find((item) => item.value === value)?.label || value || 'Departmental' },
     { title: 'Programmes', key: 'programs', width: 180, render: (_, r) => programTags(r.programs) },
     { title: 'Department', key: 'department', render: (_, r) => r.department?.name || '—' },
     actionColumn(
@@ -768,6 +871,7 @@ export function CoursesPage() {
         code: row.code,
         title: row.title,
         units: row.units,
+        course_type: row.course_type || 'departmental',
         program_ids: row.programs?.map((p) => p.id) ?? [],
       }),
       (row) => crud.remove(`/api/academic/courses/${row.id}`, reload),
@@ -779,9 +883,78 @@ export function CoursesPage() {
     await crud.save('/api/academic/courses', (id) => `/api/academic/courses/${id}`, values, reload);
   };
 
+  const downloadTemplate = async () => {
+    try {
+      const { data } = await api.get('/api/academic/courses/import-template', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'course-catalogue-template.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      message.error('Unable to download the catalogue template.');
+    }
+  };
+
+  const submitUpload = async () => {
+    const file = fileList[0]?.originFileObj;
+    if (!file) {
+      message.warning('Choose a spreadsheet file to upload.');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    setUploading(true);
+    try {
+      const { data } = await api.post('/api/academic/courses/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const failed = Number(data.failed || 0);
+      message.success(`Imported ${data.created || 0} new and ${data.updated || 0} updated courses${failed ? `, ${failed} row error(s)` : ''}.`);
+      setFileList([]);
+      reload();
+    } catch (err: any) {
+      message.error(err.response?.data?.message || 'Unable to import the course catalogue.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
-    <ResourceShell title="Courses" description="Course catalog — each course must be linked to one or more programmes." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ units: 3, program_ids: [] })} canAdd={departments.length > 0 && programs.length > 0} count={rows.length} countLabel="Courses">
-      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 900 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No courses yet.' }} />
+    <ResourceShell
+      title="Courses"
+      description="Course catalogue — general courses are visible to all programmes; faculty and departmental courses follow the owning department."
+      loading={loading}
+      onRefresh={reload}
+      onAdd={() => crud.openCreate({ units: 3, course_type: 'departmental', program_ids: [] })}
+      canAdd={departments.length > 0}
+      count={rows.length}
+      countLabel="Courses"
+      extra={(
+        <Button icon={<Download size={14} />} onClick={downloadTemplate}>Template</Button>
+      )}
+    >
+      <div className="p-4 border-b border-slate-100 space-y-3">
+        <p className="text-sm text-slate-600">
+          Upload Excel with columns: code, title, units, course_type, department_code, programme_code, level_code.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Upload
+            beforeUpload={() => false}
+            maxCount={1}
+            accept=".xlsx,.xls,.csv"
+            fileList={fileList}
+            onChange={({ fileList: next }) => setFileList(next)}
+          >
+            <Button icon={<UploadIcon size={14} />}>Choose file</Button>
+          </Upload>
+          <Button type="primary" loading={uploading} onClick={submitUpload}>Import catalogue</Button>
+        </div>
+      </div>
+      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1000 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No courses yet.' }} />
       <CrudModal title="course" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="department_id" label="Department" rules={[{ required: true }]}>
           <Select options={departments.map((d) => ({ value: d.id, label: d.name }))} showSearch optionFilterProp="label" />
@@ -789,7 +962,15 @@ export function CoursesPage() {
         <Form.Item name="code" label="Course code" rules={[{ required: true }]}><Input placeholder="CPE 201" /></Form.Item>
         <Form.Item name="title" label="Title" rules={[{ required: true }]}><Input /></Form.Item>
         <Form.Item name="units" label="Credit units" rules={[{ required: true }]}><InputNumber min={1} max={12} className="w-full" /></Form.Item>
-        <Form.Item name="program_ids" label="Programmes" rules={[{ required: true, type: 'array', min: 1 }]} extra="Which programmes include this course in their curriculum.">
+        <Form.Item name="course_type" label="Catalogue type" rules={[{ required: true }]} extra="General courses are visible to every student. Faculty and departmental courses follow the owning department.">
+          <Select options={COURSE_TYPES} />
+        </Form.Item>
+        <Form.Item
+          name="program_ids"
+          label="Programmes"
+          rules={courseType === 'general' ? [] : [{ required: true, type: 'array', min: 1 }]}
+          extra={courseType === 'general' ? 'Optional for general courses.' : 'Which programmes include this course in their curriculum.'}
+        >
           <Select
             mode="multiple"
             placeholder="Select programmes"

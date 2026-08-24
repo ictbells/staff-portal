@@ -41,17 +41,51 @@ const NEXT_STAGE: Record<string, string> = {
 const STAGE_PERMISSION: Record<string, string> = {
   screening: 'admissions.screen',
   verification: 'admissions.verify',
+  credit_assessment: 'admissions.credit_assess',
   shortlisting: 'admissions.shortlist',
   recommended: 'admissions.recommend',
   approved: 'admissions.approve',
   offer_issued: 'admissions.offer',
+  proposal_review: 'admissions.pg.proposal',
+  supervisor: 'admissions.pg.supervisor',
+  panel: 'admissions.pg.panel',
+  recommendation: 'admissions.recommend',
+  approval: 'admissions.approve',
+  admission: 'admissions.offer',
   matriculated: 'admissions.matriculate',
 };
+
+const PG_STAGE_OPTIONS = [
+  { value: 'submitted', label: 'Submitted' },
+  { value: 'screening', label: 'Screening' },
+  { value: 'proposal_review', label: 'Proposal review' },
+  { value: 'supervisor', label: 'Supervisor' },
+  { value: 'panel', label: 'Panel' },
+  { value: 'recommendation', label: 'Recommendation' },
+  { value: 'approval', label: 'Approval' },
+  { value: 'admission', label: 'Admission' },
+  { value: 'offer_issued', label: 'Offer issued' },
+  { value: 'awaiting_acceptance_fee', label: 'Awaiting acceptance fee' },
+  { value: 'rejected', label: 'Rejected' },
+];
+
+function nextFor(row: { stage: string; entry_mode?: string; workflow?: { next_stage?: string; next_permission?: string } }) {
+  if (row.workflow?.next_stage) return row.workflow.next_stage;
+  if (row.entry_mode === 'transfer' && row.stage === 'verification') return 'credit_assessment';
+  if (row.entry_mode === 'transfer' && row.stage === 'credit_assessment') return 'shortlisting';
+  return NEXT_STAGE[row.stage];
+}
+
+function permissionForNext(row: { stage: string; workflow?: { next_stage?: string; next_permission?: string } }) {
+  const next = nextFor(row);
+  return row.workflow?.next_permission || STAGE_PERMISSION[next || ''] || 'admissions.view';
+}
 
 const STAGE_OPTIONS = [
   { value: 'submitted', label: 'Submitted' },
   { value: 'screening', label: 'Screening' },
   { value: 'verification', label: 'Verification' },
+  { value: 'credit_assessment', label: 'Credit assessment' },
   { value: 'shortlisting', label: 'Shortlisting' },
   { value: 'recommended', label: 'Recommended' },
   { value: 'approved', label: 'Approved' },
@@ -66,8 +100,8 @@ const FEE_OPTIONS = [
   { value: 'partial', label: 'Partial' },
 ];
 
-const REVIEW_STAGES = ['submitted', 'screening', 'verification', 'shortlisting', 'recommended'];
-const OFFER_STAGES = ['approved', 'offer_issued', 'awaiting_acceptance_fee'];
+const REVIEW_STAGES = ['submitted', 'screening', 'verification', 'credit_assessment', 'shortlisting', 'recommended', 'proposal_review', 'supervisor', 'panel', 'recommendation'];
+const OFFER_STAGES = ['approved', 'approval', 'offer_issued', 'admission', 'awaiting_acceptance_fee'];
 const REJECTED_STAGES = ['rejected'];
 
 const CHANNEL_ICON: Record<AdmissionsChannelKey, LucideIcon> = {
@@ -106,14 +140,21 @@ type ApplicationRow = {
   };
   intake?: { name?: string; acceptance_fee_amount?: number | string; term?: { session_label?: string } };
   application_fee_invoice?: { status?: string };
+  eligibility?: { meets: boolean; failed?: { rule: string; message: string }[] };
+  workflow?: { next_stage?: string; next_permission?: string; template_code?: string };
+  previous_university?: string | null;
+  credit_assessment_complete?: boolean;
 };
 
 function referenceColumnTitle(kind: AdmissionsReferenceColumn) {
-  return kind === 'jamb' ? 'JAMB number' : 'Application number';
+  return kind === 'jamb' ? 'JAMB / previous school' : 'Application number';
 }
 
 function referenceColumnValue(row: ApplicationRow, kind: AdmissionsReferenceColumn) {
   if (kind === 'jamb') {
+    if (row.entry_mode === 'transfer') {
+      return row.previous_university || '—';
+    }
     return row.jamb_registration || row.user?.jamb_registration || '—';
   }
   return row.application_number || '—';
@@ -128,6 +169,7 @@ function stageTagColor(stage: string): string {
     submitted: 'default',
     screening: 'processing',
     verification: 'processing',
+    credit_assessment: 'cyan',
     shortlisting: 'purple',
     recommended: 'gold',
     approved: 'success',
@@ -367,11 +409,15 @@ export function AdmissionsPipeline({ channel }: Props) {
     }
   }, [load, pagination.current, reason]);
 
-  const canAdvanceTo = useCallback((stage: string) => {
-    const next = NEXT_STAGE[stage];
+  const canAdvanceTo = useCallback((row: ApplicationRow | string) => {
+    if (typeof row === 'string') {
+      const next = NEXT_STAGE[row];
+      if (!next) return false;
+      return has(STAGE_PERMISSION[next] ?? 'admissions.view');
+    }
+    const next = nextFor(row);
     if (!next) return false;
-    const permission = STAGE_PERMISSION[next] ?? 'admissions.view';
-    return has(permission);
+    return has(permissionForNext(row));
   }, [has]);
 
   const openDocument = useCallback(async (id: number, kind: 'form' | 'offer') => {
@@ -605,14 +651,26 @@ export function AdmissionsPipeline({ channel }: Props) {
         dataIndex: 'stage',
         key: 'stage',
         width: 140,
-        render: (stage: string) => <Tag color={stageTagColor(stage)}>{formatStage(stage)}</Tag>,
+        render: (stage: string, row: ApplicationRow) => (
+          <Space size={4} wrap>
+            <Tag color={stageTagColor(stage)}>{formatStage(stage)}</Tag>
+            {row.eligibility && row.entry_mode === 'pg' && (
+              <Tag color={row.eligibility.meets ? 'success' : 'warning'}>
+                {row.eligibility.meets ? 'Meets' : 'Does not meet'}
+              </Tag>
+            )}
+            {row.entry_mode === 'transfer' && !row.credit_assessment_complete && (
+              <Tag color="warning">Needs credit assessment</Tag>
+            )}
+          </Space>
+        ),
       },
       {
         title: 'Actions',
         key: 'actions',
         width: 260,
         render: (_, row) => {
-          const next = NEXT_STAGE[row.stage];
+          const next = nextFor(row);
           return (
             <Space size="small" wrap>
               {has('admissions.view') && (
@@ -640,13 +698,13 @@ export function AdmissionsPipeline({ channel }: Props) {
                   Letter
                 </Button>
               )}
-              {next && canAdvanceTo(row.stage) && (
+              {next && canAdvanceTo(row) && (
                 <Button
                   size="small"
                   type="primary"
                   icon={<ArrowRight size={14} />}
                   onClick={() => {
-                    if (next === 'offer_issued') {
+                    if (next === 'offer_issued' || next === 'admission') {
                       setAcceptanceAmount(
                         row.intake?.acceptance_fee_amount != null
                           ? Number(row.intake.acceptance_fee_amount)
@@ -853,7 +911,7 @@ export function AdmissionsPipeline({ channel }: Props) {
                 placeholder="Stage"
                 value={stageSelectValue}
                 onChange={(value) => setStageFilter(value || '')}
-                options={STAGE_OPTIONS}
+                options={channel.key === 'postgraduate' ? PG_STAGE_OPTIONS : STAGE_OPTIONS}
               />
               <Select
                 allowClear
@@ -960,13 +1018,13 @@ export function AdmissionsPipeline({ channel }: Props) {
         onSaved={() => load(pagination.current)}
         extra={fileRow ? (
           <Space wrap>
-            {NEXT_STAGE[fileRow.stage] && canAdvanceTo(fileRow.stage) && (
+            {nextFor(fileRow) && canAdvanceTo(fileRow) && (
               <Button
                 type="primary"
                 icon={<ArrowRight size={14} />}
                 onClick={() => {
-                  const next = NEXT_STAGE[fileRow.stage];
-                  if (next === 'offer_issued') {
+                  const next = nextFor(fileRow);
+                  if (next === 'offer_issued' || next === 'admission') {
                     setAcceptanceAmount(
                       fileRow.intake?.acceptance_fee_amount != null
                         ? Number(fileRow.intake.acceptance_fee_amount)

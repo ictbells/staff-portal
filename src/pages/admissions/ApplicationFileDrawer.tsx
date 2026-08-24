@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
-import { Button, Drawer, Input, Select, Space, Tag, message } from 'antd';
+import { Alert, Button, Drawer, Input, Select, Space, Tag, message } from 'antd';
 import { Eye, FileText, Printer, Save } from 'lucide-react';
 import api from '../../api';
 import { requiredDocumentsFor } from './requiredDocuments';
@@ -27,10 +27,48 @@ type Sitting = {
   exam_number: string;
   results: { subject_id: number; subject_name: string; grade: string }[];
 };
+type UtmeChoice = { choice_order: number; institution_name: string; programme_name: string };
 type Utme = {
   aggregate: string;
   course_choice: string;
+  exam_year: string;
   subjects: { subject: string; score: string }[];
+  institution_choices: UtmeChoice[];
+};
+type DirectEntry = {
+  jamb_de_number: string;
+  previous_institution: string;
+  qualification_type: string;
+  qualification_title: string;
+  qualification_class: string;
+  qualification_year: string;
+  programme: string;
+  requested_entry_level: string;
+};
+type TransferBackground = {
+  previous_university: string;
+  previous_programme: string;
+  previous_student_id: string;
+  credits_earned: string;
+  cgpa: string;
+  reason_for_transfer: string;
+  requested_entry_level: string;
+  has_transfer_approval: boolean;
+  approval_reference: string;
+};
+type CourseMapping = {
+  previous_course: string;
+  equivalent_course: string;
+  credits: string;
+  decision: string;
+};
+type CreditAssessment = {
+  decision: string;
+  approved_entry_level: string;
+  credits_accepted: string;
+  credits_waived: string;
+  assessor_notes: string;
+  course_mappings: CourseMapping[];
 };
 type FileApp = {
   id: number;
@@ -52,7 +90,15 @@ type FileApp = {
   offer_reference?: string | null;
   steps?: Step[];
   documents?: UploadedDoc[];
-  student?: { id?: number; current_level?: number | string; program_id?: number | null };
+  student?: {
+    id?: number;
+    current_level?: number | string;
+    program_id?: number | null;
+    matric_number?: string | null;
+    student_number?: string | null;
+  };
+  eligibility?: { meets: boolean; failed?: { rule: string; message: string }[]; requirements?: Record<string, any> };
+  referee_invites?: { id: number; name?: string; email?: string; status?: string; position?: number }[];
 };
 
 type FormState = {
@@ -96,6 +142,21 @@ type FormState = {
   second_choice_college_id: number | '';
   second_choice_department_id: number | '';
   second_choice_program_id: number | '';
+  prior_degrees: { degree_title: string; institution: string; field_of_study?: string; class: string; award_level?: string; year_awarded: string; country?: string }[];
+  nysc_status: string;
+  nysc_number: string;
+  nysc_year: string;
+  nysc_exemption_reason: string;
+  professional_qualifications: { body?: string; qualification?: string; year?: string; membership_no?: string }[];
+  research_interest: string;
+  proposed_area: string;
+  statement_of_purpose: string;
+  publications: { title?: string; year?: string; venue?: string }[];
+  supervisor_preferences: number[];
+  referees: { name: string; email: string; institution: string; position: string; phone?: string }[];
+  direct_entry: DirectEntry;
+  transfer_background: TransferBackground;
+  credit_assessment: CreditAssessment;
 };
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
@@ -106,6 +167,93 @@ const GENDERS = ['Male', 'Female'];
 const OLEVEL_EXAM_TYPES = ['WAEC', 'NECO', 'GCE', 'NABTEB', 'Other'];
 const OLEVEL_GRADES = ['A1', 'B2', 'B3', 'C4', 'C5', 'C6', 'D7', 'E8', 'F9'];
 const OLEVEL_YEARS = Array.from({ length: 30 }, (_, i) => String(new Date().getFullYear() - i));
+const CLASS_OPTIONS = [
+  { value: 'first', label: 'First Class' },
+  { value: 'second_upper', label: 'Second Class Upper' },
+  { value: 'second_lower', label: 'Second Class Lower' },
+  { value: 'third', label: 'Third Class' },
+  { value: 'pass', label: 'Pass' },
+  { value: 'distinction', label: 'Distinction' },
+  { value: 'merit', label: 'Merit' },
+  { value: 'other', label: 'Other' },
+];
+const NYSC_OPTIONS = [
+  { value: 'completed', label: 'Completed (discharge)' },
+  { value: 'exempted', label: 'Exempted' },
+  { value: 'not_applicable', label: 'Not applicable' },
+];
+const DE_QUALIFICATION_OPTIONS = [
+  { value: 'nd', label: 'ND' },
+  { value: 'hnd', label: 'HND' },
+  { value: 'nce', label: 'NCE' },
+  { value: 'ijmb', label: 'IJMB' },
+  { value: 'a_level', label: 'A-Level' },
+  { value: 'first_degree', label: 'First degree' },
+  { value: 'other', label: 'Other' },
+];
+const DE_CLASS_OPTIONS = [
+  { value: 'distinction', label: 'Distinction' },
+  { value: 'upper_credit', label: 'Upper Credit' },
+  { value: 'lower_credit', label: 'Lower Credit' },
+  { value: 'merit', label: 'Merit' },
+  ...CLASS_OPTIONS.filter((opt) => !['distinction', 'merit'].includes(opt.value)),
+];
+const CREDIT_DECISION_OPTIONS = [
+  { value: 'accept', label: 'Accept' },
+  { value: 'accept_with_conditions', label: 'Accept with conditions' },
+  { value: 'reject', label: 'Reject' },
+];
+const DE_ENTRY_LEVELS = [
+  { value: '200', label: '200 Level' },
+  { value: '300', label: '300 Level' },
+];
+const TRANSFER_ENTRY_LEVELS = [
+  { value: '200', label: '200 Level' },
+  { value: '300', label: '300 Level' },
+  { value: '400', label: '400 Level' },
+];
+const AWARD_LEVEL_OPTIONS = [
+  { value: 'bachelor', label: 'Bachelor' },
+  { value: 'pgd', label: 'Postgraduate diploma' },
+  { value: 'masters', label: 'Masters' },
+  { value: 'other', label: 'Other' },
+];
+const MAPPING_DECISION_OPTIONS = [
+  { value: 'accept', label: 'Accept' },
+  { value: 'reject', label: 'Reject' },
+];
+
+function StaffPassportPhoto({ applicationId }: { applicationId: number }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    api.get(`/api/applications/${applicationId}/passport`, { responseType: 'blob' })
+      .then(({ data, headers }) => {
+        if (cancelled || !data || data.size < 32) return;
+        const type = String(headers['content-type'] || data.type || '');
+        if (type.includes('json') || type.includes('text/html')) return;
+        objectUrl = URL.createObjectURL(data);
+        setUrl(objectUrl);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [applicationId]);
+
+  if (!url) return null;
+
+  return (
+    <img
+      src={url}
+      alt="Passport photograph"
+      className="h-28 w-24 rounded-lg object-cover border border-slate-200 shadow-sm"
+    />
+  );
+}
 
 function pick(source: Record<string, any> | undefined | null, ...keys: string[]) {
   if (!source) return undefined;
@@ -126,16 +274,22 @@ function emptySitting(): Sitting {
   return { exam_type: '', exam_center: '', exam_year: '', exam_number: '', results: [{ subject_id: 0, subject_name: '', grade: '' }] };
 }
 
+function emptyUtmeChoices(): UtmeChoice[] {
+  return [1, 2, 3, 4].map((order) => ({ choice_order: order, institution_name: '', programme_name: '' }));
+}
+
 function emptyUtme(): Utme {
   return {
     aggregate: '',
     course_choice: '',
+    exam_year: '',
     subjects: [
       { subject: '', score: '' },
       { subject: '', score: '' },
       { subject: '', score: '' },
       { subject: '', score: '' },
     ],
+    institution_choices: emptyUtmeChoices(),
   };
 }
 
@@ -149,10 +303,20 @@ function asUtme(raw: any): Utme {
       }))
     : base.subjects;
   while (subjects.length < 4) subjects.push({ subject: '', score: '' });
+  const choices = Array.isArray(raw.institution_choices) && raw.institution_choices.length
+    ? raw.institution_choices.map((row: any, index: number) => ({
+        choice_order: Number(row.choice_order || index + 1),
+        institution_name: row.institution_name || '',
+        programme_name: row.programme_name || '',
+      }))
+    : emptyUtmeChoices();
+  while (choices.length < 4) choices.push({ choice_order: choices.length + 1, institution_name: '', programme_name: '' });
   return {
     aggregate: raw.aggregate != null ? String(raw.aggregate) : '',
     course_choice: raw.course_choice || '',
+    exam_year: raw.exam_year != null ? String(raw.exam_year) : '',
     subjects,
+    institution_choices: choices.slice(0, 4),
   };
 }
 
@@ -166,8 +330,92 @@ function utmeSubjectOptions(subjects: OlevelSubject[], current?: string) {
 
 function utmeForSave(utme: Utme): Utme | null {
   const subjects = utme.subjects.filter((row) => row.subject || row.score);
-  if (!utme.aggregate && !utme.course_choice && subjects.length === 0) return null;
-  return { ...utme, subjects };
+  const institution_choices = utme.institution_choices.filter((row) => row.institution_name || row.programme_name);
+  if (!utme.aggregate && !utme.course_choice && !utme.exam_year && subjects.length === 0 && institution_choices.length === 0) return null;
+  return { ...utme, subjects, institution_choices };
+}
+
+function emptyDirectEntry(jamb?: string): DirectEntry {
+  return {
+    jamb_de_number: jamb || '',
+    previous_institution: '',
+    qualification_type: 'nd',
+    qualification_title: '',
+    qualification_class: 'upper_credit',
+    qualification_year: '',
+    programme: '',
+    requested_entry_level: '200',
+  };
+}
+
+function asDirectEntry(raw: any, jamb?: string): DirectEntry {
+  const base = emptyDirectEntry(jamb);
+  if (!raw || typeof raw !== 'object') return base;
+  return {
+    ...base,
+    ...raw,
+    jamb_de_number: raw.jamb_de_number || jamb || '',
+    requested_entry_level: String(raw.requested_entry_level || base.requested_entry_level),
+  };
+}
+
+function emptyTransferBackground(): TransferBackground {
+  return {
+    previous_university: '',
+    previous_programme: '',
+    previous_student_id: '',
+    credits_earned: '',
+    cgpa: '',
+    reason_for_transfer: '',
+    requested_entry_level: '200',
+    has_transfer_approval: false,
+    approval_reference: '',
+  };
+}
+
+function asTransferBackground(raw: any): TransferBackground {
+  const base = emptyTransferBackground();
+  if (!raw || typeof raw !== 'object') return base;
+  return {
+    ...base,
+    ...raw,
+    credits_earned: raw.credits_earned != null ? String(raw.credits_earned) : '',
+    cgpa: raw.cgpa != null ? String(raw.cgpa) : '',
+    requested_entry_level: String(raw.requested_entry_level || '200'),
+    has_transfer_approval: Boolean(raw.has_transfer_approval),
+  };
+}
+
+function emptyCreditAssessment(): CreditAssessment {
+  return {
+    decision: '',
+    approved_entry_level: '',
+    credits_accepted: '',
+    credits_waived: '',
+    assessor_notes: '',
+    course_mappings: [{ previous_course: '', equivalent_course: '', credits: '', decision: 'accept' }],
+  };
+}
+
+function asCreditAssessment(raw: any): CreditAssessment {
+  const base = emptyCreditAssessment();
+  if (!raw || typeof raw !== 'object') return base;
+  const mappings = Array.isArray(raw.course_mappings) && raw.course_mappings.length
+    ? raw.course_mappings.map((row: any) => ({
+        previous_course: row.previous_course || '',
+        equivalent_course: row.equivalent_course || '',
+        credits: row.credits != null ? String(row.credits) : '',
+        decision: row.decision || 'accept',
+      }))
+    : base.course_mappings;
+  return {
+    decision: raw.decision || '',
+    approved_entry_level: raw.approved_entry_level != null ? String(raw.approved_entry_level) : '',
+    credits_accepted: raw.credits_accepted != null ? String(raw.credits_accepted) : '',
+    credits_waived: raw.credits_waived != null ? String(raw.credits_waived) : '',
+    assessor_notes: raw.assessor_notes || '',
+    course_mappings: mappings,
+  };
 }
 
 function asSitting(raw: any): Sitting {
@@ -239,6 +487,9 @@ function formFromApp(app: FileApp, programs: ProgramOption[]): FormState {
   const contact = { ...sponsor, ...stepPayload(app, 'application_form') };
   const academic = stepPayload(app, 'academic_qualifications');
   const programme = stepPayload(app, 'programme_selection');
+  const background = stepPayload(app, 'pg_background');
+  const research = stepPayload(app, 'pg_research');
+  const referees = stepPayload(app, 'pg_referees');
   const firstId = Number(pick(programme, 'first_choice_program_id', 'program_id') || app.program?.id || 0) || '';
   const secondId = Number(pick(programme, 'second_choice_program_id') || 0) || '';
   const first = programs.find((row) => row.id === Number(firstId));
@@ -284,6 +535,25 @@ function formFromApp(app: FileApp, programs: ProgramOption[]): FormState {
     second_choice_college_id: Number(pick(programme, 'second_choice_college_id') || facultyIdOf(second) || 0) || '',
     second_choice_department_id: Number(pick(programme, 'second_choice_department_id') || departmentIdOf(second) || 0) || '',
     second_choice_program_id: secondId,
+    prior_degrees: Array.isArray(background.prior_degrees) && background.prior_degrees.length
+      ? background.prior_degrees
+      : [{ degree_title: '', institution: '', field_of_study: '', class: 'second_lower', award_level: 'bachelor', year_awarded: '', country: 'Nigeria' }],
+    nysc_status: pick(background, 'nysc_status') || 'completed',
+    nysc_number: pick(background, 'nysc_number') || '',
+    nysc_year: String(pick(background, 'nysc_year') || ''),
+    nysc_exemption_reason: pick(background, 'nysc_exemption_reason') || '',
+    professional_qualifications: Array.isArray(background.professional_qualifications) ? background.professional_qualifications : [],
+    research_interest: pick(research, 'research_interest') || '',
+    proposed_area: pick(research, 'proposed_area') || '',
+    statement_of_purpose: pick(research, 'statement_of_purpose') || '',
+    publications: Array.isArray(research.publications) ? research.publications : [],
+    supervisor_preferences: Array.isArray(research.supervisor_preferences) ? research.supervisor_preferences.map(Number).filter(Boolean) : [],
+    referees: Array.isArray(referees.referees) && referees.referees.length
+      ? referees.referees
+      : [{ name: '', email: '', institution: '', position: '' }, { name: '', email: '', institution: '', position: '' }],
+    direct_entry: asDirectEntry(stepPayload(app, 'direct_entry'), app.jamb_registration || app.user?.jamb_registration || ''),
+    transfer_background: asTransferBackground(stepPayload(app, 'transfer_background')),
+    credit_assessment: asCreditAssessment(stepPayload(app, 'credit_assessment')),
   };
 }
 
@@ -348,32 +618,30 @@ function SittingEditor({
       </div>
       <div className="space-y-2">
         {sitting.results.map((row, index) => (
-          <div key={index} className="flex gap-2 items-center">
-            <div className="min-w-0 flex-1">
-              <Select
-                className="w-full"
-                showSearch
-                allowClear
-                optionFilterProp="label"
-                placeholder="Subject"
-                value={row.subject_id || undefined}
-                options={subjects.map((subject) => ({ value: subject.id, label: subject.name }))}
-                getPopupContainer={() => document.body}
-                onChange={(value) => {
-                  const subject = subjects.find((item) => item.id === value);
-                  const results = sitting.results.map((item, i) => i === index
-                    ? { ...item, subject_id: value || 0, subject_name: subject?.name || '' }
-                    : item);
-                  onChange({ ...sitting, results });
-                }}
-              />
-            </div>
+          <div key={index} className="grid grid-cols-[minmax(0,1fr)_5.75rem_auto] gap-2 items-center">
             <Select
-              className="w-24"
+              className="!w-full min-w-0"
+              style={{ width: '100%' }}
+              showSearch
+              allowClear
+              optionFilterProp="label"
+              placeholder="Subject"
+              value={row.subject_id || undefined}
+              options={subjects.map((subject) => ({ value: subject.id, label: subject.name }))}
+              onChange={(value) => {
+                const subject = subjects.find((item) => item.id === value);
+                const results = sitting.results.map((item, i) => i === index
+                  ? { ...item, subject_id: value || 0, subject_name: subject?.name || '' }
+                  : item);
+                onChange({ ...sitting, results });
+              }}
+            />
+            <Select
+              className="!w-full"
+              style={{ width: '100%' }}
               placeholder="Grade"
               value={row.grade || undefined}
               options={OLEVEL_GRADES.map((value) => ({ value, label: value }))}
-              getPopupContainer={() => document.body}
               onChange={(value) => {
                 const results = sitting.results.map((item, i) => i === index ? { ...item, grade: value } : item);
                 onChange({ ...sitting, results });
@@ -404,6 +672,7 @@ export function ApplicationFileDrawer({
   printing,
   extra,
   onSaved,
+  mode = 'application',
 }: {
   applicationId: number | null;
   open: boolean;
@@ -413,6 +682,7 @@ export function ApplicationFileDrawer({
   printing?: boolean;
   extra?: ReactNode;
   onSaved?: () => void;
+  mode?: 'application' | 'student';
 }) {
   const [app, setApp] = useState<FileApp | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
@@ -502,7 +772,10 @@ export function ApplicationFileDrawer({
   const biodata = stepPayload(app, 'biodata');
   const nin = pick(biodata, 'nin');
   const photoPath = pick(biodata, 'photo_path');
-  const checklist = useMemo(() => requiredDocumentsFor(app?.entry_mode), [app?.entry_mode]);
+  const checklist = useMemo(
+    () => requiredDocumentsFor(app?.entry_mode, stepPayload(app || { steps: [] }, 'pg_background').nysc_status),
+    [app],
+  );
   const uploaded = app?.documents || [];
   const uploadedTypes = new Set(uploaded.map((doc) => pick(doc, 'doc_type')).filter(Boolean) as string[]);
   const passportPresent = uploadedTypes.has('passport') || !!photoPath;
@@ -537,6 +810,18 @@ export function ApplicationFileDrawer({
     }
   };
 
+  const openPassport = async () => {
+    if (!app?.id) return;
+    try {
+      const { data } = await api.get(`/api/applications/${app.id}/passport`, { responseType: 'blob' });
+      const url = URL.createObjectURL(data);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      message.error('Unable to open the passport photograph.');
+    }
+  };
+
   const save = async () => {
     if (!app || !form) return;
     if (!form.first_choice_program_id) {
@@ -563,9 +848,41 @@ export function ApplicationFileDrawer({
         second_sitting: sittingForSave(form.second_sitting),
         utme: utmeForSave(form.utme),
         jamb_registration: form.jamb_registration.replace(/\s+/g, '').toUpperCase() || null,
+        prior_degrees: form.prior_degrees,
+        nysc_status: form.nysc_status,
+        nysc_number: form.nysc_number,
+        nysc_year: form.nysc_year,
+        nysc_exemption_reason: form.nysc_exemption_reason,
+        professional_qualifications: form.professional_qualifications,
+        research_interest: form.research_interest,
+        proposed_area: form.proposed_area,
+        statement_of_purpose: form.statement_of_purpose,
+        publications: form.publications,
+        supervisor_preferences: form.supervisor_preferences,
+        referees: form.referees,
+        direct_entry: form.direct_entry,
+        transfer_background: {
+          ...form.transfer_background,
+          has_transfer_approval: !!form.transfer_background.has_transfer_approval,
+          credits_earned: form.transfer_background.credits_earned === '' ? null : Number(form.transfer_background.credits_earned),
+          cgpa: form.transfer_background.cgpa === '' ? null : Number(form.transfer_background.cgpa),
+        },
+        credit_assessment: form.credit_assessment.decision
+          ? {
+              ...form.credit_assessment,
+              credits_accepted: form.credit_assessment.credits_accepted === '' ? null : Number(form.credit_assessment.credits_accepted),
+              credits_waived: form.credit_assessment.credits_waived === '' ? null : Number(form.credit_assessment.credits_waived),
+              course_mappings: form.credit_assessment.course_mappings
+                .filter((row) => row.previous_course || row.equivalent_course)
+                .map((row) => ({
+                  ...row,
+                  credits: row.credits === '' ? null : Number(row.credits),
+                })),
+            }
+          : undefined,
       });
       setApp(data);
-      message.success('Application file saved.');
+      message.success(mode === 'student' ? 'Student record saved.' : 'Application file saved.');
       onSaved?.();
     } catch (err: any) {
       const errors = err?.response?.data?.errors;
@@ -580,7 +897,7 @@ export function ApplicationFileDrawer({
 
   return (
     <Drawer
-      title={app?.user?.name || 'Application file'}
+      title={mode === 'student' ? (app?.user?.name ? `${app.user.name} — student record` : 'Student record') : (app?.user?.name || 'Application file')}
       open={open}
       onClose={onClose}
       width={760}
@@ -598,12 +915,37 @@ export function ApplicationFileDrawer({
       {loading && <p className="text-sm text-slate-500">Loading file…</p>}
       {!loading && app && form && (
         <div className="space-y-4">
+          {app.entry_mode === 'pg' && app.eligibility && (
+            <Alert
+              type={app.eligibility.meets ? 'success' : 'warning'}
+              showIcon
+              message={app.eligibility.meets ? 'Meets eligibility' : 'Does not meet eligibility'}
+              description={(
+                <ul className="list-disc pl-4 m-0 text-sm">
+                  {(app.eligibility.failed || []).map((item) => (
+                    <li key={item.rule}>{item.message}</li>
+                  ))}
+                  {app.eligibility.requirements?.qualifying_note && (
+                    <li>{app.eligibility.requirements.qualifying_note}</li>
+                  )}
+                  {app.eligibility.requirements?.notes && (
+                    <li>{app.eligibility.requirements.notes}</li>
+                  )}
+                </ul>
+              )}
+            />
+          )}
           <Section title="Summary">
             <div className="grid grid-cols-2 gap-3">
               <Field label="Application number">
                 <Input value={app.application_number || ''} disabled />
               </Field>
-              <Field label="JAMB registration">
+              {(app.student?.matric_number || app.student?.student_number) ? (
+                <Field label="Matric no.">
+                  <Input value={app.student.matric_number || app.student.student_number || ''} disabled />
+                </Field>
+              ) : null}
+              <Field label={app.entry_mode === 'de' ? 'JAMB Direct Entry no.' : 'JAMB registration'}>
                 <Input
                   value={form.jamb_registration}
                   onChange={(e) => setField('jamb_registration', e.target.value)}
@@ -747,6 +1089,11 @@ export function ApplicationFileDrawer({
           </Section>
 
           <Section title="Personal details">
+            {app.id ? (
+              <div className="mb-3">
+                <StaffPassportPhoto applicationId={app.id} />
+              </div>
+            ) : null}
             <div className="grid grid-cols-2 gap-3">
               <Field label="First name"><Input value={form.first_name} onChange={(e) => setField('first_name', e.target.value)} /></Field>
               <Field label="Middle name"><Input value={form.middle_name} onChange={(e) => setField('middle_name', e.target.value)} /></Field>
@@ -853,9 +1200,18 @@ export function ApplicationFileDrawer({
             </div>
           </Section>
 
-          {(app.entry_mode === 'utme' || form.utme.aggregate || form.utme.course_choice || form.utme.subjects.some((row) => row.subject || row.score)) && (
+          {(app.entry_mode === 'utme' || form.utme.aggregate || form.utme.course_choice || form.utme.exam_year || form.utme.subjects.some((row) => row.subject || row.score)) && (
             <Section title="JAMB information">
               <div className="grid grid-cols-2 gap-3">
+                <Field label="Examination year">
+                  <Select
+                    className="w-full"
+                    allowClear
+                    value={form.utme.exam_year || undefined}
+                    options={OLEVEL_YEARS.map((value) => ({ value, label: value }))}
+                    onChange={(value) => setField('utme', { ...form.utme, exam_year: value || '' })}
+                  />
+                </Field>
                 <Field label="Aggregate">
                   <Input value={form.utme.aggregate} onChange={(e) => setField('utme', { ...form.utme, aggregate: e.target.value })} />
                 </Field>
@@ -865,25 +1221,22 @@ export function ApplicationFileDrawer({
               </div>
               <div className="space-y-2">
                 {form.utme.subjects.map((row, index) => (
-                  <div key={index} className="flex gap-2 items-center">
-                    <div className="min-w-0 flex-1">
-                      <Select
-                        className="w-full"
-                        showSearch
-                        allowClear
-                        optionFilterProp="label"
-                        placeholder="Subject"
-                        value={row.subject || undefined}
-                        options={utmeSubjectOptions(subjects, row.subject)}
-                        getPopupContainer={() => document.body}
-                        onChange={(value) => {
-                          const next = form.utme.subjects.map((item, i) => i === index ? { ...item, subject: value || '' } : item);
-                          setField('utme', { ...form.utme, subjects: next });
-                        }}
-                      />
-                    </div>
+                  <div key={index} className="grid grid-cols-[minmax(0,1fr)_5.75rem_auto] gap-2 items-center">
+                    <Select
+                      className="!w-full min-w-0"
+                      style={{ width: '100%' }}
+                      showSearch
+                      allowClear
+                      optionFilterProp="label"
+                      placeholder="Subject"
+                      value={row.subject || undefined}
+                      options={utmeSubjectOptions(subjects, row.subject)}
+                      onChange={(value) => {
+                        const next = form.utme.subjects.map((item, i) => i === index ? { ...item, subject: value || '' } : item);
+                        setField('utme', { ...form.utme, subjects: next });
+                      }}
+                    />
                     <Input
-                      className="w-28"
                       placeholder="Score"
                       value={row.score}
                       onChange={(e) => {
@@ -899,6 +1252,30 @@ export function ApplicationFileDrawer({
                 <Button onClick={() => setField('utme', { ...form.utme, subjects: [...form.utme.subjects, { subject: '', score: '' }] })}>
                   Add subject
                 </Button>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-slate-500">JAMB institution choices</p>
+                {form.utme.institution_choices.map((row, index) => (
+                  <div key={index} className="grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] gap-2">
+                    <Input value={String(row.choice_order)} disabled />
+                    <Input
+                      placeholder="Institution"
+                      value={row.institution_name}
+                      onChange={(e) => {
+                        const next = form.utme.institution_choices.map((item, i) => i === index ? { ...item, institution_name: e.target.value } : item);
+                        setField('utme', { ...form.utme, institution_choices: next });
+                      }}
+                    />
+                    <Input
+                      placeholder="Programme"
+                      value={row.programme_name}
+                      onChange={(e) => {
+                        const next = form.utme.institution_choices.map((item, i) => i === index ? { ...item, programme_name: e.target.value } : item);
+                        setField('utme', { ...form.utme, institution_choices: next });
+                      }}
+                    />
+                  </div>
+                ))}
               </div>
             </Section>
           )}
@@ -921,6 +1298,234 @@ export function ApplicationFileDrawer({
             <Input.TextArea rows={3} value={form.other_qualifications} onChange={(e) => setField('other_qualifications', e.target.value)} />
           </Section>
 
+          {app.entry_mode === 'de' && (
+            <Section title="Direct Entry">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="JAMB DE number">
+                  <Input value={form.direct_entry.jamb_de_number} onChange={(e) => setField('direct_entry', { ...form.direct_entry, jamb_de_number: e.target.value })} />
+                </Field>
+                <Field label="Previous institution">
+                  <Input value={form.direct_entry.previous_institution} onChange={(e) => setField('direct_entry', { ...form.direct_entry, previous_institution: e.target.value })} />
+                </Field>
+                <Field label="Qualification type">
+                  <Select className="w-full" value={form.direct_entry.qualification_type} options={DE_QUALIFICATION_OPTIONS} onChange={(value) => setField('direct_entry', { ...form.direct_entry, qualification_type: value })} />
+                </Field>
+                <Field label="Qualification title">
+                  <Input value={form.direct_entry.qualification_title} onChange={(e) => setField('direct_entry', { ...form.direct_entry, qualification_title: e.target.value })} />
+                </Field>
+                <Field label="Class">
+                  <Select className="w-full" value={form.direct_entry.qualification_class} options={DE_CLASS_OPTIONS} onChange={(value) => setField('direct_entry', { ...form.direct_entry, qualification_class: value })} />
+                </Field>
+                <Field label="Year awarded">
+                  <Select className="w-full" allowClear value={form.direct_entry.qualification_year || undefined} options={OLEVEL_YEARS.map((value) => ({ value, label: value }))} onChange={(value) => setField('direct_entry', { ...form.direct_entry, qualification_year: value || '' })} />
+                </Field>
+                <Field label="Programme">
+                  <Input value={form.direct_entry.programme} onChange={(e) => setField('direct_entry', { ...form.direct_entry, programme: e.target.value })} />
+                </Field>
+                <Field label="Requested entry level">
+                  <Select className="w-full" value={form.direct_entry.requested_entry_level} options={DE_ENTRY_LEVELS} onChange={(value) => setField('direct_entry', { ...form.direct_entry, requested_entry_level: value })} />
+                </Field>
+              </div>
+            </Section>
+          )}
+
+          {app.entry_mode === 'transfer' && (
+            <>
+              <Section title="Transfer background">
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Previous university">
+                    <Input value={form.transfer_background.previous_university} onChange={(e) => setField('transfer_background', { ...form.transfer_background, previous_university: e.target.value })} />
+                  </Field>
+                  <Field label="Previous programme">
+                    <Input value={form.transfer_background.previous_programme} onChange={(e) => setField('transfer_background', { ...form.transfer_background, previous_programme: e.target.value })} />
+                  </Field>
+                  <Field label="Previous student ID">
+                    <Input value={form.transfer_background.previous_student_id} onChange={(e) => setField('transfer_background', { ...form.transfer_background, previous_student_id: e.target.value })} />
+                  </Field>
+                  <Field label="Credits earned">
+                    <Input value={form.transfer_background.credits_earned} onChange={(e) => setField('transfer_background', { ...form.transfer_background, credits_earned: e.target.value })} />
+                  </Field>
+                  <Field label="CGPA">
+                    <Input value={form.transfer_background.cgpa} onChange={(e) => setField('transfer_background', { ...form.transfer_background, cgpa: e.target.value })} />
+                  </Field>
+                  <Field label="Requested entry level">
+                    <Select className="w-full" value={form.transfer_background.requested_entry_level} options={TRANSFER_ENTRY_LEVELS} onChange={(value) => setField('transfer_background', { ...form.transfer_background, requested_entry_level: value })} />
+                  </Field>
+                  <Field label="Transfer approval">
+                    <Select
+                      className="w-full"
+                      value={form.transfer_background.has_transfer_approval ? 'yes' : 'no'}
+                      options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]}
+                      onChange={(value) => setField('transfer_background', { ...form.transfer_background, has_transfer_approval: value === 'yes' })}
+                    />
+                  </Field>
+                  <Field label="Approval reference">
+                    <Input value={form.transfer_background.approval_reference} onChange={(e) => setField('transfer_background', { ...form.transfer_background, approval_reference: e.target.value })} />
+                  </Field>
+                  <Field label="Reason for transfer">
+                    <Input.TextArea rows={3} value={form.transfer_background.reason_for_transfer} onChange={(e) => setField('transfer_background', { ...form.transfer_background, reason_for_transfer: e.target.value })} />
+                  </Field>
+                </div>
+              </Section>
+              <Section title="Credit transfer assessment">
+                {app.stage !== 'credit_assessment' && (
+                  <p className="text-xs text-slate-500">Save the assessment here. Transfer files cannot move past credit assessment until a decision and approved entry level are recorded.</p>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Decision">
+                    <Select className="w-full" allowClear value={form.credit_assessment.decision || undefined} options={CREDIT_DECISION_OPTIONS} onChange={(value) => setField('credit_assessment', { ...form.credit_assessment, decision: value || '' })} />
+                  </Field>
+                  <Field label="Approved entry level">
+                    <Select className="w-full" allowClear value={form.credit_assessment.approved_entry_level || undefined} options={TRANSFER_ENTRY_LEVELS} onChange={(value) => setField('credit_assessment', { ...form.credit_assessment, approved_entry_level: value || '' })} />
+                  </Field>
+                  <Field label="Credits accepted">
+                    <Input value={form.credit_assessment.credits_accepted} onChange={(e) => setField('credit_assessment', { ...form.credit_assessment, credits_accepted: e.target.value })} />
+                  </Field>
+                  <Field label="Credits waived">
+                    <Input value={form.credit_assessment.credits_waived} onChange={(e) => setField('credit_assessment', { ...form.credit_assessment, credits_waived: e.target.value })} />
+                  </Field>
+                  <Field label="Assessor notes">
+                    <Input.TextArea rows={3} value={form.credit_assessment.assessor_notes} onChange={(e) => setField('credit_assessment', { ...form.credit_assessment, assessor_notes: e.target.value })} />
+                  </Field>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-slate-500">Course mapping</p>
+                  {form.credit_assessment.course_mappings.map((row, index) => (
+                    <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_4.5rem_7rem_auto] gap-2 items-center">
+                      <Input placeholder="Previous course" value={row.previous_course} onChange={(e) => {
+                        const course_mappings = form.credit_assessment.course_mappings.map((item, i) => i === index ? { ...item, previous_course: e.target.value } : item);
+                        setField('credit_assessment', { ...form.credit_assessment, course_mappings });
+                      }} />
+                      <Input placeholder="Equivalent course" value={row.equivalent_course} onChange={(e) => {
+                        const course_mappings = form.credit_assessment.course_mappings.map((item, i) => i === index ? { ...item, equivalent_course: e.target.value } : item);
+                        setField('credit_assessment', { ...form.credit_assessment, course_mappings });
+                      }} />
+                      <Input placeholder="Cr." value={row.credits} onChange={(e) => {
+                        const course_mappings = form.credit_assessment.course_mappings.map((item, i) => i === index ? { ...item, credits: e.target.value } : item);
+                        setField('credit_assessment', { ...form.credit_assessment, course_mappings });
+                      }} />
+                      <Select value={row.decision} options={MAPPING_DECISION_OPTIONS} onChange={(value) => {
+                        const course_mappings = form.credit_assessment.course_mappings.map((item, i) => i === index ? { ...item, decision: value } : item);
+                        setField('credit_assessment', { ...form.credit_assessment, course_mappings });
+                      }} />
+                      <Button onClick={() => setField('credit_assessment', {
+                        ...form.credit_assessment,
+                        course_mappings: form.credit_assessment.course_mappings.filter((_, i) => i !== index),
+                      })}>Remove</Button>
+                    </div>
+                  ))}
+                  <Button onClick={() => setField('credit_assessment', {
+                    ...form.credit_assessment,
+                    course_mappings: [...form.credit_assessment.course_mappings, { previous_course: '', equivalent_course: '', credits: '', decision: 'accept' }],
+                  })}>Add course</Button>
+                </div>
+              </Section>
+            </>
+          )}
+
+          {app.entry_mode === 'pg' && (
+            <>
+              <Section title="Prior degrees">
+                <div className="space-y-3">
+                  {form.prior_degrees.map((row, index) => (
+                    <div key={index} className="rounded-lg border border-slate-100 p-3 grid grid-cols-2 gap-2">
+                      <Field label="Degree"><Input value={row.degree_title} onChange={(e) => {
+                        const prior_degrees = form.prior_degrees.map((item, i) => i === index ? { ...item, degree_title: e.target.value } : item);
+                        setField('prior_degrees', prior_degrees);
+                      }} /></Field>
+                      <Field label="Institution"><Input value={row.institution} onChange={(e) => {
+                        const prior_degrees = form.prior_degrees.map((item, i) => i === index ? { ...item, institution: e.target.value } : item);
+                        setField('prior_degrees', prior_degrees);
+                      }} /></Field>
+                      <Field label="Class">
+                        <Select className="w-full" value={row.class} options={CLASS_OPTIONS} onChange={(value) => {
+                          const prior_degrees = form.prior_degrees.map((item, i) => i === index ? { ...item, class: value } : item);
+                          setField('prior_degrees', prior_degrees);
+                        }} />
+                      </Field>
+                      <Field label="Award level">
+                        <Select className="w-full" value={row.award_level || 'bachelor'} options={AWARD_LEVEL_OPTIONS} onChange={(value) => {
+                          const prior_degrees = form.prior_degrees.map((item, i) => i === index ? { ...item, award_level: value } : item);
+                          setField('prior_degrees', prior_degrees);
+                        }} />
+                      </Field>
+                      <Field label="Year"><Input value={row.year_awarded} onChange={(e) => {
+                        const prior_degrees = form.prior_degrees.map((item, i) => i === index ? { ...item, year_awarded: e.target.value } : item);
+                        setField('prior_degrees', prior_degrees);
+                      }} /></Field>
+                      <Field label="Field of study"><Input value={row.field_of_study || ''} onChange={(e) => {
+                        const prior_degrees = form.prior_degrees.map((item, i) => i === index ? { ...item, field_of_study: e.target.value } : item);
+                        setField('prior_degrees', prior_degrees);
+                      }} /></Field>
+                    </div>
+                  ))}
+                  <Button onClick={() => setField('prior_degrees', [...form.prior_degrees, { degree_title: '', institution: '', class: 'second_lower', award_level: 'bachelor', year_awarded: '' }])}>Add degree</Button>
+                </div>
+              </Section>
+              <Section title="NYSC">
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Status">
+                    <Select className="w-full" value={form.nysc_status} options={NYSC_OPTIONS} onChange={(value) => setField('nysc_status', value)} />
+                  </Field>
+                  <Field label="Number"><Input value={form.nysc_number} onChange={(e) => setField('nysc_number', e.target.value)} /></Field>
+                  <Field label="Year"><Input value={form.nysc_year} onChange={(e) => setField('nysc_year', e.target.value)} /></Field>
+                  <Field label="Exemption / N/A reason"><Input value={form.nysc_exemption_reason} onChange={(e) => setField('nysc_exemption_reason', e.target.value)} /></Field>
+                </div>
+              </Section>
+              <Section title="Research and purpose">
+                <div className="space-y-3">
+                  <Field label="Research interest"><Input.TextArea rows={2} value={form.research_interest} onChange={(e) => setField('research_interest', e.target.value)} /></Field>
+                  <Field label="Proposed area"><Input value={form.proposed_area} onChange={(e) => setField('proposed_area', e.target.value)} /></Field>
+                  <Field label="Statement of purpose"><Input.TextArea rows={4} value={form.statement_of_purpose} onChange={(e) => setField('statement_of_purpose', e.target.value)} /></Field>
+                </div>
+              </Section>
+              <Section title="Referees">
+                <div className="space-y-3">
+                  {form.referees.map((row, index) => (
+                    <div key={index} className="grid grid-cols-2 gap-2 rounded-lg border border-slate-100 p-3">
+                      <Field label="Name"><Input value={row.name} onChange={(e) => {
+                        const referees = form.referees.map((item, i) => i === index ? { ...item, name: e.target.value } : item);
+                        setField('referees', referees);
+                      }} /></Field>
+                      <Field label="Email"><Input value={row.email} onChange={(e) => {
+                        const referees = form.referees.map((item, i) => i === index ? { ...item, email: e.target.value } : item);
+                        setField('referees', referees);
+                      }} /></Field>
+                      <Field label="Institution"><Input value={row.institution} onChange={(e) => {
+                        const referees = form.referees.map((item, i) => i === index ? { ...item, institution: e.target.value } : item);
+                        setField('referees', referees);
+                      }} /></Field>
+                      <Field label="Position"><Input value={row.position} onChange={(e) => {
+                        const referees = form.referees.map((item, i) => i === index ? { ...item, position: e.target.value } : item);
+                        setField('referees', referees);
+                      }} /></Field>
+                    </div>
+                  ))}
+                  {(app.referee_invites || []).map((invite) => (
+                    <div key={invite.id} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2">
+                      <span className="text-sm">{invite.name} — {invite.email}</span>
+                      <Space>
+                        <Tag color={invite.status === 'submitted' ? 'success' : invite.status === 'expired' ? 'error' : 'warning'}>
+                          {invite.status}
+                        </Tag>
+                        {invite.status !== 'submitted' && (
+                          <Button size="small" onClick={() => {
+                            api.post(`/api/applications/${app.id}/referees/${invite.id}/resend`)
+                              .then(({ data }) => {
+                                setApp((prev) => prev ? { ...prev, referee_invites: data.referees || prev.referee_invites } : prev);
+                                message.success('Invite resent.');
+                              })
+                              .catch(() => message.error('Could not resend this invite.'));
+                          }}>Resend</Button>
+                        )}
+                      </Space>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            </>
+          )}
+
           <Section title="Documents">
             <div className="space-y-2">
               {checklist.map((item) => {
@@ -939,8 +1544,12 @@ export function ApplicationFileDrawer({
                       <Tag color={present ? 'success' : item.required ? 'error' : 'default'}>
                         {present ? 'On file' : 'Missing'}
                       </Tag>
-                      {file && (
-                        <Button size="small" icon={<Eye size={14} />} onClick={() => openDocument(file)}>
+                      {(file || (item.key === 'passport' && passportPresent)) && (
+                        <Button
+                          size="small"
+                          icon={<Eye size={14} />}
+                          onClick={() => (item.key === 'passport' ? openPassport() : file && openDocument(file))}
+                        >
                           View
                         </Button>
                       )}
@@ -948,6 +1557,18 @@ export function ApplicationFileDrawer({
                   </div>
                 );
               })}
+              {uploaded.filter((doc) => String(pick(doc, 'doc_type') || '').startsWith('recommendation')).map((file) => (
+                <div key={file.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-slate-800">Recommendation letter</div>
+                    <div className="text-xs text-slate-500 truncate">{pick(file, 'original_name') || pick(file, 'doc_type')}</div>
+                  </div>
+                  <Space>
+                    <Tag color="success">On file</Tag>
+                    <Button size="small" icon={<Eye size={14} />} onClick={() => openDocument(file)}>View</Button>
+                  </Space>
+                </div>
+              ))}
             </div>
           </Section>
 

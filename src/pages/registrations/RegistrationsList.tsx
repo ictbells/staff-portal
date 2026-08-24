@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Dropdown, Input, Select, Table, Tag, message } from 'antd';
+import { Button, Dropdown, Input, Modal, Select, Table, Tag, message } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { MenuProps } from 'antd';
 import {
-  Award, BookOpen, Download, FileSpreadsheet, FileText, GraduationCap, Layers, Search,
+  Award, BookOpen, Download, FileSpreadsheet, FileText, GraduationCap, Layers, Printer, Search,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import api from '../../api';
 import { useAuth } from '../../auth';
 import { RefreshButton } from '../../components/RefreshButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
+import { ApplicationFileDrawer } from '../admissions/ApplicationFileDrawer';
 import type { RegistrationChannel, RegistrationChannelKey } from './constants';
 import { ENTRY_MODES } from '../academic/constants';
 
@@ -21,6 +22,7 @@ const CHANNEL_ICON: Record<RegistrationChannelKey, LucideIcon> = {
 
 type RegistrationRow = {
   id: number;
+  application_id?: number | null;
   first_name?: string | null;
   middle_name?: string | null;
   last_name?: string | null;
@@ -29,6 +31,7 @@ type RegistrationRow = {
   user?: { name?: string; email?: string };
   program?: { name?: string; code?: string };
   application?: {
+    id?: number;
     entry_mode?: string;
     intake?: { name?: string; term?: { session_label?: string } };
   };
@@ -42,6 +45,10 @@ function studentName(row: RegistrationRow) {
   const parts = [row.first_name, row.middle_name, row.last_name].filter(Boolean);
   if (parts.length) return parts.join(' ');
   return row.user?.name || '—';
+}
+
+function applicationIdOf(row: RegistrationRow) {
+  return row.application_id || row.application?.id || null;
 }
 
 type Props = {
@@ -62,6 +69,9 @@ export function RegistrationsList({ channel }: Props) {
   const [programs, setPrograms] = useState<{ id: number; name: string; code?: string | null }[]>([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 25, total: 0 });
   const [summary, setSummary] = useState<{ by_entry_mode?: Record<string, number>; programmes?: number; total?: number } | null>(null);
+  const [fileId, setFileId] = useState<number | null>(null);
+  const [printingId, setPrintingId] = useState<number | null>(null);
+  const [docModal, setDocModal] = useState<{ title: string; html: string } | null>(null);
 
   const entryModeOptions = useMemo(
     () => channel.entryModes.map((mode) => ({
@@ -232,6 +242,18 @@ export function RegistrationsList({ channel }: Props) {
     }
   }, [channel.key, channel.showEntryMode, channel.title, filterParams, has]);
 
+  const openFormPrint = useCallback(async (id: number) => {
+    setPrintingId(id);
+    try {
+      const { data } = await api.get(`/api/applications/${id}/form-print`, { responseType: 'text' });
+      setDocModal({ title: 'Student form', html: data });
+    } catch (err: any) {
+      message.error(err.response?.data?.message || 'Unable to open this form.');
+    } finally {
+      setPrintingId(null);
+    }
+  }, []);
+
   const downloadMenu: MenuProps['items'] = [
     {
       key: 'pdf',
@@ -262,7 +284,20 @@ export function RegistrationsList({ channel }: Props) {
         ellipsis: true,
         render: (_, row) => (
           <div className="overflow-hidden">
-            <div className="font-medium text-slate-800 truncate">{studentName(row)}</div>
+            <button
+              type="button"
+              className="font-medium text-sky-700 hover:underline truncate block max-w-full text-left"
+              onClick={() => {
+                const id = applicationIdOf(row);
+                if (!id) {
+                  message.error('This student has no application file to open.');
+                  return;
+                }
+                setFileId(id);
+              }}
+            >
+              {studentName(row)}
+            </button>
             <div className="text-xs text-slate-500 truncate">{row.user?.email || '—'}</div>
           </div>
         ),
@@ -307,6 +342,27 @@ export function RegistrationsList({ channel }: Props) {
         key: 'tuition',
         width: 100,
         render: () => <Tag color="success">Paid</Tag>,
+      },
+      {
+        title: '',
+        key: 'open',
+        width: 90,
+        render: (_, row) => (
+          <Button
+            type="link"
+            className="!px-0"
+            onClick={() => {
+              const id = applicationIdOf(row);
+              if (!id) {
+                message.error('This student has no application file to open.');
+                return;
+              }
+              setFileId(id);
+            }}
+          >
+            Open file
+          </Button>
+        ),
       },
     );
 
@@ -442,7 +498,7 @@ export function RegistrationsList({ channel }: Props) {
           loading={loading}
           columns={columns}
           dataSource={rows}
-          scroll={{ x: channel.showEntryMode ? 1100 : 980 }}
+          scroll={{ x: channel.showEntryMode ? 1200 : 1080 }}
           tableLayout="fixed"
           pagination={{
             current: pagination.current,
@@ -456,6 +512,40 @@ export function RegistrationsList({ channel }: Props) {
           locale={{ emptyText: hasActiveFilters ? 'No registrations match your filters.' : 'No registered students yet.' }}
         />
       </section>
+
+      <ApplicationFileDrawer
+        mode="student"
+        applicationId={fileId}
+        open={fileId != null}
+        onClose={() => setFileId(null)}
+        onPrintForm={() => fileId && openFormPrint(fileId)}
+        printing={fileId != null && printingId === fileId}
+        onSaved={() => load(pagination.current)}
+      />
+
+      <Modal
+        open={!!docModal}
+        title={docModal?.title || 'Document'}
+        onCancel={() => setDocModal(null)}
+        footer={[
+          <Button key="print" icon={<Printer size={14} />} onClick={() => {
+            const frame = document.getElementById('registrations-doc-frame') as HTMLIFrameElement | null;
+            frame?.contentWindow?.focus();
+            frame?.contentWindow?.print();
+          }}>Print</Button>,
+          <Button key="close" type="primary" onClick={() => setDocModal(null)}>Close</Button>,
+        ]}
+        width={900}
+      >
+        {docModal && (
+          <iframe
+            id="registrations-doc-frame"
+            title={docModal.title}
+            srcDoc={docModal.html}
+            className="w-full h-[70vh] border border-slate-200 rounded-lg bg-white"
+          />
+        )}
+      </Modal>
     </div>
   );
 }

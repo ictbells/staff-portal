@@ -10,6 +10,7 @@ import { accessibleAcademicResources } from './access';
 import {
   ADMISSION_SETUP_RESOURCES,
   APPLICATION_SETUP_RESOURCES,
+  ENROLMENT_RESOURCES,
   ACADEMIC_RESOURCES,
   type AcademicResource,
 } from './constants';
@@ -83,9 +84,18 @@ export default function AcademicLayout() {
     ),
     [auth?.nav_link_keys, auth?.nav_unrestricted, has],
   );
+  const enrolmentLinks = useMemo(
+    () => accessibleAcademicResources(
+      ENROLMENT_RESOURCES,
+      has,
+      auth?.nav_unrestricted,
+      auth?.nav_link_keys,
+    ),
+    [auth?.nav_link_keys, auth?.nav_unrestricted, has],
+  );
   const allLinks = useMemo(
-    () => [...admissionLinks, ...applicationLinks],
-    [admissionLinks, applicationLinks],
+    () => [...admissionLinks, ...applicationLinks, ...enrolmentLinks],
+    [admissionLinks, applicationLinks, enrolmentLinks],
   );
 
   if (!allLinks.length) {
@@ -131,6 +141,13 @@ export default function AcademicLayout() {
             pathname={location.pathname}
             open={openDropdown === 'application-setup'}
             onOpenChange={(next) => setOpenDropdown(next ? 'application-setup' : null)}
+          />
+          <SetupDropdown
+            label="Enrolment"
+            links={enrolmentLinks}
+            pathname={location.pathname}
+            open={openDropdown === 'enrolment'}
+            onOpenChange={(next) => setOpenDropdown(next ? 'enrolment' : null)}
           />
         </nav>
       </div>

@@ -27,6 +27,7 @@ import {
   ACADEMIC_RESOURCES,
   ADMISSION_SETUP_RESOURCES,
   APPLICATION_SETUP_RESOURCES,
+  ENROLMENT_RESOURCES,
   type AcademicResource,
 } from '../pages/academic/constants';
 import { ADMISSIONS_CHANNELS } from '../pages/admissions/constants';
@@ -138,7 +139,14 @@ export const navSections: NavSection[] = [
         icon: Settings2,
         items: APPLICATION_SETUP_RESOURCES.map((r) => academicNavItem(r)),
       },
+      {
+        key: 'enrolment',
+        label: 'Enrolment',
+        icon: ClipboardList,
+        items: ENROLMENT_RESOURCES.map((r) => academicNavItem(r)),
+      },
       { key: 'pg', to: '/pg', label: 'PG research', perm: 'pg.view', icon: Award },
+      { key: 'exam-clearance', to: '/exam-clearance', label: 'Exam clearance', perm: 'exam_clearance.view', icon: ClipboardList },
     ],
   },
   {
