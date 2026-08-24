@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Dropdown, Input, Modal, Select, Table, Tag, message } from 'antd';
+import { useNavigate } from 'react-router-dom';
+import { Button, Dropdown, Input, Modal, Select, Space, Table, Tag, message } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { MenuProps } from 'antd';
 import {
@@ -35,6 +36,10 @@ type RegistrationRow = {
     entry_mode?: string;
     intake?: { name?: string; term?: { session_label?: string } };
   };
+  tuition_percent?: number;
+  course_reg_status?: string;
+  enrolled_units?: number;
+  extension_status?: string | null;
 };
 
 function entryModeLabel(mode: string) {
@@ -57,6 +62,7 @@ type Props = {
 
 export function RegistrationsList({ channel }: Props) {
   const { has } = useAuth();
+  const navigate = useNavigate();
   const [rows, setRows] = useState<RegistrationRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -65,6 +71,7 @@ export function RegistrationsList({ channel }: Props) {
   const [entryModeFilter, setEntryModeFilter] = useState('');
   const [sessionFilter, setSessionFilter] = useState<number | undefined>(undefined);
   const [programFilter, setProgramFilter] = useState<number | undefined>(undefined);
+  const [courseRegFilter, setCourseRegFilter] = useState('');
   const [sessions, setSessions] = useState<{ id: number; session_label: string; name?: string; is_current?: boolean }[]>([]);
   const [programs, setPrograms] = useState<{ id: number; name: string; code?: string | null }[]>([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 25, total: 0 });
@@ -97,7 +104,7 @@ export function RegistrationsList({ channel }: Props) {
     [programs],
   );
 
-  const hasActiveFilters = !!(search || entryModeFilter || sessionFilter || programFilter);
+  const hasActiveFilters = !!(search || entryModeFilter || sessionFilter || programFilter || courseRegFilter);
 
   const load = useCallback(async (
     page = 1,
@@ -107,6 +114,7 @@ export function RegistrationsList({ channel }: Props) {
       entryMode?: string;
       session?: number | undefined;
       program?: number | undefined;
+      courseReg?: string;
     },
   ) => {
     setLoading(true);
@@ -115,12 +123,14 @@ export function RegistrationsList({ channel }: Props) {
       const nextEntryMode = overrides && 'entryMode' in overrides ? overrides.entryMode ?? '' : entryModeFilter;
       const nextSession = overrides && 'session' in overrides ? overrides.session : sessionFilter;
       const nextProgram = overrides && 'program' in overrides ? overrides.program : programFilter;
+      const nextCourseReg = overrides && 'courseReg' in overrides ? overrides.courseReg ?? '' : courseRegFilter;
       const { data } = await api.get('/api/registrations', {
         params: {
           entry_modes: channel.entryModes.join(','),
           entry_mode: nextEntryMode || undefined,
           academic_session_id: nextSession || undefined,
           program_id: nextProgram || undefined,
+          course_reg_status: nextCourseReg || undefined,
           search: nextSearch || undefined,
           page,
           per_page: pageSize,
@@ -139,7 +149,7 @@ export function RegistrationsList({ channel }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [channel.entryModes, entryModeFilter, pagination.pageSize, programFilter, search, sessionFilter]);
+  }, [channel.entryModes, courseRegFilter, entryModeFilter, pagination.pageSize, programFilter, search, sessionFilter]);
 
   useEffect(() => {
     api.get('/api/registrations/sessions')
@@ -163,17 +173,19 @@ export function RegistrationsList({ channel }: Props) {
     setEntryModeFilter('');
     setSessionFilter(undefined);
     setProgramFilter(undefined);
+    setCourseRegFilter('');
     load(1, pagination.pageSize, {
       search: '',
       entryMode: '',
       session: undefined,
       program: undefined,
+      courseReg: '',
     });
   }, [channel.key]);
 
   useEffect(() => {
     load(1);
-  }, [search, entryModeFilter, sessionFilter, programFilter]);
+  }, [search, entryModeFilter, sessionFilter, programFilter, courseRegFilter]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -188,8 +200,9 @@ export function RegistrationsList({ channel }: Props) {
     entry_mode: entryModeFilter || undefined,
     academic_session_id: sessionFilter || undefined,
     program_id: programFilter || undefined,
+    course_reg_status: courseRegFilter || undefined,
     search: search || undefined,
-  }), [channel.entryModes, entryModeFilter, programFilter, search, sessionFilter]);
+  }), [channel.entryModes, courseRegFilter, entryModeFilter, programFilter, search, sessionFilter]);
 
   const download = useCallback(async (format: 'pdf' | 'excel' | 'word') => {
     if (!has('registrations.view')) {
@@ -338,36 +351,65 @@ export function RegistrationsList({ channel }: Props) {
         render: (_, row) => row.application?.intake?.term?.session_label || '—',
       },
       {
-        title: 'Tuition',
+        title: 'Tuition %',
         key: 'tuition',
-        width: 100,
-        render: () => <Tag color="success">Paid</Tag>,
+        width: 110,
+        render: (_, row) => `${Math.round(Number(row.tuition_percent ?? 0))}%`,
+      },
+      {
+        title: 'Course reg.',
+        key: 'course_reg',
+        width: 130,
+        render: (_, row) => {
+          const status = row.course_reg_status || 'not_started';
+          const label = status === 'registered' ? 'Registered' : status === 'in_progress' ? 'In progress' : 'Not started';
+          return <Tag color={status === 'registered' ? 'success' : status === 'in_progress' ? 'processing' : 'default'}>{label}</Tag>;
+        },
+      },
+      {
+        title: 'Units',
+        key: 'units',
+        width: 80,
+        render: (_, row) => row.enrolled_units ?? 0,
+      },
+      {
+        title: 'Extension',
+        key: 'extension',
+        width: 110,
+        render: (_, row) => row.extension_status || '—',
       },
       {
         title: '',
         key: 'open',
-        width: 90,
+        width: 140,
         render: (_, row) => (
-          <Button
-            type="link"
-            className="!px-0"
-            onClick={() => {
-              const id = applicationIdOf(row);
-              if (!id) {
-                message.error('This student has no application file to open.');
-                return;
-              }
-              setFileId(id);
-            }}
-          >
-            Open file
-          </Button>
+          <Space size={4}>
+            <Button
+              type="link"
+              className="!px-0"
+              onClick={() => {
+                const id = applicationIdOf(row);
+                if (!id) {
+                  message.error('This student has no application file to open.');
+                  return;
+                }
+                setFileId(id);
+              }}
+            >
+              Open file
+            </Button>
+            {has('academic.enrollments.manage') && (
+              <Button type="link" className="!px-0" onClick={() => navigate(`/academic/course-registration?student_id=${row.id}`)}>
+                Courses
+              </Button>
+            )}
+          </Space>
         ),
       },
     );
 
     return cols;
-  }, [channel.showEntryMode]);
+  }, [channel.showEntryMode, has, navigate]);
 
   const onTableChange = (next: TablePaginationConfig) => {
     const page = next.current ?? 1;
@@ -403,7 +445,7 @@ export function RegistrationsList({ channel }: Props) {
         <StatCard
           label="Registered"
           value={registeredTotal}
-          hint={hasActiveFilters && !entryModeFilter ? 'Matching current filters' : 'Tuition paid and matriculated'}
+          hint={hasActiveFilters && !entryModeFilter ? 'Matching current filters' : 'At least 25% tuition paid and matriculated'}
           icon={GraduationCap}
           tone="sky"
           active={!entryModeFilter}
@@ -467,6 +509,19 @@ export function RegistrationsList({ channel }: Props) {
                 onChange={(value) => setSessionFilter(value)}
                 options={sessionOptions}
               />
+              <Select
+                allowClear
+                className="w-full min-w-[160px] sm:w-auto sm:min-w-[180px]"
+                size="large"
+                placeholder="Course registration"
+                value={courseRegFilter || undefined}
+                onChange={(value) => setCourseRegFilter(value || '')}
+                options={[
+                  { value: 'not_started', label: 'Not started' },
+                  { value: 'in_progress', label: 'In progress' },
+                  { value: 'registered', label: 'Registered' },
+                ]}
+              />
               {channel.showEntryMode && (
                 <Select
                   allowClear
@@ -498,7 +553,7 @@ export function RegistrationsList({ channel }: Props) {
           loading={loading}
           columns={columns}
           dataSource={rows}
-          scroll={{ x: channel.showEntryMode ? 1200 : 1080 }}
+          scroll={{ x: channel.showEntryMode ? 1500 : 1380 }}
           tableLayout="fixed"
           pagination={{
             current: pagination.current,

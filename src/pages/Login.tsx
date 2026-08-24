@@ -8,8 +8,8 @@ import TwoFactorPrompt from '../components/TwoFactorPrompt';
 import { Spinner } from '../components/ui';
 
 export default function Login() {
-  const [email, setEmail] = useState('admin@bellsuniversity.edu.ng');
-  const [password, setPassword] = useState('Password1!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

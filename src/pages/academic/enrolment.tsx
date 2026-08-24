@@ -434,7 +434,7 @@ export function UnitLimitsPage() {
   const [meta, setMeta] = useState<{ programs: any[]; levels: any[]; terms: Term[] }>({ programs: [], levels: [], terms: [] });
 
   useEffect(() => {
-    api.get('/api/unit-limits/meta').then(({ data }) => setMeta({
+    api.get('/api/academic/unit-limits/meta').then(({ data }) => setMeta({
       programs: data.programs || [],
       levels: data.levels || [],
       terms: data.terms || [],
