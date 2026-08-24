@@ -1,5 +1,9 @@
 # Standalone workflow for when this directory is its own git repository.
 # The monorepo runner is /.github/workflows/deploy-frontend.yml
+#
+# GitHub environments:
+#   development → S3 + CloudFront (AWS)
+#   production  → VPS
 name: Deploy staff frontend
 
 on:
@@ -7,44 +11,58 @@ on:
     branches: [main, master]
   workflow_dispatch:
     inputs:
-      target:
-        description: Deployment target
-        required: true
-        type: choice
-        options: [vps, aws]
       environment:
-        description: GitHub environment (vars and secrets)
+        description: GitHub environment (development = AWS, production = VPS)
         required: true
         type: choice
-        options: [staging, production]
-        default: production
+        options: [development, production]
+        default: development
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: deploy-frontend-${{ github.event.inputs.environment || vars.DEPLOY_ENVIRONMENT || 'production' }}
+  group: deploy-frontend-${{ github.event.inputs.environment || vars.DEPLOY_ENVIRONMENT || 'development' }}
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Deploy frontend (${{ github.event_name == 'workflow_dispatch' && inputs.target || vars.DEPLOY_TARGET || 'vps' }})
+    name: Deploy frontend
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || vars.DEPLOY_ENVIRONMENT || 'production' }}
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || vars.DEPLOY_ENVIRONMENT || 'development' }}
     env:
-      TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || vars.DEPLOY_TARGET || 'vps' }}
+      GH_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || vars.DEPLOY_ENVIRONMENT || 'development' }}
       VITE_API_URL: ${{ vars.VITE_API_URL }}
       VITE_STUDENT_URL: ${{ vars.VITE_STUDENT_URL || '/student' }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate target
+      - name: Resolve deploy target
+        id: resolve
+        env:
+          OVERRIDE: ${{ vars.DEPLOY_TARGET }}
         run: |
+          if [[ -n "$OVERRIDE" ]]; then
+            TARGET="$OVERRIDE"
+          elif [[ "$GH_ENV" == "development" ]]; then
+            TARGET="aws"
+          elif [[ "$GH_ENV" == "production" ]]; then
+            TARGET="vps"
+          else
+            echo "Unknown environment '$GH_ENV'. Use development (AWS) or production (VPS)." >&2
+            exit 1
+          fi
           if [[ "$TARGET" != "vps" && "$TARGET" != "aws" ]]; then
             echo "target must be vps or aws (got: $TARGET)" >&2
             exit 1
           fi
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "TARGET=$TARGET" >> "$GITHUB_ENV"
+          echo "Deploy environment=$GH_ENV target=$TARGET"
 
       - uses: actions/setup-node@v4
         with:
@@ -57,22 +75,28 @@ jobs:
           npm run build
 
       - name: Configure AWS (OIDC)
-        if: ${{ env.TARGET == 'aws' && secrets.AWS_ROLE_ARN != '' }}
+        if: ${{ steps.resolve.outputs.target == 'aws' && env.AWS_ROLE_ARN != '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       - name: Configure AWS (access keys)
-        if: ${{ env.TARGET == 'aws' && secrets.AWS_ROLE_ARN == '' && secrets.AWS_ACCESS_KEY_ID != '' }}
+        if: ${{ steps.resolve.outputs.target == 'aws' && env.AWS_ROLE_ARN == '' && env.AWS_ACCESS_KEY_ID != '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
+      - name: Require AWS credentials
+        if: ${{ steps.resolve.outputs.target == 'aws' && env.AWS_ROLE_ARN == '' && env.AWS_ACCESS_KEY_ID == '' }}
+        run: |
+          echo "Set AWS_ROLE_ARN (OIDC) or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY on the development environment." >&2
+          exit 1
+
       - name: Sync to S3
-        if: ${{ env.TARGET == 'aws' }}
+        if: ${{ steps.resolve.outputs.target == 'aws' }}
         env:
           BUCKET: ${{ vars.AWS_S3_BUCKET }}
           PREFIX: ${{ vars.AWS_S3_FRONTEND_PREFIX }}
@@ -85,7 +109,7 @@ jobs:
           aws s3 sync dist "$DEST" --delete --exact-timestamps
 
       - name: Invalidate CloudFront
-        if: ${{ env.TARGET == 'aws' && vars.AWS_CLOUDFRONT_DISTRIBUTION_ID != '' }}
+        if: ${{ steps.resolve.outputs.target == 'aws' && vars.AWS_CLOUDFRONT_DISTRIBUTION_ID != '' }}
         env:
           DISTRIBUTION: ${{ vars.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
           PREFIX: ${{ vars.AWS_S3_FRONTEND_PREFIX }}
@@ -97,7 +121,7 @@ jobs:
           aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION" --paths $PATHS
 
       - name: Deploy to VPS
-        if: ${{ env.TARGET == 'vps' }}
+        if: ${{ steps.resolve.outputs.target == 'vps' }}
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY || secrets.VPS_SSH_KEY }}
           HOST: ${{ vars.VPS_HOST }}
