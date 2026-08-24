@@ -22,9 +22,30 @@ import { RefreshButton } from '../components/RefreshButton';
 import OfficeStructureCards from '../components/OfficeStructureCards';
 import { PageHeader } from '../components/ui';
 
+type HeadStaff = { id: number; name: string; staff_number?: string } | null;
 type Subunit = { id: number; name: string; code?: string; description?: string; is_active: boolean; nav_keys?: string[] };
-type Unit = { id: number; name: string; code?: string; description?: string; is_active: boolean; nav_keys?: string[]; subunits: Subunit[] };
-type Department = { id: number; name: string; code?: string; description?: string; is_active: boolean; nav_keys?: string[]; units: Unit[] };
+type Unit = {
+  id: number;
+  name: string;
+  code?: string;
+  description?: string;
+  is_active: boolean;
+  nav_keys?: string[];
+  subunits: Subunit[];
+  head_staff?: HeadStaff;
+  needs_unit_head?: boolean;
+};
+type Department = {
+  id: number;
+  name: string;
+  code?: string;
+  description?: string;
+  is_active: boolean;
+  nav_keys?: string[];
+  units: Unit[];
+  head_staff?: HeadStaff;
+  needs_hod?: boolean;
+};
 
 type NavCatalogItem = { key: string; section: string; label: string; perm: string | null };
 
@@ -46,6 +67,9 @@ type TreeRow = {
   deleteMessage: string;
   nav_keys: string[];
   navLinksUrl: string;
+  head_staff_id?: number | null;
+  head_label?: string;
+  needs_head?: boolean;
   children?: TreeRow[];
 };
 
@@ -56,6 +80,7 @@ type FormValues = {
   is_active?: boolean;
   office_department_id?: number;
   office_unit_id?: number;
+  head_staff_id?: number | null;
 };
 
 const levelColors: Record<TreeRow['level'], string> = {
@@ -109,12 +134,15 @@ function buildTreeRows(tree: Department[]): TreeRow[] {
     deleteMessage: 'Delete this department and all its units?',
     nav_keys: d.nav_keys || [],
     navLinksUrl: `/api/office-departments/${d.id}/nav-links`,
+    head_staff_id: d.head_staff?.id ?? null,
+    head_label: d.head_staff?.name,
+    needs_head: !!d.needs_hod,
     children: d.units.length
       ? d.units.map((u) => ({
           key: `u-${u.id}`,
           id: u.id,
-          kind: 'unit',
-          level: 'Unit',
+          kind: 'unit' as const,
+          level: 'Unit' as const,
           name: u.name,
           code: u.code || '—',
           description: u.description,
@@ -125,6 +153,9 @@ function buildTreeRows(tree: Department[]): TreeRow[] {
           deleteMessage: 'Delete this unit and all its subunits?',
           nav_keys: u.nav_keys || [],
           navLinksUrl: `/api/office-units/${u.id}/nav-links`,
+          head_staff_id: u.head_staff?.id ?? null,
+          head_label: u.head_staff?.name,
+          needs_head: !!u.needs_unit_head,
           children: u.subunits.length
             ? u.subunits.map((s) => ({
                 key: `s-${s.id}`,
@@ -157,6 +188,7 @@ export default function OfficeSetup() {
   const [modalKind, setModalKind] = useState<ModalKind | null>(null);
   const [editingRow, setEditingRow] = useState<TreeRow | null>(null);
   const [linksRow, setLinksRow] = useState<TreeRow | null>(null);
+  const [staffOptions, setStaffOptions] = useState<{ value: number; label: string }[]>([]);
   const [navCatalog, setNavCatalog] = useState<NavCatalogItem[]>([]);
   const [selectedNavKeys, setSelectedNavKeys] = useState<string[]>([]);
   const [linksSubmitting, setLinksSubmitting] = useState(false);
@@ -180,6 +212,31 @@ export default function OfficeSetup() {
   useEffect(() => {
     api.get('/api/staff-nav/catalog').then((r) => setNavCatalog(r.data)).catch(() => setNavCatalog([]));
   }, []);
+
+  useEffect(() => {
+    if (modalKind !== 'department' && modalKind !== 'unit') {
+      setStaffOptions([]);
+      return;
+    }
+    const params: Record<string, number> = {};
+    if (modalKind === 'department' && editingRow) {
+      params.office_department_id = editingRow.id;
+    }
+    if (modalKind === 'unit') {
+      const departmentId = form.getFieldValue('office_department_id') || editingRow?.office_department_id;
+      if (departmentId) params.office_department_id = departmentId;
+      if (editingRow) params.office_unit_id = editingRow.id;
+    }
+    api.get('/api/office-staff-options', { params })
+      .then(({ data }) => {
+        const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+        setStaffOptions(list.map((row: { id: number; name?: string; email?: string; staff_number?: string }) => ({
+          value: row.id,
+          label: [row.name, row.staff_number, row.email].filter(Boolean).join(' · '),
+        })));
+      })
+      .catch(() => setStaffOptions([]));
+  }, [modalKind, editingRow]);
 
   const units = useMemo(
     () => tree.flatMap((d) => d.units.map((u) => ({ ...u, departmentName: d.name, departmentId: d.id }))),
@@ -207,6 +264,7 @@ export default function OfficeSetup() {
       is_active: row.active,
       office_department_id: row.office_department_id,
       office_unit_id: row.office_unit_id,
+      head_staff_id: row.head_staff_id ?? null,
     });
   };
 
@@ -305,12 +363,33 @@ export default function OfficeSetup() {
     return { departments: tree.length, units: unitCount, subunits: subunitCount };
   }, [tree]);
 
+  const missingHeads = useMemo(() => {
+    const missing: string[] = [];
+    tree.forEach((d) => {
+      if (d.needs_hod) missing.push(`${d.name} needs a head of department`);
+      d.units.forEach((u) => {
+        if (u.needs_unit_head) missing.push(`${d.name} › ${u.name} has subunits and needs a unit head`);
+      });
+    });
+    return missing;
+  }, [tree]);
+
   const columns: ColumnsType<TreeRow> = [
     {
       title: 'Name',
       dataIndex: 'name',
       key: 'name',
       render: (name: string) => <Typography.Text strong>{name}</Typography.Text>,
+    },
+    {
+      title: 'Head',
+      key: 'head',
+      width: 200,
+      render: (_, row) => {
+        if (row.kind === 'subunit') return <span className="text-slate-400">—</span>;
+        if (row.needs_head) return <Tag color="warning">Unassigned</Tag>;
+        return row.head_label || <span className="text-slate-400">—</span>;
+      },
     },
     {
       title: 'Level',
@@ -404,6 +483,18 @@ export default function OfficeSetup() {
       {error && !modalKind && !linksRow && (
         <Alert type="error" message={error} showIcon closable onClose={() => setError('')} />
       )}
+      {missingHeads.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          message="Heads still needed"
+          description={
+            <ul className="list-disc pl-4 mt-1 text-sm">
+              {missingHeads.map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          }
+        />
+      )}
 
       <OfficeStructureCards
         departments={counts.departments}
@@ -474,6 +565,20 @@ export default function OfficeSetup() {
           <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Name is required' }]}>
             <Input placeholder="Enter name" />
           </Form.Item>
+          {(modalKind === 'department' || modalKind === 'unit') && (
+            <Form.Item
+              name="head_staff_id"
+              label={modalKind === 'department' ? 'Head of department' : 'Unit head'}
+            >
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder="Select staff (must already work in this office)"
+                options={staffOptions}
+              />
+            </Form.Item>
+          )}
           <Form.Item name="code" label="Code">
             <Input placeholder="Optional code" />
           </Form.Item>

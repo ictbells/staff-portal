@@ -6,6 +6,7 @@ import {
   Building2,
   FileText,
   FolderOpen,
+  ClipboardCheck,
   ClipboardList,
   GraduationCap,
   History,
@@ -100,6 +101,7 @@ export const navSections: NavSection[] = [
     title: 'Overview',
     items: [
       { key: 'home', to: '/', label: 'Home', perm: null, icon: Home },
+      { key: 'approvals', to: '/approvals', label: 'Approvals', perm: null, icon: ClipboardCheck },
       { key: 'students', to: '/students', label: 'Students', perm: 'students.view_any', icon: GraduationCap },
     ],
   },

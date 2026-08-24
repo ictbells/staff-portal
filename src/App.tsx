@@ -13,6 +13,7 @@ import Roles from './pages/Roles';
 import Permissions from './pages/Permissions';
 import Profile from './pages/Profile';
 import OfficeSetup from './pages/OfficeSetup';
+import OfficeApprovals from './pages/OfficeApprovals';
 import AcademicLayout from './pages/academic/AcademicLayout';
 import { AcademicResourceGuard } from './pages/academic/AcademicResourceGuard';
 import {
@@ -123,6 +124,7 @@ export default function App() {
         <Route path="roles" element={<Roles />} />
         <Route path="permissions" element={<Permissions />} />
         <Route path="office-setup" element={<OfficeSetup />} />
+        <Route path="approvals" element={<OfficeApprovals />} />
         <Route path="institution" element={<Institution />} />
         <Route path="audit" element={<Audit />} />
         <Route path="reports" element={<ReportsHome />} />

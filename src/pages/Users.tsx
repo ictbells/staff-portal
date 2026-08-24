@@ -27,6 +27,8 @@ type UserRow = {
     office_unit_id?: number | null;
     office_subunit_id?: number | null;
     office_placement?: string;
+    is_office_hod?: boolean;
+    is_office_unit_head?: boolean;
   } | null;
   student?: unknown;
 };
@@ -525,7 +527,13 @@ export default function Users() {
       title: 'Name',
       dataIndex: 'name',
       key: 'name',
-      render: (name: string) => <span className="font-medium text-slate-800">{name}</span>,
+      render: (name: string, u) => (
+        <span className="font-medium text-slate-800">
+          {name}
+          {u.staff?.is_office_hod && <Tag className="ml-2" color="blue">HOD</Tag>}
+          {u.staff?.is_office_unit_head && <Tag className="ml-2" color="purple">Unit head</Tag>}
+        </span>
+      ),
     },
     {
       title: 'Email',

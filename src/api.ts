@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { message } from 'antd';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '',
@@ -14,7 +15,12 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    if (res.status === 202 && res.data?.status === 'pending_approval') {
+      message.info(res.data.message || 'Sent for office approval.');
+    }
+    return res;
+  },
   (err) => {
     const code = err.response?.data?.code;
     if (err.response?.status === 401 && !window.location.pathname.includes('/login') && !window.location.pathname.includes('/payments/callback')) {

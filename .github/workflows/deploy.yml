@@ -33,8 +33,8 @@ jobs:
     environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || vars.DEPLOY_ENVIRONMENT || 'development' }}
     env:
       GH_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || vars.DEPLOY_ENVIRONMENT || 'development' }}
-      VITE_API_URL: ${{ vars.VITE_API_URL }}
-      VITE_STUDENT_URL: ${{ vars.VITE_STUDENT_URL || '/student' }}
+          VITE_API_URL: ${{ vars.VITE_API_URL || secrets.VITE_API_URL }}
+          VITE_STUDENT_URL: ${{ vars.VITE_STUDENT_URL || secrets.VITE_STUDENT_URL || '/student' }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -98,22 +98,35 @@ jobs:
       - name: Sync to S3
         if: ${{ steps.resolve.outputs.target == 'aws' }}
         env:
-          BUCKET: ${{ vars.AWS_S3_BUCKET }}
-          PREFIX: ${{ vars.AWS_S3_FRONTEND_PREFIX }}
+          FROM_STAFF_VAR: ${{ vars.AWS_S3_STAFF_BUCKET }}
+          FROM_STAFF_SECRET: ${{ secrets.AWS_S3_STAFF_BUCKET }}
+          FROM_SHARED_VAR: ${{ vars.AWS_S3_BUCKET }}
+          FROM_SHARED_SECRET: ${{ secrets.AWS_S3_BUCKET }}
+          PROJECT: ${{ vars.PROJECT_NAME || secrets.PROJECT_NAME || 'bells-sis' }}
+          PREFIX: ${{ vars.AWS_S3_FRONTEND_PREFIX || secrets.AWS_S3_FRONTEND_PREFIX }}
         run: |
           set -euo pipefail
-          if [[ -z "$BUCKET" ]]; then echo "AWS_S3_BUCKET is required." >&2; exit 1; fi
+          BUCKET="${FROM_STAFF_VAR:-${FROM_STAFF_SECRET:-${FROM_SHARED_VAR:-${FROM_SHARED_SECRET:-}}}}"
+          if [[ -z "$BUCKET" ]]; then
+            ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+            BUCKET="${PROJECT}-staff-${ACCOUNT}"
+          fi
+          echo "Using s3://${BUCKET}/"
           DEST="s3://$BUCKET"
           PREFIX="${PREFIX#/}"; PREFIX="${PREFIX%/}"
           [[ -n "$PREFIX" ]] && DEST="$DEST/$PREFIX"
           aws s3 sync dist "$DEST" --delete --exact-timestamps
 
       - name: Invalidate CloudFront
-        if: ${{ steps.resolve.outputs.target == 'aws' && vars.AWS_CLOUDFRONT_DISTRIBUTION_ID != '' }}
+        if: ${{ steps.resolve.outputs.target == 'aws' }}
         env:
-          DISTRIBUTION: ${{ vars.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
-          PREFIX: ${{ vars.AWS_S3_FRONTEND_PREFIX }}
+          DISTRIBUTION: ${{ vars.AWS_CLOUDFRONT_STAFF_ID || vars.AWS_CLOUDFRONT_DISTRIBUTION_ID || secrets.AWS_CLOUDFRONT_STAFF_ID || secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
+          PREFIX: ${{ vars.AWS_S3_FRONTEND_PREFIX || secrets.AWS_S3_FRONTEND_PREFIX }}
         run: |
+          if [[ -z "$DISTRIBUTION" ]]; then
+            echo "No CloudFront id set; skipping invalidation."
+            exit 0
+          fi
           PREFIX="${PREFIX#/}"; PREFIX="${PREFIX%/}"
           PATHS="/*"
           [[ -n "$PREFIX" ]] && PATHS="/$PREFIX /${PREFIX}/*"
@@ -127,7 +140,7 @@ jobs:
           HOST: ${{ vars.VPS_HOST }}
           USER: ${{ vars.VPS_USER }}
           PORT: ${{ vars.VPS_PORT || '22' }}
-          REMOTE_PATH: ${{ vars.VPS_FRONTEND_PATH || vars.VPS_PATH }}
+          REMOTE_PATH: ${{ vars.VPS_FRONTEND_PATH || vars.VPS_PATH || secrets.VPS_FRONTEND_PATH || secrets.VPS_PATH }}
         run: |
           set -euo pipefail
           if [[ -z "$HOST" || -z "$USER" || -z "$REMOTE_PATH" ]]; then

@@ -25,6 +25,8 @@ export type AuthState = {
   is_staff?: boolean;
   nav_unrestricted?: boolean;
   nav_link_keys?: string[] | null;
+  is_office_hod?: boolean;
+  is_office_unit_head?: boolean;
   security?: SecurityPolicy;
   lifecycle_stage?: string;
   unpaid_application_fee?: boolean;
