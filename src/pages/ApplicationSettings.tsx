@@ -1,9 +1,31 @@
-import { FormEvent, useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
-import { Switch, message } from 'antd';
+import { FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { Button, InputNumber, Select, Switch, message } from 'antd';
+import type { LucideIcon } from 'lucide-react';
+import {
+  Building2,
+  ClipboardCheck,
+  Clock,
+  GraduationCap,
+  Mail,
+  Phone,
+  Save,
+  Settings,
+  ShieldCheck,
+  Users,
+} from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../auth';
-import { Btn, Card, PageHeader, Spinner } from '../components/ui';
+import { AccessDeniedPanel } from '../components/AccessDeniedPanel';
+import {
+  Badge,
+  Card,
+  fieldHelpClass,
+  fieldLabelClass,
+  inputClass,
+  Spinner,
+  StatCard,
+  WorkspaceHero,
+} from '../components/ui';
 
 type ExamClearanceSettings = {
   tuition_paid: boolean;
@@ -21,6 +43,9 @@ type SecuritySettings = {
   exam_clearance: ExamClearanceSettings;
   admissions_email: string;
   admissions_phone: string;
+  staff_support_label: string;
+  staff_support_email: string;
+  staff_support_phone: string;
   studentship_years_after_graduation: number;
 };
 
@@ -49,47 +74,167 @@ const INACTIVITY_OPTIONS = [
   { value: 120, label: '2 hours' },
 ];
 
+const EMPTY_SETTINGS: SecuritySettings = {
+  two_factor_enabled: false,
+  password_rotation_days: 0,
+  inactivity_logout_minutes: 0,
+  exam_clearance: DEFAULT_EXAM_CLEARANCE,
+  admissions_email: '',
+  admissions_phone: '',
+  staff_support_label: 'ICT & Registry support',
+  staff_support_email: '',
+  staff_support_phone: '',
+  studentship_years_after_graduation: 2,
+};
+
+function normalizeSettings(data: Partial<SecuritySettings> = {}): SecuritySettings {
+  return {
+    ...EMPTY_SETTINGS,
+    ...data,
+    exam_clearance: { ...DEFAULT_EXAM_CLEARANCE, ...(data.exam_clearance || {}) },
+    admissions_email: data.admissions_email || '',
+    admissions_phone: data.admissions_phone || '',
+    staff_support_label: data.staff_support_label || 'ICT & Registry support',
+    staff_support_email: data.staff_support_email || '',
+    staff_support_phone: data.staff_support_phone || '',
+    studentship_years_after_graduation: data.studentship_years_after_graduation || 2,
+  };
+}
+
+function optionLabel(options: { value: number; label: string }[], value: number) {
+  return options.find((option) => option.value === value)?.label || 'Disabled';
+}
+
+function Field({
+  label,
+  icon: Icon,
+  hint,
+  children,
+}: {
+  label: string;
+  icon?: LucideIcon;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="block min-w-0">
+      <span className={fieldLabelClass}>{label}</span>
+      {Icon ? (
+        <div className="relative">
+          <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+          {children}
+        </div>
+      ) : (
+        children
+      )}
+      {hint ? <p className={fieldHelpClass}>{hint}</p> : null}
+    </div>
+  );
+}
+
+function ToggleRow({
+  title,
+  description,
+  checked,
+  onChange,
+  children,
+}: {
+  title: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  children?: ReactNode;
+}) {
+  return (
+    <div className={`rounded-xl border px-4 py-3.5 transition ${checked ? 'border-sky-200 bg-sky-50/50' : 'border-slate-200 bg-white'}`}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="font-medium text-slate-800">{title}</div>
+          <p className="mt-0.5 text-sm text-slate-500">{description}</p>
+        </div>
+        <Switch checked={checked} onChange={onChange} />
+      </div>
+      {checked && children ? <div className="mt-3 border-t border-sky-100 pt-3">{children}</div> : null}
+    </div>
+  );
+}
+
+function ContactPreview({
+  eyebrow,
+  title,
+  email,
+  phone,
+}: {
+  eyebrow: string;
+  title: string;
+  email: string;
+  phone: string;
+}) {
+  if (!email && !phone) {
+    return (
+      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+        {title} will stay hidden until an email or phone number is saved.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl bg-gradient-to-br from-sky-700 to-sky-900 p-4 text-white shadow-sm">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-sky-200">{eyebrow}</p>
+      <p className="mt-1.5 flex items-start gap-2 text-sm font-semibold">
+        <Building2 className="mt-0.5 h-4 w-4 shrink-0 opacity-80" aria-hidden />
+        <span className="min-w-0 break-words">{title}</span>
+      </p>
+      {email ? (
+        <p className="mt-2 flex items-start gap-2 text-sm text-sky-100">
+          <Mail className="mt-0.5 h-4 w-4 shrink-0 opacity-80" aria-hidden />
+          <span className="min-w-0 break-all">{email}</span>
+        </p>
+      ) : null}
+      {phone ? (
+        <p className="mt-1.5 flex items-start gap-2 text-sm text-sky-100">
+          <Phone className="mt-0.5 h-4 w-4 shrink-0 opacity-80" aria-hidden />
+          <span className="min-w-0 break-words">{phone}</span>
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export default function ApplicationSettings() {
   const { has, loading: authLoading } = useAuth();
-  const [settings, setSettings] = useState<SecuritySettings>({
-    two_factor_enabled: false,
-    password_rotation_days: 0,
-    inactivity_logout_minutes: 0,
-    exam_clearance: DEFAULT_EXAM_CLEARANCE,
-    admissions_email: '',
-    admissions_phone: '',
-    studentship_years_after_graduation: 2,
-  });
+  const [settings, setSettings] = useState<SecuritySettings>(EMPTY_SETTINGS);
+  const [saved, setSaved] = useState<SecuritySettings>(EMPTY_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const applyPayload = (data: Partial<SecuritySettings>) => {
+    const next = normalizeSettings(data);
+    setSettings(next);
+    setSaved(next);
+  };
 
   useEffect(() => {
     api
       .get('/api/security-settings')
-      .then(({ data }) => setSettings({
-        ...data,
-        exam_clearance: { ...DEFAULT_EXAM_CLEARANCE, ...(data.exam_clearance || {}) },
-        admissions_email: data.admissions_email || '',
-        admissions_phone: data.admissions_phone || '',
-        studentship_years_after_graduation: data.studentship_years_after_graduation || 2,
-      }))
+      .then(({ data }) => applyPayload(data))
       .catch(() => message.error('Unable to load security settings.'))
       .finally(() => setLoading(false));
   }, []);
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const dirty = useMemo(() => JSON.stringify(settings) !== JSON.stringify(saved), [saved, settings]);
+  const examEnabledCount = useMemo(
+    () => Object.entries(settings.exam_clearance).filter(([key, value]) => key !== 'tuition_percent' && value).length,
+    [settings.exam_clearance],
+  );
+
+  const submit = async (e?: FormEvent) => {
+    e?.preventDefault();
     setSaving(true);
     try {
       const { data } = await api.put('/api/security-settings', settings);
-      setSettings({
-        ...data,
-        exam_clearance: { ...DEFAULT_EXAM_CLEARANCE, ...(data.exam_clearance || {}) },
-        admissions_email: data.admissions_email || '',
-        admissions_phone: data.admissions_phone || '',
-        studentship_years_after_graduation: data.studentship_years_after_graduation || 2,
-      });
-      message.success('Settings saved. Admissions contact is shown on the student login and signup pages.');
+      applyPayload(data);
+      message.success('Settings saved. Contact details are shown on the student and staff login pages.');
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to save settings.');
     } finally {
@@ -97,200 +242,285 @@ export default function ApplicationSettings() {
     }
   };
 
-  if (authLoading) {
-    return <div className="text-slate-500">Loading…</div>;
-  }
-  if (!has('settings.manage')) {
-    return <Navigate to="/" replace />;
+  if (authLoading || loading) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center text-slate-500">
+        <Spinner label="Loading settings…" />
+      </div>
+    );
   }
 
-  if (loading) {
-    return <div className="text-slate-500">Loading settings…</div>;
+  if (!has('settings.manage')) {
+    return <AccessDeniedPanel reason="missing_permission" resourceLabel="Application settings" />;
   }
+
+  const saveButton = (key: string) => (
+    <Button
+      key={key}
+      type="primary"
+      htmlType="submit"
+      icon={<Save className="h-4 w-4" />}
+      loading={saving}
+      disabled={!dirty && !saving}
+    >
+      {saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
+    </Button>
+  );
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <PageHeader
+    <form onSubmit={submit} className="space-y-5">
+      <WorkspaceHero
+        eyebrow="System"
         title="Application settings"
-        description="Staff security policies, student exam clearance, admissions contact, and studentship duration."
-      />
+        description="Policies that apply across staff security, login contact cards, studentship, and exam clearance."
+        icon={Settings}
+      >
+        {saveButton('hero')}
+      </WorkspaceHero>
 
-      <form onSubmit={submit} className="space-y-6">
-        <Card
-          title="Admissions contact"
-          description="This email and phone number appear on the student login and signup pages."
-        >
-          <div className="space-y-4">
-            <label className="block text-sm font-medium text-slate-700">
-              Email
-              <input
-                type="email"
-                className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
-                value={settings.admissions_email}
-                onChange={(e) => setSettings((s) => ({ ...s, admissions_email: e.target.value }))}
-                placeholder="admissions@bellsuniversity.edu.ng"
-              />
-            </label>
-            <label className="block text-sm font-medium text-slate-700">
-              Phone
-              <input
-                type="tel"
-                className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
-                value={settings.admissions_phone}
-                onChange={(e) => setSettings((s) => ({ ...s, admissions_phone: e.target.value }))}
-                placeholder="+234 801 000 0000"
-              />
-            </label>
-          </div>
-        </Card>
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <StatCard
+          label="Staff 2FA"
+          value={settings.two_factor_enabled ? 'Required' : 'Optional'}
+          hint="Authenticator app at sign-in"
+          icon={ShieldCheck}
+          tone={settings.two_factor_enabled ? 'emerald' : 'sky'}
+        />
+        <StatCard
+          label="Idle timeout"
+          value={settings.inactivity_logout_minutes ? `${settings.inactivity_logout_minutes} min` : 'Off'}
+          hint={optionLabel(INACTIVITY_OPTIONS, settings.inactivity_logout_minutes)}
+          icon={Clock}
+          tone={settings.inactivity_logout_minutes ? 'amber' : 'sky'}
+        />
+        <StatCard
+          label="Studentship"
+          value={`${settings.studentship_years_after_graduation} yr`}
+          hint="Portal access after conferment"
+          icon={GraduationCap}
+        />
+        <StatCard
+          label="Exam checks"
+          value={`${examEnabledCount} on`}
+          hint="Conditions students must meet"
+          icon={ClipboardCheck}
+          tone="emerald"
+        />
+      </div>
 
-        <Card
-          title="Studentship after graduation"
-          description="Graduates keep student-portal access until this many years after the registrar conferment date. After that they are marked alumni and cannot sign in."
-        >
-          <label className="block text-sm font-medium text-slate-700">
-            Years of studentship after conferment
-            <input
-              type="number"
-              min={1}
-              max={10}
-              className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
-              value={settings.studentship_years_after_graduation}
-              onChange={(e) => setSettings((s) => ({ ...s, studentship_years_after_graduation: Number(e.target.value) }))}
-            />
-          </label>
-        </Card>
-
-        <Card
-          title="Two-factor authentication (2FA)"
-          description="When enabled, every staff member must set up an authenticator app and enter a code at sign-in."
-        >
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="font-medium text-slate-800">Require 2FA for staff</div>
-              <p className="text-sm text-slate-500 mt-0.5">Uses TOTP apps such as Google Authenticator or Microsoft Authenticator.</p>
-            </div>
-            <Switch
-              checked={settings.two_factor_enabled}
-              onChange={(checked) => setSettings((s) => ({ ...s, two_factor_enabled: checked }))}
-            />
-          </div>
-        </Card>
-
-        <Card
-          title="Password change frequency"
-          description="Staff must change their password after the selected period. Set to disabled to turn this off."
-        >
-          <label className="block text-sm font-medium text-slate-700">
-            Rotation interval
-            <select
-              className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
-              value={settings.password_rotation_days}
-              onChange={(e) => setSettings((s) => ({ ...s, password_rotation_days: Number(e.target.value) }))}
-            >
-              {PASSWORD_ROTATION_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </label>
-        </Card>
-
-        <Card
-          title="Inactivity logout"
-          description="Staff are signed out automatically after this period without activity. Applies across all open tabs."
-        >
-          <label className="block text-sm font-medium text-slate-700">
-            Idle timeout
-            <select
-              className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
-              value={settings.inactivity_logout_minutes}
-              onChange={(e) => setSettings((s) => ({ ...s, inactivity_logout_minutes: Number(e.target.value) }))}
-            >
-              {INACTIVITY_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </label>
-        </Card>
-
-        <Card
-          title="Exam clearance"
-          description="Choose which conditions a student must meet before they are cleared to sit exams. Only enabled checks are enforced."
-        >
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <div className="font-medium text-slate-800">Tuition paid</div>
-                <p className="text-sm text-slate-500 mt-0.5">Require the selected percentage of billed tuition to be paid.</p>
+      <Card
+        title="Login contact"
+        description="These details appear on public sign-in pages. Leave a field blank to hide it."
+      >
+        <div className="grid gap-6 md:grid-cols-2">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-sky-600" aria-hidden />
+                <h3 className="text-sm font-semibold text-slate-800">Student portal</h3>
               </div>
-              <Switch
-                checked={settings.exam_clearance.tuition_paid}
-                onChange={(checked) => setSettings((s) => ({ ...s, exam_clearance: { ...s.exam_clearance, tuition_paid: checked } }))}
-              />
-            </div>
-            {settings.exam_clearance.tuition_paid && (
-              <label className="block text-sm font-medium text-slate-700">
-                Minimum tuition paid (%)
+              <Field label="Email" icon={Mail} hint="Shown on student login and signup.">
                 <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
-                  value={settings.exam_clearance.tuition_percent}
-                  onChange={(e) => setSettings((s) => ({
-                    ...s,
-                    exam_clearance: { ...s.exam_clearance, tuition_percent: Number(e.target.value) },
-                  }))}
+                  className={`${inputClass} pl-10`}
+                  type="email"
+                  value={settings.admissions_email}
+                  onChange={(e) => setSettings((s) => ({ ...s, admissions_email: e.target.value }))}
+                  placeholder="admissions@bellsuniversity.edu.ng"
                 />
-              </label>
-            )}
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <div className="font-medium text-slate-800">Course registration complete</div>
-                <p className="text-sm text-slate-500 mt-0.5">Student must finish registration for the current semester.</p>
-              </div>
-              <Switch
-                checked={settings.exam_clearance.courses_registered}
-                onChange={(checked) => setSettings((s) => ({ ...s, exam_clearance: { ...s.exam_clearance, courses_registered: checked } }))}
+              </Field>
+              <Field label="Phone" icon={Phone}>
+                <input
+                  className={`${inputClass} pl-10`}
+                  type="tel"
+                  value={settings.admissions_phone}
+                  onChange={(e) => setSettings((s) => ({ ...s, admissions_phone: e.target.value }))}
+                  placeholder="+234 801 000 0000"
+                />
+              </Field>
+              <ContactPreview
+                eyebrow="Student login"
+                title="Admissions contact"
+                email={settings.admissions_email}
+                phone={settings.admissions_phone}
               />
             </div>
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <div className="font-medium text-slate-800">No outstanding invoices</div>
-                <p className="text-sm text-slate-500 mt-0.5">All billed school charges (except application/acceptance fees) must be settled.</p>
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-sky-600" aria-hidden />
+                <h3 className="text-sm font-semibold text-slate-800">Staff portal</h3>
               </div>
-              <Switch
-                checked={settings.exam_clearance.no_outstanding_invoices}
-                onChange={(checked) => setSettings((s) => ({ ...s, exam_clearance: { ...s.exam_clearance, no_outstanding_invoices: checked } }))}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <div className="font-medium text-slate-800">Hostel fees if allocated</div>
-                <p className="text-sm text-slate-500 mt-0.5">If the student has a hostel bed, hostel invoices must be paid.</p>
-              </div>
-              <Switch
-                checked={settings.exam_clearance.hostel_if_allocated}
-                onChange={(checked) => setSettings((s) => ({ ...s, exam_clearance: { ...s.exam_clearance, hostel_if_allocated: checked } }))}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <div className="font-medium text-slate-800">Clinic bills cleared</div>
-                <p className="text-sm text-slate-500 mt-0.5">Unpaid clinic bills block exam clearance.</p>
-              </div>
-              <Switch
-                checked={settings.exam_clearance.clinic_bills_cleared}
-                onChange={(checked) => setSettings((s) => ({ ...s, exam_clearance: { ...s.exam_clearance, clinic_bills_cleared: checked } }))}
+              <Field label="Label">
+                <input
+                  className={inputClass}
+                  value={settings.staff_support_label}
+                  onChange={(e) => setSettings((s) => ({ ...s, staff_support_label: e.target.value }))}
+                  placeholder="ICT & Registry support"
+                />
+              </Field>
+              <Field label="Email" icon={Mail}>
+                <input
+                  className={`${inputClass} pl-10`}
+                  type="email"
+                  value={settings.staff_support_email}
+                  onChange={(e) => setSettings((s) => ({ ...s, staff_support_email: e.target.value }))}
+                  placeholder="ict@bellsuniversity.edu.ng"
+                />
+              </Field>
+              <Field label="Phone" icon={Phone}>
+                <input
+                  className={`${inputClass} pl-10`}
+                  type="tel"
+                  value={settings.staff_support_phone}
+                  onChange={(e) => setSettings((s) => ({ ...s, staff_support_phone: e.target.value }))}
+                  placeholder="+234 801 000 0000"
+                />
+              </Field>
+              <ContactPreview
+                eyebrow="Staff login"
+                title={settings.staff_support_label || 'ICT & Registry support'}
+                email={settings.staff_support_email}
+                phone={settings.staff_support_phone}
               />
             </div>
           </div>
-        </Card>
+      </Card>
 
-        <Btn type="submit" disabled={saving}>
-          {saving ? <Spinner label="Saving…" /> : 'Save settings'}
-        </Btn>
-      </form>
-    </div>
+      <div className="grid items-start gap-5 xl:grid-cols-2">
+          <Card
+            title="Staff security"
+            description="These policies apply to every staff account on the next sign-in."
+          >
+            <div className="space-y-3">
+              <ToggleRow
+                title="Require two-factor authentication"
+                description="Staff must set up an authenticator app and enter a code at sign-in."
+                checked={settings.two_factor_enabled}
+                onChange={(checked) => setSettings((s) => ({ ...s, two_factor_enabled: checked }))}
+              />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Password rotation" hint="Staff must change passwords when this interval expires.">
+                  <Select
+                    className="w-full"
+                    size="large"
+                    value={settings.password_rotation_days}
+                    onChange={(value) => setSettings((s) => ({ ...s, password_rotation_days: value }))}
+                    options={PASSWORD_ROTATION_OPTIONS}
+                  />
+                </Field>
+                <Field label="Inactivity logout" hint="Signs staff out across all open tabs.">
+                  <Select
+                    className="w-full"
+                    size="large"
+                    value={settings.inactivity_logout_minutes}
+                    onChange={(value) => setSettings((s) => ({ ...s, inactivity_logout_minutes: value }))}
+                    options={INACTIVITY_OPTIONS}
+                  />
+                </Field>
+              </div>
+            </div>
+          </Card>
+
+          <Card
+            title="Studentship after graduation"
+            description="Graduates keep student-portal access until this many years after registrar conferment. Then they become alumni and cannot sign in."
+          >
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+              <div className="min-w-0 flex-1">
+                <Field label="Years after conferment" hint="Allowed range is 1 to 10 years. Default is 2.">
+                  <InputNumber
+                    className="w-full"
+                    size="large"
+                    min={1}
+                    max={10}
+                    value={settings.studentship_years_after_graduation}
+                    onChange={(value) => setSettings((s) => ({
+                      ...s,
+                      studentship_years_after_graduation: Number(value || 2),
+                    }))}
+                  />
+                </Field>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 sm:max-w-xs">
+                Conferment date plus <span className="font-semibold text-slate-800">{settings.studentship_years_after_graduation}</span>
+                {' '}year{settings.studentship_years_after_graduation === 1 ? '' : 's'} becomes the studentship end date.
+              </div>
+            </div>
+          </Card>
+      </div>
+
+      <Card
+        title="Exam clearance"
+        description="Only enabled checks are enforced when a student is cleared to sit exams."
+        actions={<Badge variant={examEnabledCount ? 'success' : 'default'}>{examEnabledCount} active</Badge>}
+      >
+        <div className="grid gap-3 lg:grid-cols-2">
+          <ToggleRow
+            title="Tuition paid"
+            description="Require the selected percentage of billed tuition to be paid."
+            checked={settings.exam_clearance.tuition_paid}
+            onChange={(checked) => setSettings((s) => ({
+              ...s,
+              exam_clearance: { ...s.exam_clearance, tuition_paid: checked },
+            }))}
+          >
+            <Field label="Minimum tuition paid (%)">
+              <InputNumber
+                className="w-full"
+                size="large"
+                min={0}
+                max={100}
+                value={settings.exam_clearance.tuition_percent}
+                onChange={(value) => setSettings((s) => ({
+                  ...s,
+                  exam_clearance: { ...s.exam_clearance, tuition_percent: Number(value || 0) },
+                }))}
+              />
+            </Field>
+          </ToggleRow>
+          <ToggleRow
+            title="Course registration complete"
+            description="Student must finish registration for the current semester."
+            checked={settings.exam_clearance.courses_registered}
+            onChange={(checked) => setSettings((s) => ({
+              ...s,
+              exam_clearance: { ...s.exam_clearance, courses_registered: checked },
+            }))}
+          />
+          <ToggleRow
+            title="No outstanding invoices"
+            description="All billed school charges except application and acceptance fees must be settled."
+            checked={settings.exam_clearance.no_outstanding_invoices}
+            onChange={(checked) => setSettings((s) => ({
+              ...s,
+              exam_clearance: { ...s.exam_clearance, no_outstanding_invoices: checked },
+            }))}
+          />
+          <ToggleRow
+            title="Hostel fees if allocated"
+            description="If the student has a hostel bed, hostel invoices must be paid."
+            checked={settings.exam_clearance.hostel_if_allocated}
+            onChange={(checked) => setSettings((s) => ({
+              ...s,
+              exam_clearance: { ...s.exam_clearance, hostel_if_allocated: checked },
+            }))}
+          />
+          <ToggleRow
+            title="Clinic bills cleared"
+            description="Unpaid clinic bills block exam clearance."
+            checked={settings.exam_clearance.clinic_bills_cleared}
+            onChange={(checked) => setSettings((s) => ({
+              ...s,
+              exam_clearance: { ...s.exam_clearance, clinic_bills_cleared: checked },
+            }))}
+          />
+        </div>
+      </Card>
+
+      <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-lg shadow-slate-900/5 backdrop-blur">
+        <p className="text-sm text-slate-500">
+          {dirty ? 'You have unsaved changes.' : 'All application settings are saved.'}
+        </p>
+        {saveButton('footer')}
+      </div>
+    </form>
   );
 }

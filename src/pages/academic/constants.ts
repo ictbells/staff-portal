@@ -44,12 +44,26 @@ export const ENROLMENT_RESOURCES: AcademicResource[] = [
   { key: 'course-registration', path: '/academic/course-registration', label: 'Course registration', perm: 'academic.enrollments.manage' },
   { key: 'unit-limits', path: '/academic/unit-limits', label: 'Unit limits', perm: 'academic.enrollments.manage' },
   { key: 'registration-extensions', path: '/academic/registration-extensions', label: 'Registration extensions', perm: 'academic.extensions.review' },
+  { key: 'import-students', path: '/academic/import-students', label: 'Import students', perm: 'students.import' },
+];
+
+/** Result processing */
+export const RESULTS_RESOURCES: AcademicResource[] = [
+  { key: 'results', path: '/academic/results', label: 'Results dashboard', perm: 'results.read' },
+  { key: 'results-students', path: '/academic/results/students', label: 'Result entry', perm: 'results.read' },
+  { key: 'results-import', path: '/academic/results/import', label: 'CSV import', perm: 'results.import' },
+  { key: 'results-approvals', path: '/academic/results/approvals', label: 'Approvals', perm: 'results.submit' },
+  { key: 'results-board', path: '/academic/results/board', label: 'Board', perm: 'results.board' },
+  { key: 'results-release', path: '/academic/results/release', label: 'Release', perm: 'results.release' },
+  { key: 'results-grading-scale', path: '/academic/results/grading-scale', label: 'Grading scale', perm: 'scales.manage' },
+  { key: 'results-audit', path: '/academic/results/audit', label: 'Results audit', perm: 'results.read' },
 ];
 
 export const ACADEMIC_RESOURCES: AcademicResource[] = [
   ...ADMISSION_SETUP_RESOURCES,
   ...APPLICATION_SETUP_RESOURCES,
   ...ENROLMENT_RESOURCES,
+  ...RESULTS_RESOURCES,
 ];
 
 export function academicResourceByKey(key: string): AcademicResource | undefined {

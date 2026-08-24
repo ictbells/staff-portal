@@ -85,13 +85,14 @@ export function Students() {
           className="min-w-[200px]"
         />
       </div>
-      <DataTable empty={!items.length} emptyMessage="No student records found." colSpan={canGraduate ? 6 : 5}>
+      <DataTable empty={!items.length} emptyMessage="No student records found." colSpan={canGraduate ? 7 : 6}>
         <thead>
           <tr>
             <th className={thClass}>Name</th>
             <th className={thClass}>Matric no.</th>
             <th className={thClass}>Programme</th>
             <th className={thClass}>Status</th>
+            <th className={thClass}>Graduated</th>
             <th className={thClass}>Studentship ends</th>
             {canGraduate && <th className={thClass}>Actions</th>}
           </tr>
@@ -107,7 +108,12 @@ export function Students() {
                   <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">{s.matric_number || '—'}</code>
                 </td>
                 <td className={tdClass}>{s.program?.name || '—'}</td>
-                <td className={`${tdClass} capitalize`}>{s.status || 'active'}</td>
+                <td className={tdClass}>
+                  <Badge variant={s.status === 'alumni' ? 'default' : s.status === 'graduated' ? 'warning' : 'success'}>
+                    {s.status || 'active'}
+                  </Badge>
+                </td>
+                <td className={tdClass}>{s.graduated_at || '—'}</td>
                 <td className={tdClass}>{s.studentship_expires_at || '—'}</td>
                 {canGraduate && (
                   <td className={tdClass}>

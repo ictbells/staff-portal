@@ -7,10 +7,11 @@ import { useAuth } from '../../auth';
 import { AccessDeniedPanel } from '../../components/AccessDeniedPanel';
 import { PortalAccessNotice } from '../../components/PortalAccessNotice';
 import { accessibleAcademicResources } from './access';
-import {
+  import {
   ADMISSION_SETUP_RESOURCES,
   APPLICATION_SETUP_RESOURCES,
   ENROLMENT_RESOURCES,
+  RESULTS_RESOURCES,
   ACADEMIC_RESOURCES,
   type AcademicResource,
 } from './constants';
@@ -93,9 +94,18 @@ export default function AcademicLayout() {
     ),
     [auth?.nav_link_keys, auth?.nav_unrestricted, has],
   );
+  const resultsLinks = useMemo(
+    () => accessibleAcademicResources(
+      RESULTS_RESOURCES,
+      has,
+      auth?.nav_unrestricted,
+      auth?.nav_link_keys,
+    ),
+    [auth?.nav_link_keys, auth?.nav_unrestricted, has],
+  );
   const allLinks = useMemo(
-    () => [...admissionLinks, ...applicationLinks, ...enrolmentLinks],
-    [admissionLinks, applicationLinks, enrolmentLinks],
+    () => [...admissionLinks, ...applicationLinks, ...enrolmentLinks, ...resultsLinks],
+    [admissionLinks, applicationLinks, enrolmentLinks, resultsLinks],
   );
 
   if (!allLinks.length) {
@@ -148,6 +158,13 @@ export default function AcademicLayout() {
             pathname={location.pathname}
             open={openDropdown === 'enrolment'}
             onOpenChange={(next) => setOpenDropdown(next ? 'enrolment' : null)}
+          />
+          <SetupDropdown
+            label="Results"
+            links={resultsLinks}
+            pathname={location.pathname}
+            open={openDropdown === 'results'}
+            onOpenChange={(next) => setOpenDropdown(next ? 'results' : null)}
           />
         </nav>
       </div>

@@ -24,6 +24,9 @@ export function hasAcademicResourcePermission(
   if (LEGACY_INSTITUTION_KEYS.has(resource.key) && has('institution.manage')) {
     return true;
   }
+  if (resource.key === 'results-approvals' && (has('results.submit') || has('results.faculty_approve'))) {
+    return true;
+  }
 
   return false;
 }

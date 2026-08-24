@@ -24,8 +24,22 @@ import { GraduationPage } from './pages/academic/GraduationPage';
 import {
   CourseRegistrationPage, OfferingsPage, RegistrationExtensionsPage, UnitLimitsPage,
 } from './pages/academic/enrolment';
+import {
+  ResultsApprovalsPage,
+  ResultsAuditPage,
+  ResultsBoardPage,
+  ResultsDashboardPage,
+  ResultsGradingScalePage,
+  ResultsImportPage,
+  ResultsReleasePage,
+  ResultsStudentDetailPage,
+  ResultsStudentsPage,
+} from './pages/academic/results';
 import { CandidateDataPage } from './pages/academic/CandidateDataPage';
 import { ImportApplicantsPage } from './pages/academic/ImportApplicantsPage';
+import { ImportStudentsPage } from './pages/academic/ImportStudentsPage';
+import { ImportInvoicesPage } from './pages/finance/ImportInvoicesPage';
+import { ImportWalletPage } from './pages/finance/ImportWalletPage';
 import ApplicationSettings from './pages/ApplicationSettings';
 import ExamClearance from './pages/ExamClearance';
 import Resources from './pages/Resources';
@@ -102,11 +116,21 @@ export default function App() {
           <Route path="intakes" element={<AcademicResourceGuard resourceKey="intakes"><IntakesPage /></AcademicResourceGuard>} />
           <Route path="candidate-data" element={<AcademicResourceGuard resourceKey="candidate-data"><CandidateDataPage /></AcademicResourceGuard>} />
           <Route path="import-applicants" element={<AcademicResourceGuard resourceKey="import-applicants"><ImportApplicantsPage /></AcademicResourceGuard>} />
+          <Route path="import-students" element={<AcademicResourceGuard resourceKey="import-students"><ImportStudentsPage /></AcademicResourceGuard>} />
           <Route path="olevel" element={<AcademicResourceGuard resourceKey="olevel"><OlevelPage /></AcademicResourceGuard>} />
           <Route path="offerings" element={<AcademicResourceGuard resourceKey="offerings"><OfferingsPage /></AcademicResourceGuard>} />
           <Route path="course-registration" element={<AcademicResourceGuard resourceKey="course-registration"><CourseRegistrationPage /></AcademicResourceGuard>} />
           <Route path="unit-limits" element={<AcademicResourceGuard resourceKey="unit-limits"><UnitLimitsPage /></AcademicResourceGuard>} />
           <Route path="registration-extensions" element={<AcademicResourceGuard resourceKey="registration-extensions"><RegistrationExtensionsPage /></AcademicResourceGuard>} />
+          <Route path="results" element={<AcademicResourceGuard resourceKey="results"><ResultsDashboardPage /></AcademicResourceGuard>} />
+          <Route path="results/students" element={<AcademicResourceGuard resourceKey="results-students"><ResultsStudentsPage /></AcademicResourceGuard>} />
+          <Route path="results/students/:id" element={<AcademicResourceGuard resourceKey="results-students"><ResultsStudentDetailPage /></AcademicResourceGuard>} />
+          <Route path="results/import" element={<AcademicResourceGuard resourceKey="results-import"><ResultsImportPage /></AcademicResourceGuard>} />
+          <Route path="results/approvals" element={<AcademicResourceGuard resourceKey="results-approvals"><ResultsApprovalsPage /></AcademicResourceGuard>} />
+          <Route path="results/board" element={<AcademicResourceGuard resourceKey="results-board"><ResultsBoardPage /></AcademicResourceGuard>} />
+          <Route path="results/release" element={<AcademicResourceGuard resourceKey="results-release"><ResultsReleasePage /></AcademicResourceGuard>} />
+          <Route path="results/grading-scale" element={<AcademicResourceGuard resourceKey="results-grading-scale"><ResultsGradingScalePage /></AcademicResourceGuard>} />
+          <Route path="results/audit" element={<AcademicResourceGuard resourceKey="results-audit"><ResultsAuditPage /></AcademicResourceGuard>} />
         </Route>
         <Route path="academic-setup" element={<Navigate to="/academic/campuses" replace />} />
         <Route path="pg" element={<Pg />} />
@@ -118,6 +142,8 @@ export default function App() {
         <Route path="finance/generate" element={<GenerateInvoice />} />
         <Route path="finance/invoices" element={<Invoices />} />
         <Route path="finance/student-status" element={<StudentFinance />} />
+        <Route path="finance/import-invoices" element={<ImportInvoicesPage />} />
+        <Route path="finance/import-wallet" element={<ImportWalletPage />} />
         <Route path="medical" element={<Medical />} />
         <Route path="hostel" element={<HostelManagement />} />
         <Route path="documents" element={<Documents />} />

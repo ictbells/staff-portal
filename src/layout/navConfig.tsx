@@ -165,6 +165,8 @@ export const navSections: NavSection[] = [
           { key: 'finance', to: '/finance/generate', label: 'Generate invoice', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'finance', to: '/finance/invoices', label: 'Invoices', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'finance', to: '/finance/student-status', label: 'Students Financial Status', perm: 'finance.invoices.manage', icon: Wallet },
+          { key: 'import-invoices', to: '/finance/import-invoices', label: 'Import invoices', perm: 'finance.invoices.manage', icon: Wallet },
+          { key: 'import-wallet', to: '/finance/import-wallet', label: 'Import wallet history', perm: 'finance.invoices.manage', icon: Wallet },
         ],
       },
       { key: 'medical', to: '/medical', label: 'Clinic', perm: 'medical.view_any', icon: Stethoscope },
