@@ -11,6 +11,7 @@ import { useAuth } from '../auth';
 import { ConfirmDeleteButton } from '../components/ConfirmDeleteButton';
 import { RefreshButton } from '../components/RefreshButton';
 import { StatCard, WorkspaceHero } from '../components/ui';
+import { CatalogImportPanel } from './academic/CatalogImportPanel';
 
 type HostelBlockRow = {
   id: number;
@@ -1018,6 +1019,20 @@ export default function HostelManagement() {
                   showIcon
                   message="Set spaces via room capacity (beds are created automatically). Reserve a room to hold it off allocation. Disable a room to block all beds. In mixed hostels, room gender locks to the first occupant and clears when the room is empty."
                 />
+                {canManage && (
+                  <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                    <CatalogImportPanel
+                      templateUrl="/api/hostel-rooms/import-template"
+                      templateFilename="hostel-room-import-template.xlsx"
+                      importUrl="/api/hostel-rooms/import"
+                      description="Upload Excel with columns: hostel_id, block_id, number, capacity, plus optional gender and is_active. Copy ids from the Hostels and Blocks lookup sheets. The block must belong to that hostel. Matching room numbers in the same block are skipped."
+                      onImported={() => {
+                        loadRooms(roomHostelFilter);
+                        loadHostelsAndStats();
+                      }}
+                    />
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-3">
                   <Select
                     allowClear

@@ -56,7 +56,6 @@ export const RESULTS_RESOURCES: AcademicResource[] = [
   { key: 'results-board', path: '/academic/results/board', label: 'Board', perm: 'results.board' },
   { key: 'results-release', path: '/academic/results/release', label: 'Release', perm: 'results.release' },
   { key: 'results-grading-scale', path: '/academic/results/grading-scale', label: 'Grading scale', perm: 'scales.manage' },
-  { key: 'results-audit', path: '/academic/results/audit', label: 'Results audit', perm: 'results.read' },
 ];
 
 export const ACADEMIC_RESOURCES: AcademicResource[] = [

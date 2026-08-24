@@ -916,7 +916,7 @@ export function Invoices() {
         okText="Disable"
         okButtonProps={{ danger: true, loading: actingId === disableTarget?.id }}
         cancelButtonProps={{ disabled: actingId === disableTarget?.id }}
-        destroyOnClose
+        destroyOnHidden
       >
         <p className="mb-3 text-sm text-slate-600">
           Invoice <span className="font-mono font-medium">{disableTarget?.number}</span> will no longer be payable.
@@ -949,7 +949,7 @@ export function Invoices() {
           rebateForm.resetFields();
         }}
         footer={null}
-        destroyOnClose
+        destroyOnHidden
         width={560}
       >
         <p className="mb-3 text-sm text-slate-600">

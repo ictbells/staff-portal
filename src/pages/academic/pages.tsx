@@ -1,9 +1,8 @@
 import {
-  Alert, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tag, Upload, message,
+  Alert, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tag, message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import type { UploadFile } from 'antd/es/upload';
-import { Award, BookOpen, Building2, Download, GraduationCap, Plus, Upload as UploadIcon } from 'lucide-react';
+import { Award, BookOpen, Building2, GraduationCap, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api';
@@ -12,6 +11,7 @@ import { StatCard, WorkspaceHero } from '../../components/ui';
 import { RefreshButton } from '../../components/RefreshButton';
 import { ENTRY_MODES, STUDY_LEVELS } from './constants';
 import { actionColumn, formatDisplayDate, fromDateTimeValue, fromDateValue, toDateValue, useCrudModal } from './crudHelpers';
+import { CatalogImportPanel } from './CatalogImportPanel';
 import { patchResource, useResourceList } from './useResourceList';
 
 const COURSE_TYPES = [
@@ -174,7 +174,7 @@ function CrudModal({
       onCancel={onClose}
       onOk={onSubmit}
       confirmLoading={saving}
-      destroyOnClose
+      destroyOnHidden
       width={width}
     >
       <Form form={form} layout="vertical" className="mt-4">{children}</Form>
@@ -252,6 +252,13 @@ export function CollegesPage() {
         </div>
       )}
     >
+      <CatalogImportPanel
+        templateUrl="/api/academic/faculties/import-template"
+        templateFilename="college-import-template.xlsx"
+        importUrl="/api/academic/faculties/import"
+        description="Upload Excel with columns: name, campus_code, plus optional code. Matching codes (or the same name on the same campus) are skipped. Copy campus_code from the Campuses lookup sheet. Import colleges before departments."
+        onImported={reload}
+      />
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 700 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No colleges yet.' }} />
       <CrudModal title="college" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="campus_id" label="Campus" rules={[{ required: true }]}>
@@ -301,6 +308,13 @@ export function DepartmentsPage() {
         </div>
       )}
     >
+      <CatalogImportPanel
+        templateUrl="/api/academic/departments/import-template"
+        templateFilename="department-import-template.xlsx"
+        importUrl="/api/academic/departments/import"
+        description="Upload Excel with columns: name, college_code, plus optional code. Matching codes (or the same name in the same college) are skipped. Copy college_code from the Colleges lookup sheet. Import colleges first."
+        onImported={reload}
+      />
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 800 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No departments yet.' }} />
       <CrudModal title="department" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="faculty_id" label="College" rules={[{ required: true }]}>
@@ -564,7 +578,7 @@ export function SessionsPage() {
         onCancel={sessionCrud.close}
         onOk={submitSession}
         confirmLoading={sessionCrud.saving}
-        destroyOnClose
+        destroyOnHidden
         width={640}
       >
         <Form form={sessionCrud.form} layout="vertical" className="mt-4">
@@ -699,7 +713,7 @@ export function SessionsPage() {
         okText="Close session and promote"
         okButtonProps={{ danger: true, loading: closeSubmitting }}
         confirmLoading={closeLoading || closeSubmitting}
-        destroyOnClose
+        destroyOnHidden
       >
         <p className="text-sm text-slate-600">
           All active students move up one level until their programme final year. Final-year students stay unchanged and remain active.
@@ -845,6 +859,13 @@ export function ProgrammesPage() {
         </div>
       )}
     >
+      <CatalogImportPanel
+        templateUrl="/api/academic/programs/import-template"
+        templateFilename="programme-import-template.xlsx"
+        importUrl="/api/academic/programs/import"
+        description="Upload Excel with columns: name, department_code, award_type, study_level, duration_years, entry_modes, plus optional code. Matching codes (or the same name in the same department) are skipped. Copy department_code from the Departments lookup sheet. Import departments first."
+        onImported={reload}
+      />
       <Table rowKey="id" columns={columns} dataSource={visibleRows} loading={loading} scroll={{ x: 1500 }} pagination={{ pageSize: 15 }} locale={{ emptyText: modeFilter ? 'No programmes in this category.' : 'No programmes yet.' }} />
       <CrudModal title="programme" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit} width={640}>
         <Form.Item name="department_id" label="Department" rules={[{ required: true }]}>
@@ -961,8 +982,6 @@ export function CoursesPage() {
   const { rows: departments } = useResourceList<Department>('/api/academic/departments');
   const { rows: programs } = useResourceList<Program>('/api/academic/programs');
   const crud = useCrudModal<Course>();
-  const [fileList, setFileList] = useState<UploadFile[]>([]);
-  const [uploading, setUploading] = useState(false);
   const courseType = Form.useWatch('course_type', crud.form);
 
   const columns: ColumnsType<Course> = [
@@ -990,46 +1009,6 @@ export function CoursesPage() {
     await crud.save('/api/academic/courses', (id) => `/api/academic/courses/${id}`, values, reload);
   };
 
-  const downloadTemplate = async () => {
-    try {
-      const { data } = await api.get('/api/academic/courses/import-template', { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'course-catalogue-template.xlsx';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch {
-      message.error('Unable to download the catalogue template.');
-    }
-  };
-
-  const submitUpload = async () => {
-    const file = fileList[0]?.originFileObj;
-    if (!file) {
-      message.warning('Choose a spreadsheet file to upload.');
-      return;
-    }
-    const formData = new FormData();
-    formData.append('file', file);
-    setUploading(true);
-    try {
-      const { data } = await api.post('/api/academic/courses/import', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      const failed = Number(data.failed || 0);
-      message.success(`Imported ${data.created || 0} new and ${data.updated || 0} updated courses${failed ? `, ${failed} row error(s)` : ''}.`);
-      setFileList([]);
-      reload();
-    } catch (err: any) {
-      message.error(err.response?.data?.message || 'Unable to import the course catalogue.');
-    } finally {
-      setUploading(false);
-    }
-  };
-
   return (
     <ResourceShell
       title="Courses"
@@ -1040,27 +1019,14 @@ export function CoursesPage() {
       canAdd={departments.length > 0}
       count={rows.length}
       countLabel="Courses"
-      extra={(
-        <Button icon={<Download size={14} />} onClick={downloadTemplate}>Template</Button>
-      )}
     >
-      <div className="p-4 border-b border-slate-100 space-y-3">
-        <p className="text-sm text-slate-600">
-          Upload Excel with columns: code, title, units, course_type, department_code, programme_code, level_code.
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Upload
-            beforeUpload={() => false}
-            maxCount={1}
-            accept=".xlsx,.xls,.csv"
-            fileList={fileList}
-            onChange={({ fileList: next }) => setFileList(next)}
-          >
-            <Button icon={<UploadIcon size={14} />}>Choose file</Button>
-          </Upload>
-          <Button type="primary" loading={uploading} onClick={submitUpload}>Import catalogue</Button>
-        </div>
-      </div>
+      <CatalogImportPanel
+        templateUrl="/api/academic/courses/import-template"
+        templateFilename="course-catalogue-template.xlsx"
+        importUrl="/api/academic/courses/import"
+        description="Upload Excel with columns: code, title, department_code, plus optional units, course_type, programme_code, and level_code. Matching course codes are skipped. Copy codes from the Departments, Programmes, and Levels lookup sheets. Import programmes first."
+        onImported={reload}
+      />
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1000 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No courses yet.' }} />
       <CrudModal title="course" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="department_id" label="Department" rules={[{ required: true }]}>
@@ -1197,6 +1163,13 @@ export function OlevelPage() {
 
   return (
     <ResourceShell title="O'level subjects" description="Subjects applicants pick when entering WAEC/NECO results." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ is_active: true })} count={rows.length} countLabel="Subjects" eyebrow="Application setup">
+      <CatalogImportPanel
+        templateUrl="/api/academic/olevel-subjects/import-template"
+        templateFilename="olevel-import-template.xlsx"
+        importUrl="/api/academic/olevel-subjects/import"
+        description="Upload Excel with columns: name, plus optional code and is_active. Matching codes are skipped, or matching names when code is blank."
+        onImported={reload}
+      />
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 600 }} pagination={{ pageSize: 20 }} locale={{ emptyText: "No O'level subjects yet." }} />
       <CrudModal title="O'level subject" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="name" label="Subject name" rules={[{ required: true }]}><Input placeholder="English Language" /></Form.Item>

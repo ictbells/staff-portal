@@ -172,7 +172,7 @@ export function OfferingsPage() {
       countLabel="Offerings"
     >
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1100 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No offerings yet.' }} />
-      <Modal title={crud.isEdit ? 'Edit offering' : 'Add offering'} open={crud.open} onCancel={crud.close} onOk={submit} confirmLoading={crud.saving} destroyOnClose width={520}>
+      <Modal title={crud.isEdit ? 'Edit offering' : 'Add offering'} open={crud.open} onCancel={crud.close} onOk={submit} confirmLoading={crud.saving} destroyOnHidden width={520}>
         <Form form={crud.form} layout="vertical" className="mt-4">
           <Form.Item name="course_id" label="Course" rules={[{ required: true }]}>
             <Select showSearch optionFilterProp="label" options={courses.map((course) => ({ value: course.id, label: `${course.code} — ${course.title}` }))} />
@@ -481,7 +481,7 @@ export function UnitLimitsPage() {
       countLabel="Limits"
     >
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 900 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No unit limits yet.' }} />
-      <Modal title={crud.isEdit ? 'Edit unit limit' : 'Add unit limit'} open={crud.open} onCancel={crud.close} onOk={submit} confirmLoading={crud.saving} destroyOnClose>
+      <Modal title={crud.isEdit ? 'Edit unit limit' : 'Add unit limit'} open={crud.open} onCancel={crud.close} onOk={submit} confirmLoading={crud.saving} destroyOnHidden>
         <Form form={crud.form} layout="vertical" className="mt-4">
           <Form.Item name="program_id" label="Programme" rules={[{ required: true }]}>
             <Select showSearch optionFilterProp="label" options={meta.programs.map((program) => ({ value: program.id, label: program.code ? `${program.code} — ${program.name}` : program.name }))} />

@@ -859,7 +859,7 @@ export default function ClinicWorkspace() {
         width={840}
         open={!!visitId}
         onClose={() => { setVisitId(null); setVisit(null); }}
-        destroyOnClose
+        destroyOnHidden
       >
         {visit && (
           <div className="space-y-5">

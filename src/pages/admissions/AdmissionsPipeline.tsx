@@ -964,7 +964,7 @@ export function AdmissionsPipeline({ channel }: Props) {
         onCancel={() => setDocModal(null)}
         width={920}
         centered
-        destroyOnClose
+        destroyOnHidden
         footer={[
           <Button key="print" onClick={printDocModal}>Print</Button>,
           <Button key="download" onClick={downloadDocModal}>Download</Button>,
@@ -993,7 +993,7 @@ export function AdmissionsPipeline({ channel }: Props) {
           await move(offerModal.id, 'offer_issued', undefined, acceptanceAmount);
           setOfferModal(null);
         }}
-        destroyOnClose
+        destroyOnHidden
       >
         <p className="text-sm text-slate-600 mb-4">
           Set the acceptance fee for this applicant. Leave blank to use the window default or fee catalog amount.

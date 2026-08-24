@@ -4,6 +4,7 @@ import {
   Alert, Button, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, Upload, message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { ClipboardList } from 'lucide-react';
 import { RefreshButton } from '../../components/RefreshButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 import api from '../../api';
@@ -21,7 +22,7 @@ function ResourceShell({
 }) {
   return (
     <div className="space-y-4">
-      <WorkspaceHero title={title} description={description} />
+      <WorkspaceHero eyebrow="Results" title={title} description={description} icon={ClipboardList} />
       <div className="flex flex-wrap items-center gap-2">
         <RefreshButton loading={loading} onClick={onRefresh} />
         {extra}
@@ -81,7 +82,7 @@ export function ResultsDashboardPage() {
     <ResourceShell title="Results" description="Result processing overview by workflow status." loading={loading} onRefresh={load}>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {Object.entries(counts).map(([status, total]) => (
-          <StatCard key={status} label={String(status).replace(/_/g, ' ')} value={String(total)} />
+          <StatCard key={status} label={String(status).replace(/_/g, ' ')} value={String(total)} icon={ClipboardList} />
         ))}
       </div>
       <div className="flex flex-wrap gap-2 pt-2">
@@ -479,37 +480,6 @@ export function ResultsGradingScalePage() {
         </Form.List>
         <Button type="primary" htmlType="submit" className="mt-3">Save scale</Button>
       </Form>
-    </ResourceShell>
-  );
-}
-
-export function ResultsAuditPage() {
-  const [loading, setLoading] = useState(false);
-  const [rows, setRows] = useState<any[]>([]);
-  const load = useCallback(() => {
-    setLoading(true);
-    api.get('/api/academic/results/audit', { params: { per_page: 50 } })
-      .then((r) => setRows(r.data?.data || []))
-      .catch(() => message.error('Could not load audit'))
-      .finally(() => setLoading(false));
-  }, []);
-  useEffect(() => { load(); }, [load]);
-  return (
-    <ResourceShell title="Results audit" description="Status and score change events." loading={loading} onRefresh={load}>
-      <Table
-        rowKey="id"
-        loading={loading}
-        dataSource={rows}
-        columns={[
-          { title: 'When', dataIndex: 'created_at' },
-          { title: 'Action', dataIndex: 'action' },
-          { title: 'From', dataIndex: 'from_status' },
-          { title: 'To', dataIndex: 'to_status' },
-          { title: 'Actor', render: (_, r) => r.actor?.name || r.actor?.email || '—' },
-          { title: 'Note', dataIndex: 'note' },
-        ]}
-        pagination={false}
-      />
     </ResourceShell>
   );
 }

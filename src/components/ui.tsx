@@ -29,13 +29,13 @@ export function WorkspaceHero({
   eyebrow,
   title,
   description,
-  icon: Icon,
+  icon: Icon = Inbox,
   children,
 }: {
   eyebrow?: string;
   title: string;
   description?: string;
-  icon: LucideIcon;
+  icon?: LucideIcon;
   children?: ReactNode;
 }) {
   return (
@@ -70,7 +70,7 @@ export function StatCard({
   label,
   value,
   hint,
-  icon: Icon,
+  icon: Icon = Inbox,
   tone = 'sky',
   active = false,
   onClick,
@@ -78,7 +78,7 @@ export function StatCard({
   label: string;
   value: ReactNode;
   hint?: string;
-  icon: LucideIcon;
+  icon?: LucideIcon;
   tone?: 'sky' | 'amber' | 'emerald' | 'rose';
   active?: boolean;
   onClick?: () => void;

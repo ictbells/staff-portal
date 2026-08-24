@@ -26,7 +26,6 @@ import {
 } from './pages/academic/enrolment';
 import {
   ResultsApprovalsPage,
-  ResultsAuditPage,
   ResultsBoardPage,
   ResultsDashboardPage,
   ResultsGradingScalePage,
@@ -130,7 +129,6 @@ export default function App() {
           <Route path="results/board" element={<AcademicResourceGuard resourceKey="results-board"><ResultsBoardPage /></AcademicResourceGuard>} />
           <Route path="results/release" element={<AcademicResourceGuard resourceKey="results-release"><ResultsReleasePage /></AcademicResourceGuard>} />
           <Route path="results/grading-scale" element={<AcademicResourceGuard resourceKey="results-grading-scale"><ResultsGradingScalePage /></AcademicResourceGuard>} />
-          <Route path="results/audit" element={<AcademicResourceGuard resourceKey="results-audit"><ResultsAuditPage /></AcademicResourceGuard>} />
         </Route>
         <Route path="academic-setup" element={<Navigate to="/academic/campuses" replace />} />
         <Route path="pg" element={<Pg />} />

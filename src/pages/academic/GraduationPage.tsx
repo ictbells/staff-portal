@@ -207,7 +207,7 @@ export function GraduationPage() {
         onOk={confirmConfer}
         okText="Confer selected students"
         confirmLoading={submitting}
-        destroyOnClose
+        destroyOnHidden
       >
         <p className="text-sm text-slate-600 mb-3">
           {selected.length} student(s) will be marked graduated. Studentship continues for the years set in Application settings, then the student portal is locked.
