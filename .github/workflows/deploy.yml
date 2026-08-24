@@ -1,0 +1,120 @@
+# Standalone workflow for when this directory is its own git repository.
+# The monorepo runner is /.github/workflows/deploy-frontend.yml
+name: Deploy staff frontend
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Deployment target
+        required: true
+        type: choice
+        options: [vps, aws]
+      environment:
+        description: GitHub environment (vars and secrets)
+        required: true
+        type: choice
+        options: [staging, production]
+        default: production
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-frontend-${{ github.event.inputs.environment || vars.DEPLOY_ENVIRONMENT || 'production' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy frontend (${{ github.event_name == 'workflow_dispatch' && inputs.target || vars.DEPLOY_TARGET || 'vps' }})
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || vars.DEPLOY_ENVIRONMENT || 'production' }}
+    env:
+      TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || vars.DEPLOY_TARGET || 'vps' }}
+      VITE_API_URL: ${{ vars.VITE_API_URL }}
+      VITE_STUDENT_URL: ${{ vars.VITE_STUDENT_URL || '/student' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate target
+        run: |
+          if [[ "$TARGET" != "vps" && "$TARGET" != "aws" ]]; then
+            echo "target must be vps or aws (got: $TARGET)" >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Build
+        run: |
+          if [[ -f package-lock.json ]]; then npm ci; else npm install; fi
+          npm run build
+
+      - name: Configure AWS (OIDC)
+        if: ${{ env.TARGET == 'aws' && secrets.AWS_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Configure AWS (access keys)
+        if: ${{ env.TARGET == 'aws' && secrets.AWS_ROLE_ARN == '' && secrets.AWS_ACCESS_KEY_ID != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Sync to S3
+        if: ${{ env.TARGET == 'aws' }}
+        env:
+          BUCKET: ${{ vars.AWS_S3_BUCKET }}
+          PREFIX: ${{ vars.AWS_S3_FRONTEND_PREFIX }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$BUCKET" ]]; then echo "AWS_S3_BUCKET is required." >&2; exit 1; fi
+          DEST="s3://$BUCKET"
+          PREFIX="${PREFIX#/}"; PREFIX="${PREFIX%/}"
+          [[ -n "$PREFIX" ]] && DEST="$DEST/$PREFIX"
+          aws s3 sync dist "$DEST" --delete --exact-timestamps
+
+      - name: Invalidate CloudFront
+        if: ${{ env.TARGET == 'aws' && vars.AWS_CLOUDFRONT_DISTRIBUTION_ID != '' }}
+        env:
+          DISTRIBUTION: ${{ vars.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
+          PREFIX: ${{ vars.AWS_S3_FRONTEND_PREFIX }}
+        run: |
+          PREFIX="${PREFIX#/}"; PREFIX="${PREFIX%/}"
+          PATHS="/*"
+          [[ -n "$PREFIX" ]] && PATHS="/$PREFIX /${PREFIX}/*"
+          # shellcheck disable=SC2086
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION" --paths $PATHS
+
+      - name: Deploy to VPS
+        if: ${{ env.TARGET == 'vps' }}
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY || secrets.VPS_SSH_KEY }}
+          HOST: ${{ vars.VPS_HOST }}
+          USER: ${{ vars.VPS_USER }}
+          PORT: ${{ vars.VPS_PORT || '22' }}
+          REMOTE_PATH: ${{ vars.VPS_FRONTEND_PATH || vars.VPS_PATH }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$HOST" || -z "$USER" || -z "$REMOTE_PATH" ]]; then
+            echo "Set VPS_HOST, VPS_USER, and VPS_FRONTEND_PATH." >&2
+            exit 1
+          fi
+          sudo apt-get update -qq && sudo apt-get install -y -qq rsync openssh-client
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH="ssh -i $HOME/.ssh/deploy_key -p $PORT -o StrictHostKeyChecking=accept-new"
+          ssh -i "$HOME/.ssh/deploy_key" -p "$PORT" -o StrictHostKeyChecking=accept-new \
+            "$USER@$HOST" "mkdir -p '$REMOTE_PATH'"
+          rsync -az --delete -e "$SSH" dist/ "$USER@$HOST:$REMOTE_PATH/"

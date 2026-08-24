@@ -11,7 +11,6 @@ import {
   History,
   Home,
   KeyRound,
-  Landmark,
   Megaphone,
   Network,
   Plug,
@@ -174,11 +173,17 @@ export const navSections: NavSection[] = [
   {
     title: 'Administration',
     items: [
-      { key: 'users', to: '/users', label: 'Users', perm: 'users.manage', icon: Users },
-      { key: 'roles', to: '/roles', label: 'Roles', perm: 'roles.manage', icon: Shield },
-      { key: 'permissions', to: '/permissions', label: 'Permissions', perm: 'roles.manage', icon: KeyRound },
-      { key: 'office-setup', to: '/office-setup', label: 'Office setup', perm: 'institution.manage', icon: Network },
-      { key: 'institution', to: '/institution', label: 'Institution', perm: 'institution.manage', icon: Landmark },
+      {
+        key: 'administration',
+        label: 'Administration',
+        icon: Users,
+        items: [
+          { key: 'users', to: '/users', label: 'Users', perm: 'users.manage', icon: Users },
+          { key: 'roles', to: '/roles', label: 'Roles', perm: 'roles.manage', icon: Shield },
+          { key: 'permissions', to: '/permissions', label: 'Permissions', perm: 'roles.manage', icon: KeyRound },
+          { key: 'office-setup', to: '/office-setup', label: 'Department Setup', perm: 'institution.manage', icon: Network },
+        ],
+      },
     ],
   },
   {

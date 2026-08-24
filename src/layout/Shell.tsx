@@ -244,11 +244,15 @@ export default function Shell() {
                 : canShowNavItem(entry, has, auth?.nav_unrestricted, auth?.nav_link_keys),
             );
             if (!entries.length) return null;
+            const hideTitle =
+              entries.length === 1 && isNavGroup(entries[0]) && entries[0].label === section.title;
             return (
-              <div key={section.title}>
-                <div className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-sky-200/80">
-                  {section.title}
-                </div>
+              <div key={section.title || entries[0]?.key}>
+                {!hideTitle && (
+                  <div className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-sky-200/80">
+                    {section.title}
+                  </div>
+                )}
                 <div className="space-y-0.5">
                   {entries.map((entry) => {
                     if (isNavGroup(entry)) {

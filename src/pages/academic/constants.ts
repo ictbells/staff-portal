@@ -33,6 +33,7 @@ export const APPLICATION_SETUP_RESOURCES: AcademicResource[] = [
   { key: 'programmes', path: '/academic/programmes', label: 'Programmes', perm: 'academic.programmes.manage' },
   { key: 'intakes', path: '/academic/intakes', label: 'Application windows', perm: 'academic.intakes.manage' },
   { key: 'candidate-data', path: '/academic/candidate-data', label: 'Candidate data', perm: 'admissions.import' },
+  { key: 'import-applicants', path: '/academic/import-applicants', label: 'Import applicants', perm: 'admissions.import' },
   { key: 'olevel', path: '/academic/olevel', label: "O'level", perm: 'academic.olevel.manage' },
 ];
 

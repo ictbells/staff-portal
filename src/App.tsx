@@ -23,6 +23,7 @@ import {
   CourseRegistrationPage, OfferingsPage, RegistrationExtensionsPage, UnitLimitsPage,
 } from './pages/academic/enrolment';
 import { CandidateDataPage } from './pages/academic/CandidateDataPage';
+import { ImportApplicantsPage } from './pages/academic/ImportApplicantsPage';
 import ApplicationSettings from './pages/ApplicationSettings';
 import ExamClearance from './pages/ExamClearance';
 import Resources from './pages/Resources';
@@ -97,6 +98,7 @@ export default function App() {
           <Route path="courses" element={<AcademicResourceGuard resourceKey="courses"><CoursesPage /></AcademicResourceGuard>} />
           <Route path="intakes" element={<AcademicResourceGuard resourceKey="intakes"><IntakesPage /></AcademicResourceGuard>} />
           <Route path="candidate-data" element={<AcademicResourceGuard resourceKey="candidate-data"><CandidateDataPage /></AcademicResourceGuard>} />
+          <Route path="import-applicants" element={<AcademicResourceGuard resourceKey="import-applicants"><ImportApplicantsPage /></AcademicResourceGuard>} />
           <Route path="olevel" element={<AcademicResourceGuard resourceKey="olevel"><OlevelPage /></AcademicResourceGuard>} />
           <Route path="offerings" element={<AcademicResourceGuard resourceKey="offerings"><OfferingsPage /></AcademicResourceGuard>} />
           <Route path="course-registration" element={<AcademicResourceGuard resourceKey="course-registration"><CourseRegistrationPage /></AcademicResourceGuard>} />

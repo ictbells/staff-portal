@@ -7,6 +7,7 @@ import { PasswordHints } from '../pages/Reset';
 
 export default function PasswordChangeGate() {
   const { auth, setAuth } = useAuth();
+  const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
   const [error, setError] = useState('');
@@ -19,6 +20,10 @@ export default function PasswordChangeGate() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!currentPassword) {
+      setError('Enter your current password.');
+      return;
+    }
     if (password !== passwordConfirmation) {
       setError('Passwords do not match.');
       return;
@@ -26,6 +31,7 @@ export default function PasswordChangeGate() {
     setSaving(true);
     try {
       const { data } = await api.patch('/api/me', {
+        current_password: currentPassword,
         password,
         password_confirmation: passwordConfirmation,
       });
@@ -58,6 +64,15 @@ export default function PasswordChangeGate() {
         </div>
         <form onSubmit={submit} className={formStackClass}>
           {error && <p className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>}
+          <input
+            type="password"
+            className={inputClass}
+            placeholder="Current password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            autoComplete="current-password"
+            required
+          />
           <input
             type="password"
             className={inputClass}
