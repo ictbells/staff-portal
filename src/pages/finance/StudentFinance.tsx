@@ -306,7 +306,15 @@ export function StudentFinance() {
                       ) : null}
                     </td>
                     <td className={`${tdClass} capitalize`}>{String(row.category || '').replaceAll('_', ' ')}</td>
-                    <td className={tdClass}>{naira(row.full_amount ?? row.amount)}</td>
+                    <td className={tdClass}>
+                      {naira(row.amount)}
+                      {row.full_amount != null && Number(row.full_amount) > Number(row.amount) ? (
+                        <div className="text-xs text-slate-500">
+                          {row.installment_percent ? `${row.installment_percent}% of ` : 'of '}
+                          {naira(row.full_amount)}
+                        </div>
+                      ) : null}
+                    </td>
                     <td className={tdClass}>{Number(row.rebate_total) > 0 ? naira(row.rebate_total) : '—'}</td>
                     <td className={tdClass}>{naira(row.balance)}</td>
                     <td className={tdClass}>
@@ -322,7 +330,7 @@ export function StudentFinance() {
           </DataTable>
         </Card>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card title="Successful payments" description="Amounts that settled invoices. This total matches Paid in the summary. Wallet top-ups are in the wallet ledger.">
+          <Card title="Successful payments" description="Amounts that settled these invoices (installment billed, not the full-year fee). Wallet top-ups are in the wallet ledger. “Recorded” appears only when an import settled an invoice without a matching receipt row.">
             <DataTable empty={!payments.length} emptyMessage="No successful invoice payments yet." colSpan={4}>
               <thead>
                 <tr>

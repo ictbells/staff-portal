@@ -148,6 +148,10 @@ export function ProgrammeFees() {
   };
 
   useEffect(() => { loadCatalog(); }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearch(searchInput.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
   useEffect(() => { loadSummaries(); }, [search, facultyId, departmentId, studyLevel, scheduled]);
 
   const openAssign = (program?: ProgrammeSummary, line?: any) => {
@@ -230,13 +234,7 @@ export function ProgrammeFees() {
       </div>
 
       <Card title="Programmes" description="Filter the list, then open details to review or edit the breakdown.">
-        <form
-          className="flex flex-wrap gap-3 items-end mb-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setSearch(searchInput.trim());
-          }}
-        >
+        <div className="flex flex-wrap gap-3 items-end mb-4">
           <label className="block min-w-[220px] flex-1">
             <span className={fieldLabelClass}>Search</span>
             <div className="relative">
@@ -298,8 +296,7 @@ export function ProgrammeFees() {
               ]}
             />
           </label>
-          <Btn type="submit" className="!text-white">Apply</Btn>
-        </form>
+        </div>
         <DataTable
           empty={!rows.length}
           emptyMessage="No programmes match these filters."
