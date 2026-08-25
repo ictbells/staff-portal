@@ -5,6 +5,7 @@ import {
   Form,
   Input,
   Modal,
+  Radio,
   Select,
   Space,
   Switch,
@@ -15,15 +16,33 @@ import {
   Divider,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { Building2, GitBranch, Layers, Link2, Pencil, Plus } from 'lucide-react';
+import { Building2, GitBranch, Layers, Link2, Pencil, Plus, Settings2 } from 'lucide-react';
 import api from '../api';
 import { ConfirmDeleteButton } from '../components/ConfirmDeleteButton';
 import { RefreshButton } from '../components/RefreshButton';
 import OfficeStructureCards from '../components/OfficeStructureCards';
 import { PageHeader } from '../components/ui';
 
+type ApprovalChain = 'unit_head' | 'department_head' | 'both';
+
+type NavLinkConfig = {
+  key: string;
+  require_create: boolean;
+  require_update: boolean;
+  require_delete: boolean;
+  approval_chain: ApprovalChain;
+};
+
 type HeadStaff = { id: number; name: string; staff_number?: string } | null;
-type Subunit = { id: number; name: string; code?: string; description?: string; is_active: boolean; nav_keys?: string[] };
+type Subunit = {
+  id: number;
+  name: string;
+  code?: string;
+  description?: string;
+  is_active: boolean;
+  nav_keys?: string[];
+  nav_links?: NavLinkConfig[];
+};
 type Unit = {
   id: number;
   name: string;
@@ -31,6 +50,7 @@ type Unit = {
   description?: string;
   is_active: boolean;
   nav_keys?: string[];
+  nav_links?: NavLinkConfig[];
   subunits: Subunit[];
   head_staff?: HeadStaff;
   needs_unit_head?: boolean;
@@ -42,12 +62,19 @@ type Department = {
   description?: string;
   is_active: boolean;
   nav_keys?: string[];
+  nav_links?: NavLinkConfig[];
   units: Unit[];
   head_staff?: HeadStaff;
   needs_hod?: boolean;
 };
 
-type NavCatalogItem = { key: string; section: string; label: string; perm: string | null };
+type NavCatalogItem = {
+  key: string;
+  section: string;
+  label: string;
+  perm: string | null;
+  has_approval_actions?: boolean;
+};
 
 type ModalKind = 'department' | 'unit' | 'subunit';
 
@@ -66,6 +93,7 @@ type TreeRow = {
   deleteUrl: string;
   deleteMessage: string;
   nav_keys: string[];
+  nav_links: NavLinkConfig[];
   navLinksUrl: string;
   head_staff_id?: number | null;
   head_label?: string;
@@ -82,6 +110,35 @@ type FormValues = {
   office_unit_id?: number;
   head_staff_id?: number | null;
 };
+
+const defaultLinkConfig = (key: string): NavLinkConfig => ({
+  key,
+  require_create: true,
+  require_update: true,
+  require_delete: true,
+  approval_chain: 'both',
+});
+
+const chainLabel: Record<ApprovalChain, string> = {
+  unit_head: 'unit',
+  department_head: 'HOD',
+  both: 'unit→HOD',
+};
+
+function configsFromNode(navKeys: string[] = [], navLinks: NavLinkConfig[] = []): NavLinkConfig[] {
+  const byKey = new Map(navLinks.map((l) => [l.key, { ...defaultLinkConfig(l.key), ...l }]));
+  return navKeys.map((key) => byKey.get(key) || defaultLinkConfig(key));
+}
+
+function methodHint(cfg: NavLinkConfig): string {
+  const parts = [
+    cfg.require_create ? 'C' : null,
+    cfg.require_update ? 'U' : null,
+    cfg.require_delete ? 'D' : null,
+  ].filter(Boolean);
+  if (!parts.length) return 'no gate';
+  return `${parts.join('·')} · ${chainLabel[cfg.approval_chain]}`;
+}
 
 const levelColors: Record<TreeRow['level'], string> = {
   Department: 'blue',
@@ -133,6 +190,7 @@ function buildTreeRows(tree: Department[]): TreeRow[] {
     deleteUrl: `/api/office-departments/${d.id}`,
     deleteMessage: 'Delete this department and all its units?',
     nav_keys: d.nav_keys || [],
+    nav_links: configsFromNode(d.nav_keys, d.nav_links),
     navLinksUrl: `/api/office-departments/${d.id}/nav-links`,
     head_staff_id: d.head_staff?.id ?? null,
     head_label: d.head_staff?.name,
@@ -152,6 +210,7 @@ function buildTreeRows(tree: Department[]): TreeRow[] {
           deleteUrl: `/api/office-units/${u.id}`,
           deleteMessage: 'Delete this unit and all its subunits?',
           nav_keys: u.nav_keys || [],
+          nav_links: configsFromNode(u.nav_keys, u.nav_links),
           navLinksUrl: `/api/office-units/${u.id}/nav-links`,
           head_staff_id: u.head_staff?.id ?? null,
           head_label: u.head_staff?.name,
@@ -160,8 +219,8 @@ function buildTreeRows(tree: Department[]): TreeRow[] {
             ? u.subunits.map((s) => ({
                 key: `s-${s.id}`,
                 id: s.id,
-                kind: 'subunit',
-                level: 'Subunit',
+                kind: 'subunit' as const,
+                level: 'Subunit' as const,
                 name: s.name,
                 code: s.code || '—',
                 description: s.description,
@@ -171,6 +230,7 @@ function buildTreeRows(tree: Department[]): TreeRow[] {
                 deleteUrl: `/api/office-subunits/${s.id}`,
                 deleteMessage: 'Delete this subunit?',
                 nav_keys: s.nav_keys || [],
+                nav_links: configsFromNode(s.nav_keys, s.nav_links),
                 navLinksUrl: `/api/office-subunits/${s.id}/nav-links`,
               }))
             : undefined,
@@ -191,6 +251,9 @@ export default function OfficeSetup() {
   const [staffOptions, setStaffOptions] = useState<{ value: number; label: string }[]>([]);
   const [navCatalog, setNavCatalog] = useState<NavCatalogItem[]>([]);
   const [selectedNavKeys, setSelectedNavKeys] = useState<string[]>([]);
+  const [navLinkConfigs, setNavLinkConfigs] = useState<Record<string, NavLinkConfig>>({});
+  const [approvalDraftKey, setApprovalDraftKey] = useState<string | null>(null);
+  const [approvalDraft, setApprovalDraft] = useState<NavLinkConfig | null>(null);
   const [linksSubmitting, setLinksSubmitting] = useState(false);
 
   const isEdit = editingRow !== null;
@@ -320,11 +383,61 @@ export default function OfficeSetup() {
     setError('');
     setLinksRow(row);
     setSelectedNavKeys(row.nav_keys);
+    const map: Record<string, NavLinkConfig> = {};
+    row.nav_links.forEach((cfg) => {
+      map[cfg.key] = { ...defaultLinkConfig(cfg.key), ...cfg };
+    });
+    setNavLinkConfigs(map);
+    setApprovalDraftKey(null);
+    setApprovalDraft(null);
   };
 
   const closeLinksModal = () => {
     setLinksRow(null);
     setSelectedNavKeys([]);
+    setNavLinkConfigs({});
+    setApprovalDraftKey(null);
+    setApprovalDraft(null);
+  };
+
+  const catalogItem = (key: string) => navCatalog.find((item) => item.key === key);
+
+  const openApprovalConfig = (key: string) => {
+    setApprovalDraftKey(key);
+    setApprovalDraft(navLinkConfigs[key] || defaultLinkConfig(key));
+  };
+
+  const confirmApprovalConfig = () => {
+    if (!approvalDraftKey || !approvalDraft) return;
+    setNavLinkConfigs((prev) => ({ ...prev, [approvalDraftKey]: { ...approvalDraft, key: approvalDraftKey } }));
+    setSelectedNavKeys((prev) => (prev.includes(approvalDraftKey) ? prev : [...prev, approvalDraftKey]));
+    setApprovalDraftKey(null);
+    setApprovalDraft(null);
+  };
+
+  const cancelApprovalConfig = () => {
+    // If the key was never confirmed into selection, leave it unchecked
+    setApprovalDraftKey(null);
+    setApprovalDraft(null);
+  };
+
+  const toggleNavKey = (key: string, checked: boolean) => {
+    if (checked) {
+      const item = catalogItem(key);
+      if (item?.has_approval_actions) {
+        openApprovalConfig(key);
+        return;
+      }
+      setSelectedNavKeys((prev) => [...prev, key]);
+      setNavLinkConfigs((prev) => ({ ...prev, [key]: prev[key] || defaultLinkConfig(key) }));
+      return;
+    }
+    setSelectedNavKeys((prev) => prev.filter((k) => k !== key));
+    setNavLinkConfigs((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   const saveNavLinks = async () => {
@@ -332,7 +445,8 @@ export default function OfficeSetup() {
     setLinksSubmitting(true);
     setError('');
     try {
-      await api.put(linksRow.navLinksUrl, { nav_keys: selectedNavKeys });
+      const nav_links = selectedNavKeys.map((key) => navLinkConfigs[key] || defaultLinkConfig(key));
+      await api.put(linksRow.navLinksUrl, { nav_links });
       closeLinksModal();
       await load();
     } catch (err: any) {
@@ -601,41 +715,112 @@ export default function OfficeSetup() {
         okText="Save links"
         confirmLoading={linksSubmitting}
         destroyOnHidden
-        width={560}
+        width={640}
         style={{ maxWidth: 'calc(100vw - 2rem)' }}
       >
         <p className="text-slate-500 text-sm mb-4">
-          Choose which staff-portal sidebar links appear for people who <strong>work in</strong> this {linksRow?.level.toLowerCase()}. This does not assign staff — do that on Users → Works in.
-          {' '}<strong>Super Admin accounts ignore office link limits</strong> and only need the matching role permission. Other staff need both the portal link ticked here and the resource permission (for example <code className="text-xs bg-slate-100 px-1 rounded">academic.departments.manage</code>).
+          Choose which staff-portal sidebar links appear for people who <strong>work in</strong> this {linksRow?.level.toLowerCase()}. Checking a module with gated actions asks which Create/Update/Delete steps need approval and who must approve.
+          {' '}<strong>Super Admin accounts ignore office link limits</strong> and only need the matching role permission.
         </p>
         {error && linksRow && (
           <Alert type="error" message={error} showIcon className="mb-4" />
         )}
-        <Checkbox.Group
-          className="w-full"
-          value={selectedNavKeys}
-          onChange={(values) => setSelectedNavKeys(values as string[])}
-        >
-          <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
-            {Object.entries(navBySection).map(([section, items]) => (
-              <div key={section}>
-                <Divider orientation="left" className="!my-2 !text-xs !text-slate-500">
-                  {section}
-                </Divider>
-                <div className="grid sm:grid-cols-2 gap-2">
-                  {items.map((item) => (
-                    <Checkbox key={item.key} value={item.key}>
-                      {item.label}
-                    </Checkbox>
-                  ))}
-                </div>
+        <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
+          {Object.entries(navBySection).map(([section, items]) => (
+            <div key={section}>
+              <Divider orientation="left" className="!my-2 !text-xs !text-slate-500">
+                {section}
+              </Divider>
+              <div className="grid sm:grid-cols-2 gap-2">
+                {items.map((item) => {
+                  const checked = selectedNavKeys.includes(item.key);
+                  const cfg = navLinkConfigs[item.key];
+                  return (
+                    <div key={item.key} className="flex items-start gap-1">
+                      <Checkbox
+                        checked={checked}
+                        onChange={(e) => toggleNavKey(item.key, e.target.checked)}
+                      >
+                        <span className="inline-flex flex-col">
+                          <span>{item.label}</span>
+                          {checked && item.has_approval_actions && cfg && (
+                            <span className="text-[11px] text-slate-500 font-normal">{methodHint(cfg)}</span>
+                          )}
+                        </span>
+                      </Checkbox>
+                      {checked && item.has_approval_actions && (
+                        <Button
+                          type="text"
+                          size="small"
+                          className="!px-1"
+                          icon={<Settings2 size={14} />}
+                          onClick={() => openApprovalConfig(item.key)}
+                          aria-label={`Configure approval for ${item.label}`}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
-        </Checkbox.Group>
+            </div>
+          ))}
+        </div>
         <p className="text-xs text-slate-500 mt-4">
           Selected: {selectedNavKeys.length} link{selectedNavKeys.length === 1 ? '' : 's'}
         </p>
+      </Modal>
+
+      <Modal
+        title={approvalDraftKey ? `Approval — ${catalogItem(approvalDraftKey)?.label || approvalDraftKey}` : 'Approval settings'}
+        open={!!approvalDraftKey && !!approvalDraft}
+        onCancel={cancelApprovalConfig}
+        onOk={confirmApprovalConfig}
+        okText="Apply"
+        destroyOnHidden
+        width={480}
+      >
+        {approvalDraft && (
+          <div className="space-y-4">
+            <div>
+              <Typography.Text strong className="block mb-2">Require approval for</Typography.Text>
+              <Space direction="vertical">
+                <Checkbox
+                  checked={approvalDraft.require_create}
+                  onChange={(e) => setApprovalDraft({ ...approvalDraft, require_create: e.target.checked })}
+                >
+                  Create (POST)
+                </Checkbox>
+                <Checkbox
+                  checked={approvalDraft.require_update}
+                  onChange={(e) => setApprovalDraft({ ...approvalDraft, require_update: e.target.checked })}
+                >
+                  Update (includes workflow actions)
+                </Checkbox>
+                <Checkbox
+                  checked={approvalDraft.require_delete}
+                  onChange={(e) => setApprovalDraft({ ...approvalDraft, require_delete: e.target.checked })}
+                >
+                  Delete
+                </Checkbox>
+              </Space>
+            </div>
+            <div>
+              <Typography.Text strong className="block mb-2">Who must approve?</Typography.Text>
+              <Radio.Group
+                value={approvalDraft.approval_chain}
+                onChange={(e) => setApprovalDraft({ ...approvalDraft, approval_chain: e.target.value })}
+                className="flex flex-col gap-2"
+              >
+                <Radio value="unit_head">Unit head only</Radio>
+                <Radio value="department_head">Department head only</Radio>
+                <Radio value="both">Both (unit head → department head)</Radio>
+              </Radio.Group>
+              <p className="text-xs text-slate-500 mt-2 mb-0">
+                When both are required, the department head may still approve earlier by seniority.
+              </p>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
