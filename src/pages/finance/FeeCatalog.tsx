@@ -6,6 +6,7 @@ import {
   Badge, Btn, Card, DataTable, fieldLabelClass, inputClass,
   StatCard, WorkspaceHero, tdClass, thClass, trClass,
 } from '../../components/ui';
+import { formatNaira } from '../../lib/money';
 
 const ONLINE_ONLY_FEE_CATEGORIES = ['application_fee', 'acceptance_fee'];
 
@@ -163,7 +164,7 @@ export function FeeCatalog() {
                         {isSchedule ? 'Programme schedule' : 'Operational'}
                       </Badge>
                     </td>
-                    <td className={tdClass}>₦{Number(f.amount).toLocaleString()}</td>
+                    <td className={tdClass}>{formatNaira(f.amount)}</td>
                     <td className={tdClass}>
                       <Badge variant={isOnlineOnlyFee(f.category) ? 'default' : 'success'}>
                         {isOnlineOnlyFee(f.category) ? 'Online only' : 'Wallet'}

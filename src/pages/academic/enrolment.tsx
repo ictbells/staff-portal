@@ -9,6 +9,7 @@ import api from '../../api';
 import { useAuth } from '../../auth';
 import { RefreshButton } from '../../components/RefreshButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
+import { formatNaira } from '../../lib/money';
 import { actionColumn, useCrudModal } from './crudHelpers';
 import { useResourceList } from './useResourceList';
 
@@ -560,8 +561,8 @@ export function RegistrationExtensionsPage() {
       render: (_, row) => {
         const units = unitsById[row.id] ?? row.approved_units ?? row.requested_units;
         const rate = Number(row.term?.extension_price_per_unit || 0);
-        if (row.invoice?.amount != null) return `₦${Number(row.invoice.amount).toLocaleString()}`;
-        return rate ? `₦${(units * rate).toLocaleString()}` : 'Set price on session';
+        if (row.invoice?.amount != null) return formatNaira(row.invoice.amount);
+        return rate ? formatNaira(units * rate) : 'Set price on session';
       },
     },
     { title: 'Status', dataIndex: 'status', width: 110, render: (value) => <Tag>{value}</Tag> },

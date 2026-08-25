@@ -10,6 +10,7 @@ import {
   Badge, Btn, Card, DataTable, fieldLabelClass, inputClass,
   StatCard, WorkspaceHero, stageBadge, TablePager, tdClass, thClass, trClass,
 } from '../../components/ui';
+import { formatNaira } from '../../lib/money';
 
 type PageMeta = {
   page: number;
@@ -20,10 +21,6 @@ type PageMeta = {
 };
 
 const emptyMeta: PageMeta = { page: 1, lastPage: 1, total: 0, from: null, to: null };
-
-function naira(value: number) {
-  return `₦${Number(value || 0).toLocaleString()}`;
-}
 
 function formatDate(value?: string | null) {
   if (!value) return '—';
@@ -275,11 +272,11 @@ export function StudentFinance() {
         </WorkspaceHero>
         {summary ? (
           <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
-            <StatCard label="Wallet" value={naira(summary.wallet_balance)} icon={Wallet} />
-            <StatCard label="Billed" value={naira(summary.billed)} icon={Wallet} />
-            <StatCard label="Rebated" value={naira(summary.rebate_total)} icon={BadgeCheck} tone="amber" />
-            <StatCard label="Paid" value={naira(summary.paid)} icon={BadgeCheck} tone="emerald" />
-            <StatCard label="Outstanding" value={naira(summary.outstanding)} icon={AlertTriangle} tone="rose" />
+            <StatCard label="Wallet" value={formatNaira(summary.wallet_balance)} icon={Wallet} />
+            <StatCard label="Billed" value={formatNaira(summary.billed)} icon={Wallet} />
+            <StatCard label="Rebated" value={formatNaira(summary.rebate_total)} icon={BadgeCheck} tone="amber" />
+            <StatCard label="Paid" value={formatNaira(summary.paid)} icon={BadgeCheck} tone="emerald" />
+            <StatCard label="Outstanding" value={formatNaira(summary.outstanding)} icon={AlertTriangle} tone="rose" />
           </div>
         ) : null}
         <Card title="Invoices" description="Charges billed to this student. Paid and balance are calculated from receipts, not a stored status alone.">
@@ -307,10 +304,10 @@ export function StudentFinance() {
                         <div className="text-xs text-slate-500">{row.installment_percent}% installment</div>
                       ) : null}
                     </td>
-                    <td className={tdClass}>{naira(row.amount)}</td>
-                    <td className={tdClass}>{naira(row.amount_paid ?? 0)}</td>
-                    <td className={tdClass}>{Number(row.rebate_total) > 0 ? naira(row.rebate_total) : '—'}</td>
-                    <td className={tdClass}>{naira(row.balance)}</td>
+                    <td className={tdClass}>{formatNaira(row.amount)}</td>
+                    <td className={tdClass}>{formatNaira(row.amount_paid ?? 0)}</td>
+                    <td className={tdClass}>{Number(row.rebate_total) > 0 ? formatNaira(row.rebate_total) : '—'}</td>
+                    <td className={tdClass}>{formatNaira(row.balance)}</td>
                     <td className={tdClass}>
                       <Badge variant={stageBadge(row.status === 'cancelled' ? 'rejected' : row.status)}>
                         {statusLabel(row.status)}
@@ -343,13 +340,13 @@ export function StudentFinance() {
                         {row.purpose ? <div className="text-xs text-slate-500 capitalize">{String(row.purpose).replaceAll('_', ' ')}</div> : null}
                       </td>
                       <td className={`${tdClass} capitalize`}>{String(row.method || '—').replaceAll('_', ' ')}</td>
-                      <td className={tdClass}>{naira(row.amount)}</td>
+                      <td className={tdClass}>{formatNaira(row.amount)}</td>
                       <td className={tdClass}>{formatDate(row.created_at)}</td>
                     </tr>
                   ))}
                   <tr className="border-t border-slate-200 bg-slate-50">
                     <td className={`${tdClass} font-semibold`} colSpan={2}>Total (matches Paid)</td>
-                    <td className={`${tdClass} font-semibold`}>{naira(paymentTotal)}</td>
+                    <td className={`${tdClass} font-semibold`}>{formatNaira(paymentTotal)}</td>
                     <td className={tdClass}></td>
                   </tr>
                 </tbody>
@@ -372,7 +369,7 @@ export function StudentFinance() {
                     <tr key={row.id} className={trClass}>
                       <td className={`${tdClass} capitalize`}>{row.type}</td>
                       <td className={tdClass}>{row.description || row.reference || '—'}</td>
-                      <td className={tdClass}>{naira(row.amount)}</td>
+                      <td className={tdClass}>{formatNaira(row.amount)}</td>
                       <td className={tdClass}>{formatDate(row.created_at)}</td>
                     </tr>
                   ))}
@@ -583,10 +580,10 @@ export function StudentFinance() {
                     {row.college ? <div className="text-xs text-slate-500">{row.college}</div> : null}
                   </td>
                   <td className={tdClass}>{row.current_level ? `${row.current_level}L` : '—'}</td>
-                  <td className={tdClass}>{naira(row.wallet_balance)}</td>
-                  <td className={tdClass}>{naira(row.billed)}</td>
-                  <td className={tdClass}>{naira(row.paid)}</td>
-                  <td className={tdClass}>{naira(row.outstanding)}</td>
+                  <td className={tdClass}>{formatNaira(row.wallet_balance)}</td>
+                  <td className={tdClass}>{formatNaira(row.billed)}</td>
+                  <td className={tdClass}>{formatNaira(row.paid)}</td>
+                  <td className={tdClass}>{formatNaira(row.outstanding)}</td>
                   <td className={tdClass}>
                     <Badge variant={row.clearance === 'cleared' ? 'success' : 'warning'}>
                       {row.clearance === 'cleared' ? 'Cleared' : 'Outstanding'}

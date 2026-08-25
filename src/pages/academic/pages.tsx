@@ -9,6 +9,7 @@ import api from '../../api';
 import { ConfirmDeleteButton } from '../../components/ConfirmDeleteButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 import { RefreshButton } from '../../components/RefreshButton';
+import { formatNaira } from '../../lib/money';
 import { ENTRY_MODES, STUDY_LEVELS } from './constants';
 import { actionColumn, formatDisplayDate, fromDateTimeValue, fromDateValue, toDateValue, useCrudModal } from './crudHelpers';
 import { CatalogImportPanel } from './CatalogImportPanel';
@@ -760,7 +761,7 @@ export function ProgrammesPage() {
       dataIndex: 'tuition_amount',
       key: 'tuition_amount',
       width: 140,
-      render: (value?: number | string) => (value != null ? `₦${Number(value).toLocaleString()}` : '—'),
+      render: (value?: number | string) => formatNaira(value),
     },
     { title: 'Admission categories', key: 'entry_modes', width: 180, render: (_, r) => entryModeTags(r.entry_modes) },
     { title: 'Workflow', key: 'workflow', width: 150, render: (_, r) => r.workflow_template?.name || '—' },
@@ -1080,14 +1081,14 @@ export function IntakesPage() {
       dataIndex: 'application_fee_amount',
       key: 'application_fee_amount',
       width: 130,
-      render: (value?: number | string) => (value != null ? `₦${Number(value).toLocaleString()}` : '—'),
+      render: (value?: number | string) => formatNaira(value),
     },
     {
       title: 'Default acceptance',
       dataIndex: 'acceptance_fee_amount',
       key: 'acceptance_fee_amount',
       width: 150,
-      render: (value?: number | string) => (value != null ? `₦${Number(value).toLocaleString()}` : 'Set at offer'),
+      render: (value?: number | string) => formatNaira(value, 'Set at offer'),
     },
     { title: 'Open', dataIndex: 'is_open', key: 'is_open', width: 90, render: (v) => <Tag color={v ? 'success' : 'default'}>{v ? 'Open' : 'Closed'}</Tag> },
     actionColumn(

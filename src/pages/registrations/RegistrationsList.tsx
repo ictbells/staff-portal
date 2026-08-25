@@ -158,7 +158,12 @@ export function RegistrationsList({ channel }: Props) {
 
   useEffect(() => {
     api.get('/api/registrations/sessions')
-      .then(({ data }) => setSessions(Array.isArray(data) ? data : []))
+      .then(({ data }) => {
+        const list = Array.isArray(data) ? data : [];
+        setSessions(list);
+        const currentId = list.find((s: { is_current?: boolean }) => s.is_current)?.id;
+        if (currentId) setSessionFilter(currentId);
+      })
       .catch(() => setSessions([]));
   }, []);
 
@@ -173,17 +178,18 @@ export function RegistrationsList({ channel }: Props) {
   }, [channel.entryModes, channel.key, entryModeFilter]);
 
   useEffect(() => {
+    const currentId = sessions.find((s) => s.is_current)?.id;
     setSearchInput('');
     setSearch('');
     setEntryModeFilter('');
-    setSessionFilter(undefined);
+    setSessionFilter(currentId);
     setProgramFilter(undefined);
     setCourseRegFilter('');
     setStudentshipFilter('current');
     load(1, pagination.pageSize, {
       search: '',
       entryMode: '',
-      session: undefined,
+      session: currentId,
       program: undefined,
       courseReg: '',
       studentship: 'current',
@@ -358,9 +364,9 @@ export function RegistrationsList({ channel }: Props) {
         render: (_, row) => row.program?.name || row.program?.code || '—',
       },
       {
-        title: 'Session',
+        title: 'Admission session',
         key: 'session',
-        width: 130,
+        width: 140,
         ellipsis: true,
         render: (_, row) => row.application?.intake?.term?.session_label || '—',
       },
@@ -518,7 +524,7 @@ export function RegistrationsList({ channel }: Props) {
                 allowClear
                 className="w-full min-w-[140px] sm:w-auto sm:min-w-[160px]"
                 size="large"
-                placeholder="Session"
+                placeholder="Admission session"
                 value={sessionFilter}
                 onChange={(value) => setSessionFilter(value)}
                 options={sessionOptions}

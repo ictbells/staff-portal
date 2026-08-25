@@ -8,6 +8,7 @@ import {
   Badge, Card, DataTable, fieldLabelClass, inputClass,
   StatCard, WorkspaceHero, stageBadge, TablePager, tdClass, thClass, trClass,
 } from '../../components/ui';
+import { formatNaira } from '../../lib/money';
 
 type PageMeta = {
   page: number;
@@ -21,10 +22,6 @@ const emptyMeta: PageMeta = { page: 1, lastPage: 1, total: 0, from: null, to: nu
 
 function statusLabel(status?: string) {
   return status === 'cancelled' ? 'Disabled' : (status || 'unknown');
-}
-
-function naira(value: number) {
-  return `₦${Number(value || 0).toLocaleString()}`;
 }
 
 function isWalletInvoice(invoice: any) {
@@ -490,7 +487,7 @@ export function Invoices() {
       content: (
         <div>
           <p className="mb-2 text-sm text-slate-600">
-            Restore ₦{Number(rebate.amount || 0).toLocaleString()} to invoice {invoice.number}?
+            Restore {formatNaira(rebate.amount)} to invoice {invoice.number}?
           </p>
           <Input.TextArea
             rows={3}
@@ -791,12 +788,12 @@ export function Invoices() {
                   <td className={`${tdClass} font-mono`}>{matricNumber(invoice)}</td>
                   <td className={tdClass}>{(invoice.category || '').replaceAll('_', ' ')}</td>
                   <td className={tdClass}>
-                    <div>{naira(Number(invoice.amount || 0))}</div>
+                    <div>{formatNaira(Number(invoice.amount || 0))}</div>
                     {Number(invoice.rebate_total) > 0 ? (
-                      <div className="text-xs text-emerald-700 mt-0.5">Rebate {naira(Number(invoice.rebate_total))}</div>
+                      <div className="text-xs text-emerald-700 mt-0.5">Rebate {formatNaira(Number(invoice.rebate_total))}</div>
                     ) : null}
                   </td>
-                  <td className={tdClass}>₦{Number(invoice.balance || 0).toLocaleString()}</td>
+                  <td className={tdClass}>{formatNaira(invoice.balance)}</td>
                   <td className={tdClass}>
                     <Badge variant={stageBadge(invoice.status === 'cancelled' ? 'inactive' : invoice.status)}>
                       {statusLabel(invoice.status)}
@@ -883,7 +880,7 @@ export function Invoices() {
                   <td className={`${tdClass} font-mono`}>{paymentMatric(p)}</td>
                   <td className={`${tdClass} font-mono text-xs`}>{paymentReference(p)}</td>
                   <td className={tdClass}><Badge variant="info">{p.method}</Badge></td>
-                  <td className={`${tdClass} font-medium`}>₦{p.amount}</td>
+                  <td className={`${tdClass} font-medium`}>{formatNaira(p.amount)}</td>
                   <td className={tdClass}><Badge variant={stageBadge(p.status)}>{p.status}</Badge></td>
                   <td className={`${tdClass} whitespace-nowrap font-mono text-xs`}>
                     {formatTimestamp(p.created_at)}
@@ -954,8 +951,8 @@ export function Invoices() {
       >
         <p className="mb-3 text-sm text-slate-600">
           Invoice <span className="font-mono font-medium">{rebateTarget?.number}</span>
-          {' · '}billed {naira(Number(rebateTarget?.amount || 0))}
-          {' · '}due {naira(Number(rebateTarget?.balance || 0))}
+          {' · '}billed {formatNaira(Number(rebateTarget?.amount || 0))}
+          {' · '}due {formatNaira(Number(rebateTarget?.balance || 0))}
         </p>
         {(rebateTarget?.rebates || []).length ? (
           <div className="mb-4 rounded-lg border border-slate-200 divide-y divide-slate-100">
@@ -966,7 +963,7 @@ export function Invoices() {
                   <div className="text-xs text-slate-500">{rebate.reason}</div>
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="tabular-nums text-emerald-700">−{naira(Number(rebate.amount || 0))}</div>
+                  <div className="tabular-nums text-emerald-700">−{formatNaira(Number(rebate.amount || 0))}</div>
                   {!rebate.reversed_at && rebateTarget.status !== 'cancelled' ? (
                     <button
                       type="button"
@@ -1026,13 +1023,13 @@ export function Invoices() {
               <div className="flex justify-between gap-3">
                 <span className="text-slate-500">Rebate</span>
                 <span className="tabular-nums font-medium text-emerald-700">
-                  −{naira(previewRebate(rebateTarget, rebateKind, Number(rebateValue || 0)).amount)}
+                  −{formatNaira(previewRebate(rebateTarget, rebateKind, Number(rebateValue || 0)).amount)}
                 </span>
               </div>
               <div className="flex justify-between gap-3 mt-1">
                 <span className="text-slate-500">New amount due</span>
                 <span className="tabular-nums font-semibold text-slate-900">
-                  {naira(previewRebate(rebateTarget, rebateKind, Number(rebateValue || 0)).newDue)}
+                  {formatNaira(previewRebate(rebateTarget, rebateKind, Number(rebateValue || 0)).newDue)}
                 </span>
               </div>
             </div>

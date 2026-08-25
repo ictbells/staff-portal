@@ -217,7 +217,13 @@ export function AdmissionsPipeline({ channel }: Props) {
   const [decisionRow, setDecisionRow] = useState<ApplicationRow | null>(null);
   const [moving, setMoving] = useState(false);
   const [feeStatusFilter, setFeeStatusFilter] = useState('');
-  const [sessions, setSessions] = useState<{ id: number; session_label: string; name?: string; is_current?: boolean }[]>([]);
+  const [sessions, setSessions] = useState<{
+    id: number;
+    session_label: string;
+    name?: string;
+    is_open?: boolean;
+    is_current?: boolean;
+  }[]>([]);
   const [programs, setPrograms] = useState<{
     id: number;
     name: string;
@@ -239,9 +245,11 @@ export function AdmissionsPipeline({ channel }: Props) {
   );
 
   const sessionOptions = useMemo(
-    () => sessions.map((term) => ({
-      value: term.id,
-      label: term.is_current ? `${term.session_label} (current)` : term.session_label,
+    () => sessions.map((intake) => ({
+      value: intake.id,
+      label: (intake.is_open || intake.is_current)
+        ? `${intake.session_label} (open)`
+        : intake.session_label,
     })),
     [sessions],
   );
@@ -319,7 +327,7 @@ export function AdmissionsPipeline({ channel }: Props) {
         params: {
           entry_modes: channel.entryModes.join(','),
           entry_mode: nextEntryMode || undefined,
-          academic_session_id: nextSession || undefined,
+          intake_id: nextSession || undefined,
           faculty_id: nextCollege || undefined,
           department_id: nextDepartment || undefined,
           program_id: nextProgram || undefined,
@@ -347,7 +355,12 @@ export function AdmissionsPipeline({ channel }: Props) {
 
   useEffect(() => {
     api.get('/api/applications/sessions')
-      .then(({ data }) => setSessions(Array.isArray(data) ? data : []))
+      .then(({ data }) => {
+        const list = Array.isArray(data) ? data : [];
+        setSessions(list);
+        const openId = list.find((s: { is_open?: boolean; is_current?: boolean }) => s.is_open || s.is_current)?.id;
+        if (openId) setSessionFilter(openId);
+      })
       .catch(() => setSessions([]));
   }, []);
 
@@ -364,11 +377,12 @@ export function AdmissionsPipeline({ channel }: Props) {
   }, [channel.entryModes, channel.key, entryModeFilter]);
 
   useEffect(() => {
+    const openId = sessions.find((s) => s.is_open || s.is_current)?.id;
     setSearchInput('');
     setSearch('');
     setStageFilter('');
     setEntryModeFilter('');
-    setSessionFilter(undefined);
+    setSessionFilter(openId);
     setProgramFilter(undefined);
     setCollegeFilter(undefined);
     setDepartmentFilter(undefined);
@@ -379,7 +393,7 @@ export function AdmissionsPipeline({ channel }: Props) {
       search: '',
       stage: '',
       entryMode: '',
-      session: undefined,
+      session: openId,
       program: undefined,
       college: undefined,
       department: undefined,
@@ -470,7 +484,7 @@ export function AdmissionsPipeline({ channel }: Props) {
   const filterParams = useMemo(() => ({
     entry_modes: channel.entryModes.join(','),
     entry_mode: entryModeFilter || undefined,
-    academic_session_id: sessionFilter || undefined,
+    intake_id: sessionFilter || undefined,
     faculty_id: collegeFilter || undefined,
     department_id: departmentFilter || undefined,
     program_id: programFilter || undefined,
@@ -609,17 +623,17 @@ export function AdmissionsPipeline({ channel }: Props) {
         ),
       },
       {
-        title: 'Session',
+        title: 'Application session',
         key: 'intake',
-        width: 140,
+        width: 160,
         ellipsis: true,
         render: (_, row) => {
-          const session = row.intake?.term?.session_label;
           const name = row.intake?.name;
+          const year = row.intake?.term?.session_label;
           return (
             <div className="overflow-hidden text-sm">
-              <div className="text-slate-800 truncate">{session || '—'}</div>
-              {name && <div className="text-xs text-slate-400 truncate">{name}</div>}
+              <div className="text-slate-800 truncate">{name || year || '—'}</div>
+              {name && year && <div className="text-xs text-slate-400 truncate">{year}</div>}
             </div>
           );
         },
@@ -857,7 +871,7 @@ export function AdmissionsPipeline({ channel }: Props) {
                 allowClear
                 className="w-full min-w-[140px] sm:w-auto sm:min-w-[160px]"
                 size="large"
-                placeholder="Session"
+                placeholder="Application session"
                 value={sessionFilter}
                 onChange={(value) => setSessionFilter(value)}
                 options={sessionOptions}

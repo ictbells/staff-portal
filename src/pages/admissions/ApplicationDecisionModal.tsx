@@ -244,9 +244,11 @@ export function ApplicationDecisionModal({
                 {row.program?.name || '—'}
                 {row.program?.code ? ` (${row.program.code})` : ''}
               </Fact>
-              <Fact label="Session">
-                {row.intake?.term?.session_label || '—'}
-                {row.intake?.name ? ` · ${row.intake.name}` : ''}
+              <Fact label="Application session">
+                {row.intake?.name || row.intake?.term?.session_label || '—'}
+                {row.intake?.name && row.intake?.term?.session_label
+                  ? ` · ${row.intake.term.session_label}`
+                  : ''}
               </Fact>
               <Fact label="Application fee">{row.application_fee_invoice?.status || '—'}</Fact>
               {row.offer_reference && <Fact label="Offer reference">{row.offer_reference}</Fact>}

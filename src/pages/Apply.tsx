@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
+import { formatNaira } from '../lib/money';
 
 const modes = ['utme', 'de', 'jupeb', 'transfer', 'pg'] as const;
 
@@ -56,7 +57,7 @@ export default function Apply() {
       {app && (
         <div className="border rounded-lg p-4 space-y-2">
           <div>Stage: {app.stage}</div>
-          {app.application_fee_invoice && <div>Fee: ₦{app.application_fee_invoice.amount} · {app.application_fee_invoice.status}</div>}
+          {app.application_fee_invoice && <div>Fee: {formatNaira(app.application_fee_invoice.amount)} · {app.application_fee_invoice.status}</div>}
           {app.application_fee_invoice?.status !== 'paid' ? (
             <button onClick={pay} className="bg-green-700 text-white px-4 py-2 rounded-lg">Pay application fee (Paystack)</button>
           ) : (

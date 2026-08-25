@@ -966,8 +966,8 @@ export function ApplicationFileDrawer({
               <Field label="Stage">
                 <Input value={(app.stage || '').replace(/_/g, ' ')} disabled />
               </Field>
-              <Field label="Session">
-                <Input value={app.intake?.term?.session_label || ''} disabled />
+              <Field label="Application session">
+                <Input value={app.intake?.name || app.intake?.term?.session_label || ''} disabled />
               </Field>
               <Field label="Email">
                 <Input value={form.email} onChange={(e) => setField('email', e.target.value)} />

@@ -7,6 +7,7 @@ import {
   Badge, Btn, Card, DataTable, fieldLabelClass, inputClass,
   StatCard, WorkspaceHero, tdClass, thClass, trClass,
 } from '../../components/ui';
+import { formatNaira } from '../../lib/money';
 
 const LEVEL_OPTIONS = [
   { value: 'all', label: 'All levels' },
@@ -24,10 +25,6 @@ const SEMESTER_OPTIONS = [
   { value: 'first', label: 'First' },
   { value: 'second', label: 'Second' },
 ];
-
-function naira(value?: number | string | null) {
-  return `₦${Number(value || 0).toLocaleString()}`;
-}
 
 function apiMessage(err: unknown, fallback: string) {
   const ax = err as { response?: { data?: { message?: string } } };
@@ -337,7 +334,7 @@ export function ProgrammeFees() {
                       <Badge>Not set</Badge>
                     )}
                   </td>
-                  <td className={`${tdClass} font-medium`}>{row.line_count > 0 ? naira(row.total_amount) : '—'}</td>
+                  <td className={`${tdClass} font-medium`}>{row.line_count > 0 ? formatNaira(row.total_amount) : '—'}</td>
                   <td className={tdClass}>
                     <div className="flex flex-wrap gap-2">
                       <button type="button" className="text-sm text-sky-700 hover:underline" onClick={() => loadDetail(row)}>
@@ -373,7 +370,7 @@ export function ProgrammeFees() {
             </div>
             <div className="px-5 py-4 overflow-y-auto">
               {detailTotal != null && (
-                <p className="text-sm font-medium text-slate-800 mb-3">Schedule total: {naira(detailTotal)}</p>
+                <p className="text-sm font-medium text-slate-800 mb-3">Schedule total: {formatNaira(detailTotal)}</p>
               )}
               <DataTable
                 empty={!detailLines.length}
@@ -402,8 +399,8 @@ export function ProgrammeFees() {
                         </td>
                         <td className={tdClass}>{line.level_code || 'all'}</td>
                         <td className={tdClass}>{line.semester || 'both'}</td>
-                        <td className={tdClass}>{line.amount != null ? naira(line.amount) : 'Catalog default'}</td>
-                        <td className={`${tdClass} font-medium`}>{naira(line.effective_amount)}</td>
+                        <td className={tdClass}>{formatNaira(line.amount, 'Catalog default')}</td>
+                        <td className={`${tdClass} font-medium`}>{formatNaira(line.effective_amount)}</td>
                         <td className={tdClass}>
                           <div className="flex flex-wrap gap-2">
                             <button type="button" className="text-sm text-sky-700 hover:underline" onClick={() => openAssign(detail, line)}>Edit</button>
@@ -456,7 +453,7 @@ export function ProgrammeFees() {
                 }))}
                 options={scheduleFeeItems.map((f) => ({
                   value: f.id,
-                  label: `${f.name} (${naira(f.amount)})`,
+                  label: `${f.name} (${formatNaira(f.amount)})`,
                 }))}
               />
             </label>

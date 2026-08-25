@@ -7,10 +7,7 @@ import {
   Badge, Btn, Card, DataTable, fieldLabelClass, inputClass,
   StatCard, WorkspaceHero, tdClass, thClass, trClass,
 } from '../../components/ui';
-
-function naira(value: number) {
-  return `₦${Number(value || 0).toLocaleString()}`;
-}
+import { formatNaira } from '../../lib/money';
 
 const emptyForm = {
   name: '',
@@ -143,7 +140,7 @@ export function SundryFees() {
                     <div>{row.name}</div>
                     {row.description && <div className="text-xs text-slate-500">{row.description}</div>}
                   </td>
-                  <td className={tdClass}>{naira(Number(row.amount))}</td>
+                  <td className={tdClass}>{formatNaira(Number(row.amount))}</td>
                   <td className={tdClass}>
                     <Badge variant={row.is_active === false ? 'default' : 'success'}>
                       {row.is_active === false ? 'Inactive' : 'Active'}

@@ -7,10 +7,7 @@ import {
   Badge, Btn, Card, DataTable, fieldLabelClass, inputClass,
   StatCard, WorkspaceHero, tdClass, thClass, trClass,
 } from '../../components/ui';
-
-function naira(value: number) {
-  return `₦${Number(value || 0).toLocaleString()}`;
-}
+import { formatNaira } from '../../lib/money';
 
 const emptyForm = {
   name: '',
@@ -155,7 +152,7 @@ export function Rebates() {
                     {row.description && <div className="text-xs text-slate-500">{row.description}</div>}
                   </td>
                   <td className={tdClass}>
-                    {row.kind === 'percent' ? `${Number(row.default_value || 0)}%` : naira(Number(row.default_value))}
+                    {row.kind === 'percent' ? `${Number(row.default_value || 0)}%` : formatNaira(Number(row.default_value))}
                   </td>
                   <td className={tdClass}>
                     <Badge variant={row.is_active === false ? 'default' : 'success'}>

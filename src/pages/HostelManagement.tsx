@@ -11,6 +11,7 @@ import { useAuth } from '../auth';
 import { ConfirmDeleteButton } from '../components/ConfirmDeleteButton';
 import { RefreshButton } from '../components/RefreshButton';
 import { StatCard, WorkspaceHero } from '../components/ui';
+import { formatNaira } from '../lib/money';
 import { CatalogImportPanel } from './academic/CatalogImportPanel';
 
 type HostelBlockRow = {
@@ -115,11 +116,6 @@ const hostelTabs: { key: string; label: string; icon: LucideIcon }[] = [
   { key: 'queue', label: 'Priority queue', icon: Users },
   { key: 'allocations', label: 'Allocations', icon: ClipboardList },
 ];
-
-function naira(value?: number | string | null) {
-  if (value == null || value === '') return '—';
-  return `₦${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 function CategoryTag({ category }: { category: string }) {
   return <Tag color={categoryColors[category] || 'default'}>{categoryLabels[category] || category}</Tag>;
@@ -639,7 +635,7 @@ export default function HostelManagement() {
       key: 'due',
       render: (_, row) => (
         row.due_required && Number(row.due_amount) > 0
-          ? naira(row.due_amount)
+          ? formatNaira(row.due_amount)
           : 'In tuition'
       ),
     },

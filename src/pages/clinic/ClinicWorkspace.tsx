@@ -36,15 +36,12 @@ import api from '../../api';
 import { useAuth } from '../../auth';
 import { RefreshButton } from '../../components/RefreshButton';
 import { Badge, Card, StatCard, WorkspaceHero, fieldLabelClass } from '../../components/ui';
+import { formatNaira } from '../../lib/money';
 
 type TabKey = 'queue' | 'appointments' | 'chart' | 'bills' | 'settings';
 type EncounterTab = 'clinical' | 'prescriptions' | 'charges' | 'sick_notes';
 
 const DATE_PICKER_FORMAT = 'DD/MM/YYYY';
-
-function money(n?: number | string | null) {
-  return `₦${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 function formatDate(value?: string | null) {
   if (!value) return '—';
@@ -792,9 +789,9 @@ export default function ClinicWorkspace() {
       {tab === 'bills' && (
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <StatCard label="Gross billed" value={money(billTotals.gross)} icon={Receipt} tone="sky" />
-            <StatCard label="NHIS covered" value={money(billTotals.covered)} icon={Shield} tone="sky" />
-            <StatCard label="Student pays" value={money(billTotals.payable)} icon={UserRound} tone="amber" />
+            <StatCard label="Gross billed" value={formatNaira(billTotals.gross)} icon={Receipt} tone="sky" />
+            <StatCard label="NHIS covered" value={formatNaira(billTotals.covered)} icon={Shield} tone="sky" />
+            <StatCard label="Student pays" value={formatNaira(billTotals.payable)} icon={UserRound} tone="amber" />
           </div>
           <Card title="Clinic bills" description="Recent finalized clinic bills and the student-payable share.">
             <Table
@@ -803,9 +800,9 @@ export default function ClinicWorkspace() {
               locale={{ emptyText: 'No clinic bills yet.' }}
               columns={[
                 { title: 'Student', render: (_: any, row: any) => studentName(row.visit?.student) },
-                { title: 'Gross', render: (_: any, row: any) => money(row.gross_amount ?? row.amount) },
-                { title: 'NHIS covered', render: (_: any, row: any) => money(row.nhis_covered_amount) },
-                { title: 'Student pays', render: (_: any, row: any) => money(row.student_payable_amount ?? row.amount) },
+                { title: 'Gross', render: (_: any, row: any) => formatNaira(row.gross_amount ?? row.amount) },
+                { title: 'NHIS covered', render: (_: any, row: any) => formatNaira(row.nhis_covered_amount) },
+                { title: 'Student pays', render: (_: any, row: any) => formatNaira(row.student_payable_amount ?? row.amount) },
                 { title: 'Status', dataIndex: 'status', render: (s: string) => statusBadge(s) },
                 { title: 'Invoice', render: (_: any, row: any) => row.invoice?.number || '—' },
               ]}
@@ -998,8 +995,8 @@ export default function ClinicWorkspace() {
                   columns={[
                     { title: 'Description', dataIndex: 'description' },
                     { title: 'Qty', dataIndex: 'quantity' },
-                    { title: 'Unit', render: (_: any, row: any) => money(row.unit_amount) },
-                    { title: 'Total', render: (_: any, row: any) => money(row.line_total) },
+                    { title: 'Unit', render: (_: any, row: any) => formatNaira(row.unit_amount) },
+                    { title: 'Total', render: (_: any, row: any) => formatNaira(row.line_total) },
                     {
                       title: 'NHIS',
                       dataIndex: 'nhis_covered',
@@ -1037,17 +1034,17 @@ export default function ClinicWorkspace() {
                   <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                       <div className="text-xs uppercase tracking-wide text-slate-500">Gross</div>
-                      <div className="mt-1 font-semibold text-slate-900">{money(split.gross)}</div>
+                      <div className="mt-1 font-semibold text-slate-900">{formatNaira(split.gross)}</div>
                     </div>
                     <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-3">
                       <div className="text-xs uppercase tracking-wide text-sky-700">NHIS covered</div>
                       <div className="mt-1 font-semibold text-sky-950">
-                        {money(split.covered)} <span className="text-xs font-normal">({split.coverage_percent}%)</span>
+                        {formatNaira(split.covered)} <span className="text-xs font-normal">({split.coverage_percent}%)</span>
                       </div>
                     </div>
                     <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3">
                       <div className="text-xs uppercase tracking-wide text-amber-800">Student pays</div>
-                      <div className="mt-1 font-semibold text-amber-950">{money(split.payable)}</div>
+                      <div className="mt-1 font-semibold text-amber-950">{formatNaira(split.payable)}</div>
                     </div>
                   </div>
                 )}
@@ -1068,7 +1065,7 @@ export default function ClinicWorkspace() {
                 )}
                 {visit.bill && (
                   <p className="mt-3 text-sm text-emerald-700">
-                    Bill {visit.bill.status}: student payable {money(visit.bill.student_payable_amount)}
+                    Bill {visit.bill.status}: student payable {formatNaira(visit.bill.student_payable_amount)}
                     {visit.bill.invoice ? ` · ${visit.bill.invoice.number}` : ' · fully covered (no invoice)'}
                   </p>
                 )}

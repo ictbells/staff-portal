@@ -7,10 +7,7 @@ import {
   Btn, Card, DataTable, fieldLabelClass, inputClass,
   StatCard, WorkspaceHero, tdClass, thClass, trClass,
 } from '../../components/ui';
-
-function naira(value: number) {
-  return `₦${Number(value || 0).toLocaleString()}`;
-}
+import { formatNaira } from '../../lib/money';
 
 function studentName(student: any) {
   return `${student?.first_name || ''} ${student?.last_name || ''}`.trim()
@@ -92,7 +89,7 @@ export function GenerateInvoice() {
         matric: matric.trim(),
         fee_item_ids: selectedIds,
       });
-      message.success(`Invoice ${data.number || ''} generated for ${naira(total)}.`.replace('  ', ' '));
+      message.success(`Invoice ${data.number || ''} generated for ${formatNaira(total)}.`.replace('  ', ' '));
       setSelectedIds([]);
     } catch (e: any) {
       message.error(e.response?.data?.message || 'Could not generate invoice.');
@@ -113,7 +110,7 @@ export function GenerateInvoice() {
       </WorkspaceHero>
       <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
         <StatCard label="Sundry items" value={items.length} hint="Available to invoice" icon={List} />
-        <StatCard label="Selected" value={selectedIds.length} hint={selectedIds.length ? naira(total) : 'Choose charges below'} icon={Wallet} tone="amber" />
+        <StatCard label="Selected" value={selectedIds.length} hint={selectedIds.length ? formatNaira(total) : 'Choose charges below'} icon={Wallet} tone="amber" />
       </div>
 
       <Card title="Student and sundry items" description="The invoice total is the sum of every selected sundry charge.">
@@ -152,7 +149,7 @@ export function GenerateInvoice() {
               onChange={setSelectedIds}
               options={items.map((row) => ({
                 value: row.id,
-                label: `${row.name} (${naira(Number(row.amount || 0))})`,
+                label: `${row.name} (${formatNaira(Number(row.amount || 0))})`,
               }))}
               maxTagCount="responsive"
             />
@@ -180,19 +177,19 @@ export function GenerateInvoice() {
                     <div>{line.label}</div>
                     {line.description ? <div className="text-xs text-slate-500">{line.description}</div> : null}
                   </td>
-                  <td className={`${tdClass} text-right font-medium`}>{naira(line.amount)}</td>
+                  <td className={`${tdClass} text-right font-medium`}>{formatNaira(line.amount)}</td>
                 </tr>
               ))}
               <tr className={trClass}>
                 <td className={`${tdClass} font-semibold`}>Total</td>
-                <td className={`${tdClass} text-right font-semibold`}>{naira(total)}</td>
+                <td className={`${tdClass} text-right font-semibold`}>{formatNaira(total)}</td>
               </tr>
             </tbody>
           )}
         </DataTable>
         <div className="mt-4">
           <Btn className="!text-white" onClick={generateInvoice} disabled={saving || !matric.trim() || !selectedIds.length}>
-            {saving ? 'Generating…' : `Generate invoice${total ? ` · ${naira(total)}` : ''}`}
+            {saving ? 'Generating…' : `Generate invoice${total ? ` · ${formatNaira(total)}` : ''}`}
           </Btn>
         </div>
       </Card>

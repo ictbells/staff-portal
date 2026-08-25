@@ -7,13 +7,7 @@ import { useAuth } from '../auth';
 import { PortalAccessNotice } from '../components/PortalAccessNotice';
 import { StatCard, WorkspaceHero } from '../components/ui';
 import { navSections, canShowNavItem, flattenNavEntries, type NavItem } from '../layout/navConfig';
-
-const statIcons: Record<string, LucideIcon> = {
-  Students: GraduationCap,
-  Collected: TrendingUp,
-  Outstanding: Receipt,
-  'Wallet total': Wallet,
-};
+import { formatNaira } from '../lib/money';
 
 export default function Dashboard() {
   const { auth, has } = useAuth();
@@ -68,9 +62,9 @@ export default function Dashboard() {
       {summary && (
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
           <StatCard label="Students" value={summary.students ?? '—'} icon={GraduationCap} />
-          <StatCard label="Collected" value={summary.payments_collected ?? '—'} icon={TrendingUp} tone="emerald" />
-          <StatCard label="Outstanding" value={summary.invoices_outstanding ?? '—'} icon={Receipt} tone="amber" />
-          <StatCard label="Wallet total" value={summary.wallet_total ?? '—'} icon={Wallet} />
+          <StatCard label="Collected" value={formatNaira(summary.payments_collected)} icon={TrendingUp} tone="emerald" />
+          <StatCard label="Outstanding" value={formatNaira(summary.invoices_outstanding)} icon={Receipt} tone="amber" />
+          <StatCard label="Wallet total" value={formatNaira(summary.wallet_total)} icon={Wallet} />
         </div>
       )}
 

@@ -9,6 +9,7 @@ import {
   Badge, Btn, Card, DataTable, fieldLabelClass, inputClass,
   PageHeader, StatCard, WorkspaceHero, stageBadge, tdClass, thClass, trClass,
 } from '../components/ui';
+import { formatNaira } from '../lib/money';
 
 const API_DOCS_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/docs`;
 
@@ -187,7 +188,7 @@ export function WalletPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Campus wallet" />
-      <div className="text-3xl font-semibold text-sky-600">₦{w.balance}</div>
+      <div className="text-3xl font-semibold text-sky-600">{formatNaira(w.balance)}</div>
       <div className="flex flex-wrap gap-2">
         <input className={`${inputClass} max-w-[160px]`} value={amount} onChange={(e) => setAmount(e.target.value)} />
         <Btn onClick={fund}>Fund with Paystack</Btn>
@@ -206,7 +207,7 @@ export function WalletPage() {
               {w.transactions.map((t: any) => (
                 <tr key={t.id} className={trClass}>
                   <td className={tdClass}><Badge>{t.type}</Badge></td>
-                  <td className={`${tdClass} font-medium`}>₦{t.amount}</td>
+                  <td className={`${tdClass} font-medium`}>{formatNaira(t.amount)}</td>
                   <td className={tdClass}>{t.description}</td>
                 </tr>
               ))}
@@ -254,7 +255,7 @@ function LegacyInvoices() {
               <tr key={i.id} className={trClass}>
                 <td className={`${tdClass} font-medium`}>{i.number}</td>
                 <td className={tdClass}>{i.category}</td>
-                <td className={tdClass}>₦{i.balance}</td>
+                <td className={tdClass}>{formatNaira(i.balance)}</td>
                 <td className={tdClass}><Badge variant={stageBadge(i.status)}>{i.status}</Badge></td>
               </tr>
             ))}
@@ -542,7 +543,7 @@ function LegacyFinance() {
                         {isSchedule ? 'Programme schedule' : 'Operational'}
                       </Badge>
                     </td>
-                    <td className={tdClass}>₦{Number(f.amount).toLocaleString()}</td>
+                    <td className={tdClass}>{formatNaira(f.amount)}</td>
                     <td className={tdClass}>
                       <Badge variant={isOnlineOnlyFee(f.category) ? 'default' : 'success'}>
                         {isOnlineOnlyFee(f.category) ? 'Online only' : 'Wallet'}
@@ -621,7 +622,7 @@ function LegacyFinance() {
           <Btn onClick={openCreatePf} disabled={!pfProgramId}>Add line</Btn>
           {programmeFeeTotal != null && (
             <div className="text-sm font-medium text-slate-800 ml-auto">
-              Schedule total: ₦{programmeFeeTotal.toLocaleString()}
+              Schedule total: {formatNaira(programmeFeeTotal)}
             </div>
           )}
         </div>
@@ -647,8 +648,8 @@ function LegacyFinance() {
                   </td>
                   <td className={tdClass}>{row.level_code || 'all'}</td>
                   <td className={tdClass}>{row.semester || 'both'}</td>
-                  <td className={tdClass}>{row.amount != null ? `₦${Number(row.amount).toLocaleString()}` : 'Catalog default'}</td>
-                  <td className={`${tdClass} font-medium`}>₦{Number(row.effective_amount ?? 0).toLocaleString()}</td>
+                  <td className={tdClass}>{formatNaira(row.amount, 'Catalog default')}</td>
+                  <td className={`${tdClass} font-medium`}>{formatNaira(row.effective_amount)}</td>
                   <td className={tdClass}>
                     <Badge variant={row.is_active === false ? 'default' : 'success'}>
                       {row.is_active === false ? 'Inactive' : 'Active'}
@@ -731,7 +732,7 @@ function LegacyFinance() {
                 onChange={(v) => setPfForm((s) => ({ ...s, fee_item_id: v }))}
                 options={scheduleFeeItems.map((f) => ({
                   value: f.id,
-                  label: `${f.name} (₦${Number(f.amount).toLocaleString()})`,
+                  label: `${f.name} (${formatNaira(f.amount)})`,
                 }))}
               />
             </label>
@@ -817,7 +818,7 @@ function LegacyFinance() {
               onChange={setGenFeeId}
               options={fees.filter((f) => f.is_active !== false).map((f) => ({
                 value: f.id,
-                label: `${f.name} (₦${Number(f.amount).toLocaleString()})`,
+                label: `${f.name} (${formatNaira(f.amount)})`,
               }))}
             />
           </label>
@@ -852,7 +853,7 @@ function LegacyFinance() {
               {payments.map((p: any) => (
                 <tr key={p.id} className={trClass}>
                   <td className={tdClass}><Badge variant="info">{p.method}</Badge></td>
-                  <td className={`${tdClass} font-medium`}>₦{p.amount}</td>
+                  <td className={`${tdClass} font-medium`}>{formatNaira(p.amount)}</td>
                   <td className={tdClass}><Badge variant={stageBadge(p.status)}>{p.status}</Badge></td>
                 </tr>
               ))}
