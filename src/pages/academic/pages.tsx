@@ -1,5 +1,5 @@
 import {
-  Alert, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tag, message,
+  Alert, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tag, Tooltip, message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Award, BookOpen, Building2, GraduationCap, Plus } from 'lucide-react';
@@ -80,6 +80,8 @@ type AcademicSessionRow = {
   is_closed?: boolean;
   closed_at?: string | null;
   auto_close_on_end?: boolean;
+  can_set_current?: boolean;
+  accepting_application_sessions?: string[];
   last_closure?: {
     promoted_count: number;
     skipped_final_count: number;
@@ -374,11 +376,23 @@ export function SessionsPage() {
     }
   };
 
-  const setSemesterCurrent = async (semester: Term, isCurrent: boolean) => {
+  const setSemesterCurrent = async (semester: Term, isCurrent: boolean, session: AcademicSessionRow) => {
+    if (isCurrent && session.can_set_current === false) {
+      const open = (session.accepting_application_sessions || []).join(', ');
+      message.error(
+        open
+          ? `Stop accepting applications before setting this session current. Still accepting: ${open}.`
+          : 'Stop accepting applications for this admission session before setting it current.',
+      );
+      return;
+    }
     setTogglingSemesterId(semester.id);
     try {
       await patchResource(`/api/terms/${semester.id}`, { is_current: isCurrent });
       reload();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } })?.response?.data;
+      message.error(msg?.errors?.is_current?.[0] || msg?.message || 'Unable to update current semester.');
     } finally {
       setTogglingSemesterId(null);
     }
@@ -409,7 +423,10 @@ export function SessionsPage() {
         <Space size={[4, 4]} wrap>
           {row.is_closed && <Tag color="default">Closed</Tag>}
           {row.is_current && !row.is_closed && <Tag color="blue">Active session</Tag>}
-          {!row.is_closed && !row.is_current && '—'}
+          {!row.is_closed && !row.is_current && row.can_set_current === false && (
+            <Tag color="orange">Applications open</Tag>
+          )}
+          {!row.is_closed && !row.is_current && row.can_set_current !== false && '—'}
         </Space>
       ),
     },
@@ -450,6 +467,8 @@ export function SessionsPage() {
   ];
 
   const expandedRowRender = (session: AcademicSessionRow) => {
+    const accepting = session.accepting_application_sessions || [];
+    const canSetCurrent = session.can_set_current !== false;
     const semesterColumns: ColumnsType<Term> = [
       { title: 'Semester', dataIndex: 'name', key: 'name' },
       { title: 'Starts', dataIndex: 'starts_on', key: 'starts_on', width: 120, render: (v) => formatDisplayDate(v) },
@@ -458,14 +477,25 @@ export function SessionsPage() {
         title: 'Current',
         dataIndex: 'is_current',
         key: 'is_current',
-        width: 100,
-        render: (isCurrent, row) => (
-          <Switch
-            checked={!!isCurrent}
-            loading={togglingSemesterId === row.id}
-            onChange={(checked) => setSemesterCurrent(row, checked)}
-          />
-        ),
+        width: 120,
+        render: (isCurrent, row) => {
+          const switchEl = (
+            <Switch
+              checked={!!isCurrent}
+              loading={togglingSemesterId === row.id}
+              disabled={!isCurrent && !canSetCurrent}
+              onChange={(checked) => setSemesterCurrent(row, checked, session)}
+            />
+          );
+          if (!isCurrent && !canSetCurrent) {
+            return (
+              <Tooltip title={`Stop accepting applications first${accepting.length ? `: ${accepting.join(', ')}` : ''}. Then run admission, then set current.`}>
+                <span>{switchEl}</span>
+              </Tooltip>
+            );
+          }
+          return switchEl;
+        },
       },
       actionColumn(
         (row) => {
@@ -487,14 +517,32 @@ export function SessionsPage() {
     ];
 
     return (
-      <Table
-        rowKey="id"
-        columns={semesterColumns}
-        dataSource={session.semesters || []}
-        pagination={false}
-        size="small"
-        locale={{ emptyText: 'No semesters in this session.' }}
-      />
+      <div className="space-y-3 py-1">
+        {!canSetCurrent && (
+          <Alert
+            type="warning"
+            showIcon
+            message="Application sessions still accepting"
+            description={`Stop accepting (${accepting.join(', ') || 'open intakes'}) before running admission and setting this session current.`}
+          />
+        )}
+        {canSetCurrent && !session.is_current && !session.is_closed && (
+          <Alert
+            type="info"
+            showIcon
+            message="Ready for admission"
+            description="Applications are closed for this session. Run admission (offers and matriculation), then set a semester current when ready."
+          />
+        )}
+        <Table
+          rowKey="id"
+          columns={semesterColumns}
+          dataSource={session.semesters || []}
+          pagination={false}
+          size="small"
+          locale={{ emptyText: 'No semesters in this session.' }}
+        />
+      </div>
     );
   };
 
@@ -550,12 +598,12 @@ export function SessionsPage() {
   return (
     <ResourceShell
       title="Admission sessions"
-      description="Create one academic session (e.g. 2025/2026) with at least two semesters (First and Second). Use Close session at year end to promote active students one level (capped at programme duration). Turn on Auto-close on end date for the nightly job to close and promote automatically."
+      description="Create the academic session first (not current). Open application sessions next, stop accepting, run admission, then set a semester current. Close session at year end to promote students."
       loading={loading}
       onRefresh={reload}
       onAdd={() => sessionCrud.openCreate({
         semesters: [
-          { name: 'First', is_current: true },
+          { name: 'First', is_current: false },
           { name: 'Second', is_current: false },
         ],
       })}
@@ -647,7 +695,14 @@ export function SessionsPage() {
                           <DatePicker className="w-full" format="DD/MM/YYYY" />
                         </Form.Item>
                       </div>
-                      <Form.Item {...field} name={[field.name, 'is_current']} label="Current semester" valuePropName="checked" className="mb-0">
+                      <Form.Item
+                        {...field}
+                        name={[field.name, 'is_current']}
+                        label="Current semester"
+                        valuePropName="checked"
+                        className="mb-0"
+                        extra="Leave off for a new cycle. Set current only after applications stop accepting and admission is complete."
+                      >
                         <Switch />
                       </Form.Item>
                     </div>
@@ -691,7 +746,7 @@ export function SessionsPage() {
         <Form.Item
           name="is_current"
           label="Set as current semester"
-          extra="Only one semester can be current across the university."
+          extra="Only one semester can be current. Blocked while any application session on this admission session is still accepting."
           valuePropName="checked"
         >
           <Switch />
@@ -1117,7 +1172,17 @@ export function IntakesPage() {
   };
 
   return (
-    <ResourceShell title="Application sessions" description="Set the application fee per session (required). Acceptance fee is optional here — you can set or change it when issuing admission offers." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ is_open: true })} canAdd={terms.length > 0} count={rows.length} countLabel="Sessions" eyebrow="Application setup">
+    <ResourceShell
+      title="Application sessions"
+      description="Set fees and open/close intakes after the admission session exists (not yet current). After you stop accepting, run admission, then set that admission session current under Admission sessions."
+      loading={loading}
+      onRefresh={reload}
+      onAdd={() => crud.openCreate({ is_open: true })}
+      canAdd={terms.length > 0}
+      count={rows.length}
+      countLabel="Sessions"
+      eyebrow="Application setup"
+    >
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1100 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No application sessions yet.' }} />
       <CrudModal title="application session" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="academic_term_id" label="Semester" rules={[{ required: true }]}>
