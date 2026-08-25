@@ -116,7 +116,7 @@ export function FeeCatalog() {
       <WorkspaceHero
         eyebrow="Fees & payments"
         title="Fee catalog"
-        description="Define reusable school-fee lines. School charges are paid from the campus wallet. Only application and acceptance fees are paid online. Application fees are set per application window under Academic → Application windows."
+        description="Define reusable school-fee lines. School charges are paid from the campus wallet. Only application and acceptance fees are paid online. Application fees are set per application session under Academic → Application sessions."
         icon={Wallet}
       >
         <RefreshButton onClick={load} loading={loading} />

@@ -23,16 +23,16 @@ export const ADMISSION_SETUP_RESOURCES: AcademicResource[] = [
   { key: 'campuses', path: '/academic/campuses', label: 'Campuses', perm: 'academic.campuses.manage' },
   { key: 'colleges', path: '/academic/colleges', label: 'Colleges', perm: 'academic.colleges.manage' },
   { key: 'departments', path: '/academic/departments', label: 'Departments', perm: 'academic.departments.manage' },
-  { key: 'sessions', path: '/academic/sessions', label: 'Sessions & semesters', perm: 'academic.sessions.manage' },
+  { key: 'sessions', path: '/academic/sessions', label: 'Admission sessions', perm: 'academic.sessions.manage' },
   { key: 'graduation', path: '/academic/graduation', label: 'Graduation', perm: 'academic.graduate' },
   { key: 'levels', path: '/academic/levels', label: 'Levels', perm: 'academic.levels.manage' },
   { key: 'courses', path: '/academic/courses', label: 'Courses', perm: 'academic.courses.manage' },
 ];
 
-/** Programmes, application windows, O'level */
+/** Programmes, application sessions, O'level */
 export const APPLICATION_SETUP_RESOURCES: AcademicResource[] = [
   { key: 'programmes', path: '/academic/programmes', label: 'Programmes', perm: 'academic.programmes.manage' },
-  { key: 'intakes', path: '/academic/intakes', label: 'Application windows', perm: 'academic.intakes.manage' },
+  { key: 'intakes', path: '/academic/intakes', label: 'Application sessions', perm: 'academic.intakes.manage' },
   { key: 'candidate-data', path: '/academic/candidate-data', label: 'Candidate data', perm: 'admissions.import' },
   { key: 'import-applicants', path: '/academic/import-applicants', label: 'Import applicants', perm: 'admissions.import' },
   { key: 'olevel', path: '/academic/olevel', label: "O'level", perm: 'academic.olevel.manage' },

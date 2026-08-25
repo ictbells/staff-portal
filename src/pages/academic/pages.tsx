@@ -548,7 +548,7 @@ export function SessionsPage() {
 
   return (
     <ResourceShell
-      title="Sessions & semesters"
+      title="Admission sessions"
       description="Create one academic session (e.g. 2025/2026) with at least two semesters (First and Second). Use Close session at year end to promote active students one level (capped at programme duration). Turn on Auto-close on end date for the nightly job to close and promote automatically."
       loading={loading}
       onRefresh={reload}
@@ -1109,13 +1109,13 @@ export function IntakesPage() {
   };
 
   return (
-    <ResourceShell title="Application windows" description="Set the application fee per window (required). Acceptance fee is optional here — you can set or change it when issuing admission offers." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ is_open: true })} canAdd={terms.length > 0} count={rows.length} countLabel="Windows" eyebrow="Application setup">
-      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1100 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No application windows yet.' }} />
-      <CrudModal title="application window" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
+    <ResourceShell title="Application sessions" description="Set the application fee per session (required). Acceptance fee is optional here — you can set or change it when issuing admission offers." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ is_open: true })} canAdd={terms.length > 0} count={rows.length} countLabel="Sessions" eyebrow="Application setup">
+      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1100 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No application sessions yet.' }} />
+      <CrudModal title="application session" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="academic_term_id" label="Semester" rules={[{ required: true }]}>
           <Select options={terms.map((t) => ({ value: t.id, label: `${t.session_label} — ${t.name}` }))} />
         </Form.Item>
-        <Form.Item name="name" label="Window name" rules={[{ required: true }]}><Input placeholder="UTME 2025/2026" /></Form.Item>
+        <Form.Item name="name" label="Session name" rules={[{ required: true }]}><Input placeholder="UTME 2025/2026" /></Form.Item>
         <Form.Item name="entry_mode" label="Admission category" rules={[{ required: true }]} extra="UTME, Direct Entry, JUPEB, Postgraduate, or Transfer.">
           <Select options={ENTRY_MODES} />
         </Form.Item>
@@ -1124,7 +1124,7 @@ export function IntakesPage() {
         <Form.Item
           name="application_fee_amount"
           label="Application fee (₦)"
-          rules={[{ required: true, message: 'Set the application fee for this window.' }]}
+          rules={[{ required: true, message: 'Set the application fee for this session.' }]}
           extra="Applicants pay this amount before they can complete the form."
         >
           <InputNumber min={0} className="w-full" />

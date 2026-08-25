@@ -502,7 +502,7 @@ function LegacyFinance() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Fees & payments" description="Maintain school-fee lines and programme fees. Application fees are set per application window under Academic → Application windows. Acceptance fee defaults can be updated in the fee catalog or when issuing offers.">
+      <PageHeader title="Fees & payments" description="Maintain school-fee lines and programme fees. Application fees are set per application session under Academic → Application sessions. Acceptance fee defaults can be updated in the fee catalog or when issuing offers.">
         <RefreshButton onClick={load} loading={loading} />
       </PageHeader>
 
