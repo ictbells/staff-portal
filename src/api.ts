@@ -29,8 +29,14 @@ function ensureCsrfCookie() {
 
 api.interceptors.request.use(async (config) => {
   const method = (config.method ?? 'get').toLowerCase();
-  if (!['get', 'head', 'options'].includes(method)) {
-    await ensureCsrfCookie();
+  const url = String(config.url || '');
+  const csrfExempt = ['/api/login', '/api/forgot-password', '/api/reset-password', '/api/two-factor/'].some((prefix) => url.includes(prefix));
+  if (!['get', 'head', 'options'].includes(method) && !csrfExempt) {
+    try {
+      await ensureCsrfCookie();
+    } catch {
+      // Continue; login and other public routes are CSRF-exempt.
+    }
   }
   const token = sessionStorage.getItem('bells_token');
   if (token) {
