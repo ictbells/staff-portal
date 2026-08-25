@@ -144,12 +144,7 @@ export function ProgrammeFees() {
 
   return (
     <div className="space-y-6">
-      <WorkspaceHero
-        eyebrow="Fees & payments"
-        title="Programme fees"
-        description="Assign catalog school-fee lines to a programme (optional level and semester). Leave amount blank to use the catalog default. The total drives tuition invoices and installments."
-        icon={Wallet}
-      >
+      <WorkspaceHero title="Programme fees">
         <RefreshButton onClick={() => { load(); loadProgrammeFees(pfProgramId); }} loading={loading} />
       </WorkspaceHero>
       <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">

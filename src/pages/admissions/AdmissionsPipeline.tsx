@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Button, Dropdown, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, message,
+  Button, Dropdown, Input, Modal, Select, Space, Table, Tag, message,
 } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { MenuProps } from 'antd';
 import {
-  ArrowRight,
   Award,
   BadgeCheck,
   BookOpen,
@@ -25,6 +24,7 @@ import api from '../../api';
 import { useAuth } from '../../auth';
 import { RefreshButton } from '../../components/RefreshButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
+import { ApplicationDecisionModal } from './ApplicationDecisionModal';
 import { ApplicationFileDrawer } from './ApplicationFileDrawer';
 import type { AdmissionsChannel, AdmissionsChannelKey, AdmissionsReferenceColumn } from './constants';
 import { ENTRY_MODES } from '../academic/constants';
@@ -141,7 +141,7 @@ type ApplicationRow = {
   intake?: { name?: string; acceptance_fee_amount?: number | string; term?: { session_label?: string } };
   application_fee_invoice?: { status?: string };
   eligibility?: { meets: boolean; failed?: { rule: string; message: string }[] };
-  workflow?: { next_stage?: string; next_permission?: string; template_code?: string };
+  workflow?: { next_stage?: string; next_label?: string; next_permission?: string; template_code?: string };
   previous_university?: string | null;
   credit_assessment_complete?: boolean;
 };
@@ -197,7 +197,6 @@ type Props = {
 export function AdmissionsPipeline({ channel }: Props) {
   const { has } = useAuth();
   const [rows, setRows] = useState<ApplicationRow[]>([]);
-  const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -208,6 +207,8 @@ export function AdmissionsPipeline({ channel }: Props) {
   const [collegeFilter, setCollegeFilter] = useState<number | undefined>(undefined);
   const [departmentFilter, setDepartmentFilter] = useState<number | undefined>(undefined);
   const [fileId, setFileId] = useState<number | null>(null);
+  const [decisionRow, setDecisionRow] = useState<ApplicationRow | null>(null);
+  const [moving, setMoving] = useState(false);
   const [feeStatusFilter, setFeeStatusFilter] = useState('');
   const [sessions, setSessions] = useState<{ id: number; session_label: string; name?: string; is_current?: boolean }[]>([]);
   const [programs, setPrograms] = useState<{
@@ -220,8 +221,6 @@ export function AdmissionsPipeline({ channel }: Props) {
   const [exporting, setExporting] = useState(false);
   const [printingId, setPrintingId] = useState<number | null>(null);
   const [docModal, setDocModal] = useState<{ title: string; html: string } | null>(null);
-  const [offerModal, setOfferModal] = useState<ApplicationRow | null>(null);
-  const [acceptanceAmount, setAcceptanceAmount] = useState<number | undefined>();
   const [summary, setSummary] = useState<{ by_stage?: Record<string, number>; total?: number } | null>(null);
 
   const entryModeOptions = useMemo(
@@ -367,8 +366,8 @@ export function AdmissionsPipeline({ channel }: Props) {
     setCollegeFilter(undefined);
     setDepartmentFilter(undefined);
     setFileId(null);
+    setDecisionRow(null);
     setFeeStatusFilter('');
-    setReason('');
     load(1, pagination.pageSize, {
       search: '',
       stage: '',
@@ -393,7 +392,8 @@ export function AdmissionsPipeline({ channel }: Props) {
     return () => window.clearTimeout(timer);
   }, [searchInput]);
 
-  const move = useCallback(async (id: number, to: string, decision?: string, acceptanceFeeAmount?: number) => {
+  const move = useCallback(async (id: number, to: string, decision?: string, acceptanceFeeAmount?: number, reason?: string) => {
+    setMoving(true);
     try {
       await api.post(`/api/applications/${id}/transition`, {
         to_stage: to,
@@ -401,13 +401,16 @@ export function AdmissionsPipeline({ channel }: Props) {
         reason: reason || undefined,
         acceptance_fee_amount: acceptanceFeeAmount,
       });
-      message.success(decision === 'rejected' ? 'Application rejected.' : 'Application advanced.');
-      setReason('');
+      message.success(decision === 'rejected' ? 'Application rejected.' : 'Decision updated.');
       await load(pagination.current);
+      return true;
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to update application.');
+      return false;
+    } finally {
+      setMoving(false);
     }
-  }, [load, pagination.current, reason]);
+  }, [load, pagination.current]);
 
   const canAdvanceTo = useCallback((row: ApplicationRow | string) => {
     if (typeof row === 'string') {
@@ -553,7 +556,7 @@ export function AdmissionsPipeline({ channel }: Props) {
             <button
               type="button"
               className="font-medium text-sky-700 hover:underline truncate block max-w-full text-left"
-              onClick={() => setFileId(row.id)}
+              onClick={() => setDecisionRow(row)}
             >
               {row.user?.name || '—'}
             </button>
@@ -669,86 +672,45 @@ export function AdmissionsPipeline({ channel }: Props) {
         title: 'Actions',
         key: 'actions',
         width: 260,
-        render: (_, row) => {
-          const next = nextFor(row);
-          return (
-            <Space size="small" wrap>
-              {has('admissions.view') && (
-                <Button size="small" icon={<Eye size={14} />} onClick={() => setFileId(row.id)}>
-                  File
-                </Button>
-              )}
-              {has('admissions.view') && (
-                <Button
-                  size="small"
-                  icon={<Printer size={14} />}
-                  loading={printingId === row.id}
-                  onClick={() => openDocument(row.id, 'form')}
-                >
-                  Form
-                </Button>
-              )}
-              {has('admissions.view') && row.offer_reference && (
-                <Button
-                  size="small"
-                  icon={<FileText size={14} />}
-                  loading={printingId === row.id}
-                  onClick={() => openDocument(row.id, 'offer')}
-                >
-                  Letter
-                </Button>
-              )}
-              {next && canAdvanceTo(row) && (
-                <Button
-                  size="small"
-                  type="primary"
-                  icon={<ArrowRight size={14} />}
-                  onClick={() => {
-                    if (next === 'offer_issued' || next === 'admission') {
-                      setAcceptanceAmount(
-                        row.intake?.acceptance_fee_amount != null
-                          ? Number(row.intake.acceptance_fee_amount)
-                          : undefined,
-                      );
-                      setOfferModal(row);
-                    } else {
-                      move(row.id, next);
-                    }
-                  }}
-                >
-                  Advance
-                </Button>
-              )}
-              {row.stage !== 'rejected' && has('admissions.view') && (
-                <Popconfirm
-                  title="Reject this application?"
-                  description={(
-                    <div className="w-64 space-y-2 pt-1">
-                      <p className="text-xs text-slate-500">Optional reason for the applicant record.</p>
-                      <Input.TextArea
-                        rows={2}
-                        placeholder="Rejection reason"
-                        value={reason}
-                        onChange={(e) => setReason(e.target.value)}
-                      />
-                    </div>
-                  )}
-                  okText="Reject"
-                  cancelText="Cancel"
-                  okButtonProps={{ danger: true }}
-                  onConfirm={() => move(row.id, 'rejected', 'rejected')}
-                >
-                  <Button size="small" danger>Reject</Button>
-                </Popconfirm>
-              )}
-            </Space>
-          );
-        },
+        render: (_, row) => (
+          <Space size="small" wrap>
+            {has('admissions.view') && (
+              <Button size="small" icon={<Eye size={14} />} onClick={() => setDecisionRow(row)}>
+                View
+              </Button>
+            )}
+            {has('admissions.view') && (
+              <Button size="small" icon={<ClipboardList size={14} />} onClick={() => setFileId(row.id)}>
+                File
+              </Button>
+            )}
+            {has('admissions.view') && (
+              <Button
+                size="small"
+                icon={<Printer size={14} />}
+                loading={printingId === row.id}
+                onClick={() => openDocument(row.id, 'form')}
+              >
+                Form
+              </Button>
+            )}
+            {has('admissions.view') && row.offer_reference && (
+              <Button
+                size="small"
+                icon={<FileText size={14} />}
+                loading={printingId === row.id}
+                onClick={() => openDocument(row.id, 'offer')}
+              >
+                Letter
+              </Button>
+            )}
+          </Space>
+        ),
       },
     );
 
     return cols;
-  }, [canAdvanceTo, channel.referenceColumn, channel.showEntryMode, has, move, openDocument, printingId, reason]);
+  }, [channel.referenceColumn, channel.showEntryMode, has, openDocument, printingId]);
 
   const onTableChange = (next: TablePaginationConfig) => {
     const page = next.current ?? 1;
@@ -983,30 +945,23 @@ export function AdmissionsPipeline({ channel }: Props) {
         )}
       </Modal>
 
-      <Modal
-        open={!!offerModal}
-        title="Issue admission offer"
-        okText="Issue offer"
-        onCancel={() => setOfferModal(null)}
-        onOk={async () => {
-          if (!offerModal) return;
-          await move(offerModal.id, 'offer_issued', undefined, acceptanceAmount);
-          setOfferModal(null);
+      <ApplicationDecisionModal
+        open={!!decisionRow}
+        row={decisionRow}
+        referenceKind={channel.referenceColumn}
+        canAdvance={decisionRow ? canAdvanceTo(decisionRow) : false}
+        saving={moving}
+        onClose={() => setDecisionRow(null)}
+        onOpenFile={() => {
+          if (!decisionRow) return;
+          setFileId(decisionRow.id);
+          setDecisionRow(null);
         }}
-        destroyOnHidden
-      >
-        <p className="text-sm text-slate-600 mb-4">
-          Set the acceptance fee for this applicant. Leave blank to use the window default or fee catalog amount.
-        </p>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Acceptance fee (₦)</label>
-        <InputNumber
-          min={0}
-          className="w-full"
-          placeholder="Optional"
-          value={acceptanceAmount}
-          onChange={(value) => setAcceptanceAmount(value ?? undefined)}
-        />
-      </Modal>
+        onUpdate={async ({ to, decision, reason, acceptanceFeeAmount }) => {
+          if (!decisionRow) return false;
+          return move(decisionRow.id, to, decision, acceptanceFeeAmount, reason);
+        }}
+      />
 
       <ApplicationFileDrawer
         applicationId={fileId}
@@ -1017,51 +972,9 @@ export function AdmissionsPipeline({ channel }: Props) {
         printing={fileId != null && printingId === fileId}
         onSaved={() => load(pagination.current)}
         extra={fileRow ? (
-          <Space wrap>
-            {nextFor(fileRow) && canAdvanceTo(fileRow) && (
-              <Button
-                type="primary"
-                icon={<ArrowRight size={14} />}
-                onClick={() => {
-                  const next = nextFor(fileRow);
-                  if (next === 'offer_issued' || next === 'admission') {
-                    setAcceptanceAmount(
-                      fileRow.intake?.acceptance_fee_amount != null
-                        ? Number(fileRow.intake.acceptance_fee_amount)
-                        : undefined,
-                    );
-                    setOfferModal(fileRow);
-                  } else if (next) {
-                    move(fileRow.id, next);
-                  }
-                }}
-              >
-                Advance
-              </Button>
-            )}
-            {fileRow.stage !== 'rejected' && has('admissions.view') && (
-              <Popconfirm
-                title="Reject this application?"
-                description={(
-                  <div className="w-64 space-y-2 pt-1">
-                    <p className="text-xs text-slate-500">Optional reason for the applicant record.</p>
-                    <Input.TextArea
-                      rows={2}
-                      placeholder="Rejection reason"
-                      value={reason}
-                      onChange={(e) => setReason(e.target.value)}
-                    />
-                  </div>
-                )}
-                okText="Reject"
-                cancelText="Cancel"
-                okButtonProps={{ danger: true }}
-                onConfirm={() => move(fileRow.id, 'rejected', 'rejected')}
-              >
-                <Button danger>Reject</Button>
-              </Popconfirm>
-            )}
-          </Space>
+          <Button icon={<Eye size={14} />} onClick={() => setDecisionRow(fileRow)}>
+            View
+          </Button>
         ) : null}
       />
     </div>

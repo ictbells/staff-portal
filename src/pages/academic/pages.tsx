@@ -869,7 +869,14 @@ export function ProgrammesPage() {
       <Table rowKey="id" columns={columns} dataSource={visibleRows} loading={loading} scroll={{ x: 1500 }} pagination={{ pageSize: 15 }} locale={{ emptyText: modeFilter ? 'No programmes in this category.' : 'No programmes yet.' }} />
       <CrudModal title="programme" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit} width={640}>
         <Form.Item name="department_id" label="Department" rules={[{ required: true }]}>
-          <Select options={departments.map((d) => ({ value: d.id, label: d.name }))} showSearch optionFilterProp="label" />
+          <Select
+            options={departments.map((d) => ({
+              value: d.id,
+              label: d.faculty?.name ? `(${d.faculty.name}) ${d.name}` : d.name,
+            }))}
+            showSearch
+            optionFilterProp="label"
+          />
         </Form.Item>
         <Form.Item name="name" label="Programme name" rules={[{ required: true }]}><Input /></Form.Item>
         <Form.Item name="code" label="Code"><Input /></Form.Item>
