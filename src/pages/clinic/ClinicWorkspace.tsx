@@ -38,8 +38,9 @@ import { RefreshButton } from '../../components/RefreshButton';
 import { Badge, Card, StatCard, WorkspaceHero, fieldLabelClass } from '../../components/ui';
 import { formatNaira } from '../../lib/money';
 
-type TabKey = 'queue' | 'appointments' | 'chart' | 'bills' | 'settings';
+type TabKey = 'queue' | 'appointments' | 'nhis' | 'chart' | 'bills' | 'settings';
 type EncounterTab = 'clinical' | 'prescriptions' | 'charges' | 'sick_notes';
+type NhisStatusFilter = 'all' | 'enrolled' | 'not_enrolled' | 'expiring';
 
 const DATE_PICKER_FORMAT = 'DD/MM/YYYY';
 
@@ -149,7 +150,16 @@ export default function ClinicWorkspace() {
   const [chartStudentId, setChartStudentId] = useState<number | undefined>();
   const [chart, setChart] = useState<any>(null);
   const [bills, setBills] = useState<any[]>([]);
+  const [nhisRows, setNhisRows] = useState<any[]>([]);
+  const [nhisMeta, setNhisMeta] = useState<{ current_page: number; last_page: number; total: number; per_page: number } | null>(null);
+  const [nhisSummary, setNhisSummary] = useState<{ enrolled: number } | null>(null);
+  const [nhisSearch, setNhisSearch] = useState('');
+  const [nhisStatus, setNhisStatus] = useState<NhisStatusFilter>('all');
+  const [nhisPage, setNhisPage] = useState(1);
+  const [nhisEditOpen, setNhisEditOpen] = useState(false);
+  const [nhisEditStudent, setNhisEditStudent] = useState<any | null>(null);
   const [profileForm] = Form.useForm();
+  const [nhisForm] = Form.useForm();
   const [immForm] = Form.useForm();
   const [itemForm] = Form.useForm();
   const [rxForm] = Form.useForm();
@@ -207,6 +217,27 @@ export default function ClinicWorkspace() {
       .catch(() => {});
   }, [canView, canBill]);
 
+  const loadNhis = useCallback(() => {
+    if (!canView) return;
+    setLoading(true);
+    api.get('/api/medical/nhis', {
+      params: {
+        page: nhisPage,
+        per_page: 25,
+        status: nhisStatus,
+        search: nhisSearch.trim() || undefined,
+      },
+    })
+      .then((r) => {
+        setNhisRows(Array.isArray(r.data.data) ? r.data.data : []);
+        setNhisMeta(r.data.meta || null);
+        setNhisSummary(r.data.summary ? { enrolled: Number(r.data.summary.enrolled || 0) } : null);
+        if (r.data.summary?.settings) setSettings(r.data.summary.settings);
+      })
+      .catch(() => message.error('Could not load NHIS roster'))
+      .finally(() => setLoading(false));
+  }, [canView, nhisPage, nhisStatus, nhisSearch]);
+
   const loadSettings = useCallback(() => {
     api.get('/api/clinic/settings')
       .then((r) => {
@@ -258,10 +289,11 @@ export default function ClinicWorkspace() {
   useEffect(() => {
     if (tab === 'queue') loadQueue();
     if (tab === 'appointments') loadAppointments();
+    if (tab === 'nhis') loadNhis();
     if (tab === 'bills') loadBills();
     if (tab === 'settings') loadSettings();
     if (tab === 'chart') loadChart();
-  }, [tab, loadQueue, loadAppointments, loadBills, loadSettings, loadChart]);
+  }, [tab, loadQueue, loadAppointments, loadNhis, loadBills, loadSettings, loadChart]);
 
   useEffect(() => { loadChart(); }, [chartStudentId, loadChart]);
 
@@ -297,6 +329,7 @@ export default function ClinicWorkspace() {
   const tabs: { key: TabKey; label: string; icon: typeof Users }[] = [
     { key: 'queue', label: 'Queue', icon: Users },
     { key: 'appointments', label: 'Appointments', icon: CalendarClock },
+    { key: 'nhis', label: 'NHIS', icon: Shield },
     { key: 'chart', label: 'Charts', icon: HeartPulse },
     { key: 'bills', label: 'Bills', icon: Receipt },
     ...(canManage ? [{ key: 'settings' as const, label: 'Settings', icon: Settings2 }] : []),
@@ -360,6 +393,49 @@ export default function ClinicWorkspace() {
     });
     message.success('Profile saved');
     loadChart();
+  };
+
+  const openNhisEditor = (student?: any) => {
+    setNhisEditStudent(student || null);
+    const profile = medicalProfile(student);
+    nhisForm.setFieldsValue({
+      student_id: student?.id,
+      nhis_enrolled: profile?.nhis_enrolled ?? true,
+      nhis_number: profile?.nhis_number || undefined,
+      nhis_provider: profile?.nhis_provider || undefined,
+      nhis_coverage_percent: profile?.nhis_coverage_percent ?? undefined,
+      nhis_valid_until: profile?.nhis_valid_until ? dayjs(profile.nhis_valid_until) : null,
+    });
+    setNhisEditOpen(true);
+  };
+
+  const saveNhisEnrolment = async () => {
+    try {
+      const values = await nhisForm.validateFields();
+      const studentId = nhisEditStudent?.id || values.student_id;
+      if (!studentId) {
+        message.error('Select a student');
+        return;
+      }
+      await api.put(`/api/medical/${studentId}`, {
+        nhis_enrolled: !!values.nhis_enrolled,
+        nhis_number: values.nhis_number || null,
+        nhis_provider: values.nhis_provider || null,
+        nhis_coverage_percent: values.nhis_coverage_percent === '' || values.nhis_coverage_percent === undefined
+          ? null
+          : values.nhis_coverage_percent,
+        nhis_valid_until: values.nhis_valid_until ? values.nhis_valid_until.format('YYYY-MM-DD') : null,
+      });
+      message.success(values.nhis_enrolled ? 'NHIS enrolment saved' : 'NHIS enrolment cleared');
+      setNhisEditOpen(false);
+      setNhisEditStudent(null);
+      nhisForm.resetFields();
+      loadNhis();
+      if (chartStudentId === studentId) loadChart();
+    } catch (err: any) {
+      if (err?.errorFields) return;
+      message.error(err.response?.data?.message || 'Could not save NHIS enrolment');
+    }
   };
 
   const addImmunization = async () => {
@@ -474,6 +550,7 @@ export default function ClinicWorkspace() {
   const refreshCurrent = () => {
     if (tab === 'queue') loadQueue();
     if (tab === 'appointments') loadAppointments();
+    if (tab === 'nhis') loadNhis();
     if (tab === 'chart') loadChart();
     if (tab === 'bills') loadBills();
     if (tab === 'settings') loadSettings();
@@ -539,7 +616,7 @@ export default function ClinicWorkspace() {
       <WorkspaceHero
         eyebrow="Campus clinic"
         title="Clinic workspace"
-        description="Check in students, run encounters, issue sick notes, and split NHIS-aware clinic bills."
+        description="Check in students, manage NHIS enrolment, run encounters, and split NHIS-aware clinic bills."
         icon={Stethoscope}
       >
         {canManage && (
@@ -650,6 +727,138 @@ export default function ClinicWorkspace() {
                       )}
                     </div>
                   ) : null,
+                },
+              ]}
+            />
+          </Card>
+        </div>
+      )}
+
+      {tab === 'nhis' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <StatCard label="Enrolled on NHIS" value={nhisSummary?.enrolled ?? 0} hint={`Default cover ${settings?.nhis_default_coverage_percent ?? 90}%`} icon={Shield} tone="sky" />
+            <StatCard label="Showing" value={nhisMeta?.total ?? nhisRows.length} hint={titleCase(nhisStatus.replace('_', ' '))} icon={Users} tone="amber" />
+            <StatCard label="NHIS billing" value={settings?.nhis_enabled ? 'On' : 'Off'} hint="Campus clinic settings" icon={Settings2} tone="emerald" />
+          </div>
+          <Card
+            title="NHIS enrolment"
+            description="Search students, enrol them on NHIS, and keep provider and coverage details up to date for clinic billing."
+            actions={canManage ? (
+              <Button type="primary" icon={<Shield size={14} />} onClick={() => openNhisEditor()}>
+                Enrol student
+              </Button>
+            ) : undefined}
+          >
+            <div className="flex flex-col lg:flex-row gap-3 mb-4">
+              <Input.Search
+                allowClear
+                className="flex-1"
+                placeholder="Name, matric, NHIS number, or provider"
+                defaultValue={nhisSearch}
+                onSearch={(value) => {
+                  setNhisPage(1);
+                  setNhisSearch(value);
+                }}
+              />
+              <Select
+                className="w-full lg:w-56"
+                value={nhisStatus}
+                onChange={(value: NhisStatusFilter) => {
+                  setNhisPage(1);
+                  setNhisStatus(value);
+                }}
+                options={[
+                  { value: 'all', label: 'All students' },
+                  { value: 'enrolled', label: 'Enrolled' },
+                  { value: 'not_enrolled', label: 'Not enrolled' },
+                  { value: 'expiring', label: 'Expiring within 30 days' },
+                ]}
+              />
+            </div>
+            <Table
+              rowKey="id"
+              size="small"
+              loading={loading}
+              dataSource={nhisRows}
+              locale={{ emptyText: 'No students match this NHIS filter.' }}
+              pagination={{
+                current: nhisMeta?.current_page || nhisPage,
+                pageSize: nhisMeta?.per_page || 25,
+                total: nhisMeta?.total || 0,
+                showSizeChanger: false,
+                onChange: (page) => setNhisPage(page),
+              }}
+              columns={[
+                {
+                  title: 'Student',
+                  render: (_: any, row: any) => (
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-slate-900">{studentName(row)}</span>
+                        <NhisBadge profile={medicalProfile(row)} />
+                      </div>
+                      <div className="text-xs text-slate-500">{studentMatric(row)}</div>
+                    </div>
+                  ),
+                },
+                {
+                  title: 'Programme',
+                  render: (_: any, row: any) => row.program?.name || '—',
+                  ellipsis: true,
+                },
+                {
+                  title: 'Status',
+                  render: (_: any, row: any) => (
+                    medicalProfile(row)?.nhis_enrolled
+                      ? <Badge variant="info">Enrolled</Badge>
+                      : <Badge variant="default">Not enrolled</Badge>
+                  ),
+                },
+                {
+                  title: 'NHIS number',
+                  render: (_: any, row: any) => medicalProfile(row)?.nhis_number || '—',
+                },
+                {
+                  title: 'Provider',
+                  render: (_: any, row: any) => medicalProfile(row)?.nhis_provider || '—',
+                  ellipsis: true,
+                },
+                {
+                  title: 'Cover',
+                  render: (_: any, row: any) => (
+                    medicalProfile(row)?.nhis_enrolled
+                      ? `${Number(row.effective_coverage_percent ?? 0)}%`
+                      : '—'
+                  ),
+                  width: 80,
+                },
+                {
+                  title: 'Valid until',
+                  render: (_: any, row: any) => formatDate(medicalProfile(row)?.nhis_valid_until),
+                  width: 120,
+                },
+                {
+                  title: '',
+                  width: 160,
+                  render: (_: any, row: any) => (
+                    <div className="flex flex-wrap gap-2">
+                      {canManage && (
+                        <Button size="small" type="primary" onClick={() => openNhisEditor(row)}>
+                          {medicalProfile(row)?.nhis_enrolled ? 'Edit' : 'Enrol'}
+                        </Button>
+                      )}
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          setChartStudentId(row.id);
+                          setTab('chart');
+                        }}
+                      >
+                        Chart
+                      </Button>
+                    </div>
+                  ),
                 },
               ]}
             />
@@ -812,7 +1021,7 @@ export default function ClinicWorkspace() {
       )}
 
       {tab === 'settings' && canManage && (
-        <Card title="NHIS billing rules" description="Campus default coverage. Per-student overrides live on the chart.">
+        <Card title="NHIS billing rules" description="Campus default coverage. Enrol and override students on the NHIS tab.">
           <p className="text-sm text-slate-600 mb-4">
             Students on NHIS do not pay the full clinic charge. The student invoice is only the uncovered share.
           </p>
@@ -847,6 +1056,45 @@ export default function ClinicWorkspace() {
           </Form.Item>
           <Form.Item name="complaint" label="Complaint">
             <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={nhisEditStudent ? `NHIS — ${studentName(nhisEditStudent)}` : 'Enrol student on NHIS'}
+        open={nhisEditOpen}
+        onCancel={() => {
+          setNhisEditOpen(false);
+          setNhisEditStudent(null);
+          nhisForm.resetFields();
+        }}
+        onOk={saveNhisEnrolment}
+        okText="Save enrolment"
+        destroyOnHidden
+      >
+        <Form form={nhisForm} layout="vertical" className="mt-2">
+          {!nhisEditStudent && (
+            <Form.Item name="student_id" label="Student" rules={[{ required: true, message: 'Select a student' }]}>
+              <Select showSearch options={studentOptions} optionFilterProp="label" placeholder="Search student" />
+            </Form.Item>
+          )}
+          <Form.Item name="nhis_enrolled" label="NHIS enrolled" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+          <Form.Item name="nhis_number" label="NHIS number">
+            <Input placeholder="e.g. NHIS number / enrollee ID" />
+          </Form.Item>
+          <Form.Item name="nhis_provider" label="Provider / HMO">
+            <Input />
+          </Form.Item>
+          <Form.Item
+            name="nhis_coverage_percent"
+            label={`Coverage % override (blank = campus default ${settings?.nhis_default_coverage_percent ?? 90}%)`}
+          >
+            <InputNumber min={0} max={100} className="w-full" />
+          </Form.Item>
+          <Form.Item name="nhis_valid_until" label="NHIS valid until">
+            <DatePicker className="w-full" format={DATE_PICKER_FORMAT} />
           </Form.Item>
         </Form>
       </Modal>

@@ -43,6 +43,9 @@ type LevelWindow = {
   level_code: string;
   sort_order: number;
   is_active: boolean;
+  is_open?: boolean;
+  opens_at?: string | null;
+  closes_at?: string | null;
 };
 
 type QueueStudent = {
@@ -309,7 +312,7 @@ export default function HostelManagement() {
       : category === 'jupeb'
         ? jupebWindows
         : pgWindows;
-    setter(current.map((row) => (row.academic_level_id === levelId ? { ...row, is_active: active } : row)));
+    setter(current.map((row) => (row.academic_level_id === levelId ? { ...row, is_active: active, is_open: active } : row)));
   };
 
   const allocateBed = async (studentId: number, bedId: number) => {
@@ -857,14 +860,15 @@ export default function HostelManagement() {
             title: 'Open for allocation',
             key: 'active',
             render: (_, row) => (
-              canManage ? (
-                <Switch
-                  checked={row.is_active}
-                  onChange={(checked) => toggleLevel(category, row.academic_level_id, checked)}
-                />
-              ) : (
-                <Tag color={row.is_active ? 'success' : 'default'}>{row.is_active ? 'Open' : 'Closed'}</Tag>
-              )
+              <Space>
+                {canManage ? (
+                  <Switch
+                    checked={row.is_active}
+                    onChange={(checked) => toggleLevel(category, row.academic_level_id, checked)}
+                  />
+                ) : null}
+                <Tag color={row.is_open ? 'success' : 'default'}>{row.is_open ? 'Open now' : 'Closed'}</Tag>
+              </Space>
             ),
           },
         ]}
@@ -882,7 +886,7 @@ export default function HostelManagement() {
       <WorkspaceHero
         eyebrow="Campus services"
         title="Hostel management"
-        description="Undergraduate, JUPEB, and postgraduate hostels are managed separately. Student bed picks wait for staff approval. Open allocation by level — 100 Level / Year 1 has highest priority."
+        description="Undergraduate, JUPEB, and postgraduate hostels are managed separately. Student bed picks wait for staff approval. Open allocation by level (then Save) — students only see Open when that level is on for the current semester. A hostel marked Active is not the same as the selection window."
         icon={Building2}
       >
         <RefreshButton onClick={load} loading={loading || tabLoading} />

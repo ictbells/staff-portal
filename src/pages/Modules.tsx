@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button, DatePicker, Modal, Select, message } from 'antd';
 import dayjs from 'dayjs';
-import { Award, Bell, ClipboardCheck, ExternalLink, FileText, GraduationCap, Landmark, Plug } from 'lucide-react';
+import { Bell, ClipboardCheck, ExternalLink, FileText, GraduationCap, Landmark, Plug } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../auth';
 import { RefreshButton } from '../components/RefreshButton';
@@ -1102,56 +1102,6 @@ export function Integrations() {
             </tr>
           ))}
         </tbody>
-      </DataTable>
-    </div>
-  );
-}
-
-export function Pg() {
-  const [rows, setRows] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const load = () => {
-    setLoading(true);
-    api.get('/api/pg-records').then((r) => setRows(r.data)).catch(() => setRows([])).finally(() => setLoading(false));
-  };
-  useEffect(() => { load(); }, []);
-  const inProgress = rows.filter((r) => String(r.thesis_status || '').includes('progress') || r.thesis_status === 'submitted').length;
-  const completed = rows.filter((r) => ['completed', 'graduated', 'approved'].includes(String(r.thesis_status || ''))).length;
-
-  return (
-    <div className="space-y-5">
-      <WorkspaceHero
-        eyebrow="Academic"
-        title="PG research"
-        description="Thesis supervision and postgraduate records."
-        icon={Award}
-      >
-        <RefreshButton onClick={load} loading={loading} />
-      </WorkspaceHero>
-      <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
-        <StatCard label="Records" value={rows.length} hint="Postgraduate research files" icon={Award} />
-        <StatCard label="In progress" value={inProgress} hint="Active supervision" icon={ClipboardCheck} tone="amber" />
-        <StatCard label="Completed" value={completed} hint="Finished or approved" icon={ClipboardCheck} tone="emerald" />
-      </div>
-      <DataTable empty={!rows.length} emptyMessage="No postgraduate records." colSpan={3}>
-        <thead>
-          <tr>
-            <th className={thClass}>Student</th>
-            <th className={thClass}>Topic</th>
-            <th className={thClass}>Thesis status</th>
-          </tr>
-        </thead>
-        {!rows.length ? null : (
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className={trClass}>
-                <td className={tdClass}>{r.student?.first_name} {r.student?.last_name}</td>
-                <td className={tdClass}>{r.topic}</td>
-                <td className={tdClass}><Badge variant={stageBadge(r.thesis_status)}>{r.thesis_status?.replace(/_/g, ' ')}</Badge></td>
-              </tr>
-            ))}
-          </tbody>
-        )}
       </DataTable>
     </div>
   );

@@ -46,7 +46,7 @@ import ResourceView from './pages/ResourceView';
 import HostelManagement from './pages/HostelManagement';
 import {
   Documents, Finance, Institution,
-  GenerateInvoice, Integrations, Invoices, Medical, Notifications, Pg, ProgrammeFees, Rebates, Students, StudentFinance, FeeCategories,
+  GenerateInvoice, Integrations, Invoices, Medical, Notifications, ProgrammeFees, Rebates, Students, StudentFinance, FeeCategories,
 } from './pages/Modules';
 import Announcements from './pages/Announcements';
 import Audit from './pages/Audit';
@@ -131,7 +131,6 @@ export default function App() {
           <Route path="results/grading-scale" element={<AcademicResourceGuard resourceKey="results-grading-scale"><ResultsGradingScalePage /></AcademicResourceGuard>} />
         </Route>
         <Route path="academic-setup" element={<Navigate to="/academic/campuses" replace />} />
-        <Route path="pg" element={<Pg />} />
         <Route path="exam-clearance" element={<ExamClearance />} />
         <Route path="finance" element={<Finance />} />
         <Route path="finance/sundry" element={<FeeCategories />} />

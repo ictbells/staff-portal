@@ -1021,7 +1021,7 @@ export function LevelsPage() {
   const columns: ColumnsType<Level> = [
     { title: 'Name', dataIndex: 'name', key: 'name' },
     { title: 'Code', dataIndex: 'code', key: 'code', width: 90, render: (v) => v || '—' },
-    { title: 'Study level', dataIndex: 'study_level', key: 'study_level', width: 130, render: (v) => <Tag>{v}</Tag> },
+    { title: 'Degree type', dataIndex: 'study_level', key: 'study_level', width: 130, render: (v) => <Tag>{v}</Tag> },
     { title: 'Order', dataIndex: 'sort_order', key: 'sort_order', width: 70 },
     { title: 'Status', dataIndex: 'is_active', key: 'is_active', width: 90, render: (v) => <Tag color={v ? 'success' : 'default'}>{v ? 'Active' : 'Inactive'}</Tag> },
     actionColumn(
@@ -1041,7 +1041,7 @@ export function LevelsPage() {
       <CrudModal title="level" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="name" label="Level name" rules={[{ required: true }]}><Input placeholder="100 Level" /></Form.Item>
         <Form.Item name="code" label="Code"><Input placeholder="100" /></Form.Item>
-        <Form.Item name="study_level" label="Study level" rules={[{ required: true }]}><Select options={STUDY_LEVELS} /></Form.Item>
+        <Form.Item name="study_level" label="Degree type" rules={[{ required: true }]}><Select options={STUDY_LEVELS} /></Form.Item>
         <Form.Item name="sort_order" label="Sort order"><InputNumber min={0} className="w-full" /></Form.Item>
         <Form.Item name="is_active" label="Active" valuePropName="checked"><Switch /></Form.Item>
       </CrudModal>

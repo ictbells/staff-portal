@@ -157,7 +157,6 @@ export const navSections: NavSection[] = [
         icon: ClipboardCheck,
         items: RESULTS_RESOURCES.map((r) => academicNavItem(r, ClipboardCheck)),
       },
-      { key: 'pg', to: '/pg', label: 'PG research', perm: 'pg.view', icon: Award },
       { key: 'exam-clearance', to: '/exam-clearance', label: 'Exam clearance', perm: 'exam_clearance.view', icon: ClipboardList },
     ],
   },

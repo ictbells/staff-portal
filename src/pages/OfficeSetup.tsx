@@ -123,24 +123,37 @@ const defaultLinkConfig = (key: string): NavLinkConfig => ({
   approval_chain: 'both',
 });
 
+/** Assign portal access without gating mutations until staff opt in. */
+const ungatedLinkConfig = (key: string): NavLinkConfig => ({
+  key,
+  require_create: false,
+  require_update: false,
+  require_delete: false,
+  approval_chain: 'both',
+});
+
 const chainLabel: Record<ApprovalChain, string> = {
   unit_head: 'unit',
   department_head: 'HOD',
   both: 'unit→HOD',
 };
 
+function linkRequiresApproval(cfg: NavLinkConfig): boolean {
+  return cfg.require_create || cfg.require_update || cfg.require_delete;
+}
+
 function configsFromNode(navKeys: string[] = [], navLinks: NavLinkConfig[] = []): NavLinkConfig[] {
-  const byKey = new Map(navLinks.map((l) => [l.key, { ...defaultLinkConfig(l.key), ...l }]));
-  return navKeys.map((key) => byKey.get(key) || defaultLinkConfig(key));
+  const byKey = new Map(navLinks.map((l) => [l.key, { ...ungatedLinkConfig(l.key), ...l }]));
+  return navKeys.map((key) => byKey.get(key) || ungatedLinkConfig(key));
 }
 
 function methodHint(cfg: NavLinkConfig): string {
+  if (!linkRequiresApproval(cfg)) return 'no approval';
   const parts = [
     cfg.require_create ? 'C' : null,
     cfg.require_update ? 'U' : null,
     cfg.require_delete ? 'D' : null,
   ].filter(Boolean);
-  if (!parts.length) return 'no gate';
   return `${parts.join('·')} · ${chainLabel[cfg.approval_chain]}`;
 }
 
@@ -431,12 +444,12 @@ export default function OfficeSetup() {
   const toggleNavKey = (key: string, checked: boolean) => {
     if (checked) {
       const item = catalogItem(key);
-      if (item?.has_approval_actions) {
-        openApprovalConfig(key);
-        return;
-      }
-      setSelectedNavKeys((prev) => [...prev, key]);
-      setNavLinkConfigs((prev) => ({ ...prev, [key]: prev[key] || defaultLinkConfig(key) }));
+      setSelectedNavKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
+      setNavLinkConfigs((prev) => ({
+        ...prev,
+        // Gated modules start without approval; use the gear to turn gates on.
+        [key]: prev[key] || (item?.has_approval_actions ? ungatedLinkConfig(key) : defaultLinkConfig(key)),
+      }));
       return;
     }
     setSelectedNavKeys((prev) => prev.filter((k) => k !== key));
@@ -452,7 +465,7 @@ export default function OfficeSetup() {
     setLinksSubmitting(true);
     setError('');
     try {
-      const nav_links = selectedNavKeys.map((key) => navLinkConfigs[key] || defaultLinkConfig(key));
+      const nav_links = selectedNavKeys.map((key) => navLinkConfigs[key] || ungatedLinkConfig(key));
       await api.put(linksRow.navLinksUrl, { nav_links });
       closeLinksModal();
       await load();
@@ -732,7 +745,7 @@ export default function OfficeSetup() {
         <p className="text-slate-500 text-sm mb-4">
           Choose which staff-portal sidebar links appear for people who <strong>work in</strong> this {linksRow?.level.toLowerCase()}.
           Units and subunits automatically inherit links assigned on the parent department (and subunits inherit unit links). Role permissions still control what they can do.
-          Checking a module with gated actions asks which Create/Update/Delete steps need approval and who must approve.
+          Modules with gated actions start as <strong>no approval</strong> — tick the gear to require Create/Update/Delete approval when needed.
           {' '}<strong>Super Admin accounts ignore office link limits</strong> and only need the matching role permission.
         </p>
         {error && linksRow && (
@@ -807,44 +820,86 @@ export default function OfficeSetup() {
       >
         {approvalDraft && (
           <div className="space-y-4">
-            <div>
-              <Typography.Text strong className="block mb-2">Require approval for</Typography.Text>
-              <Space direction="vertical">
-                <Checkbox
-                  checked={approvalDraft.require_create}
-                  onChange={(e) => setApprovalDraft({ ...approvalDraft, require_create: e.target.checked })}
-                >
-                  Create (POST)
-                </Checkbox>
-                <Checkbox
-                  checked={approvalDraft.require_update}
-                  onChange={(e) => setApprovalDraft({ ...approvalDraft, require_update: e.target.checked })}
-                >
-                  Update (includes workflow actions)
-                </Checkbox>
-                <Checkbox
-                  checked={approvalDraft.require_delete}
-                  onChange={(e) => setApprovalDraft({ ...approvalDraft, require_delete: e.target.checked })}
-                >
-                  Delete
-                </Checkbox>
-              </Space>
+            <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Typography.Text strong className="block">Require office approval</Typography.Text>
+                  <p className="text-xs text-slate-500 mt-1 mb-0">
+                    Off = staff with permission act immediately. On = pick which mutations need a reviewer.
+                  </p>
+                </div>
+                <Switch
+                  checked={linkRequiresApproval(approvalDraft)}
+                  onChange={(checked) => {
+                    if (checked) {
+                      setApprovalDraft({
+                        ...approvalDraft,
+                        require_create: true,
+                        require_update: true,
+                        require_delete: true,
+                      });
+                      return;
+                    }
+                    setApprovalDraft({
+                      ...approvalDraft,
+                      require_create: false,
+                      require_update: false,
+                      require_delete: false,
+                    });
+                  }}
+                />
+              </div>
             </div>
-            <div>
-              <Typography.Text strong className="block mb-2">Who must approve?</Typography.Text>
-              <Radio.Group
-                value={approvalDraft.approval_chain}
-                onChange={(e) => setApprovalDraft({ ...approvalDraft, approval_chain: e.target.value })}
-                className="flex flex-col gap-2"
-              >
-                <Radio value="unit_head">Unit head only</Radio>
-                <Radio value="department_head">Department head only</Radio>
-                <Radio value="both">Both (unit head → department head)</Radio>
-              </Radio.Group>
-              <p className="text-xs text-slate-500 mt-2 mb-0">
-                When both are required, the department head may still approve earlier by seniority.
-              </p>
-            </div>
+
+            {linkRequiresApproval(approvalDraft) ? (
+              <>
+                <div>
+                  <Typography.Text strong className="block mb-2">Require approval for</Typography.Text>
+                  <Space direction="vertical">
+                    <Checkbox
+                      checked={approvalDraft.require_create}
+                      onChange={(e) => setApprovalDraft({ ...approvalDraft, require_create: e.target.checked })}
+                    >
+                      Create (POST)
+                    </Checkbox>
+                    <Checkbox
+                      checked={approvalDraft.require_update}
+                      onChange={(e) => setApprovalDraft({ ...approvalDraft, require_update: e.target.checked })}
+                    >
+                      Update (includes workflow actions)
+                    </Checkbox>
+                    <Checkbox
+                      checked={approvalDraft.require_delete}
+                      onChange={(e) => setApprovalDraft({ ...approvalDraft, require_delete: e.target.checked })}
+                    >
+                      Delete
+                    </Checkbox>
+                  </Space>
+                </div>
+                <div>
+                  <Typography.Text strong className="block mb-2">Who must approve?</Typography.Text>
+                  <Radio.Group
+                    value={approvalDraft.approval_chain}
+                    onChange={(e) => setApprovalDraft({ ...approvalDraft, approval_chain: e.target.value })}
+                    className="flex flex-col gap-2"
+                  >
+                    <Radio value="unit_head">Unit head only</Radio>
+                    <Radio value="department_head">Department head only</Radio>
+                    <Radio value="both">Both (unit head → department head)</Radio>
+                  </Radio.Group>
+                  <p className="text-xs text-slate-500 mt-2 mb-0">
+                    When both are required, the department head may still approve earlier by seniority.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <Alert
+                type="info"
+                showIcon
+                message="No approval required"
+                description="People in this office can use the module immediately when their role has the matching permission."
+              />
+            )}
           </div>
         )}
       </Modal>
