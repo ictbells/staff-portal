@@ -256,7 +256,7 @@ export function CollegesPage() {
         templateUrl="/api/academic/faculties/import-template"
         templateFilename="college-import-template.xlsx"
         importUrl="/api/academic/faculties/import"
-        description="Upload Excel with columns: name, campus_code, plus optional code. Matching codes (or the same name on the same campus) are skipped. Copy campus_code from the Campuses lookup sheet. Import colleges before departments."
+        description="Upload Excel with columns: name, campus_id, plus optional code. Matching codes (or the same name on the same campus) are skipped. Copy campus_id from the Campuses lookup sheet. Import colleges before departments."
         onImported={reload}
       />
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 700 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No colleges yet.' }} />
@@ -312,7 +312,7 @@ export function DepartmentsPage() {
         templateUrl="/api/academic/departments/import-template"
         templateFilename="department-import-template.xlsx"
         importUrl="/api/academic/departments/import"
-        description="Upload Excel with columns: name, college_code, plus optional code. Matching codes (or the same name in the same college) are skipped. Copy college_code from the Colleges lookup sheet. Import colleges first."
+        description="Upload Excel with columns: name, college_id, plus optional code. Matching codes (or the same name in the same college) are skipped. Copy college_id from the Colleges lookup sheet. Import colleges first."
         onImported={reload}
       />
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 800 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No departments yet.' }} />
@@ -863,7 +863,7 @@ export function ProgrammesPage() {
         templateUrl="/api/academic/programs/import-template"
         templateFilename="programme-import-template.xlsx"
         importUrl="/api/academic/programs/import"
-        description="Upload Excel with columns: name, department_code, award_type, study_level, duration_years, entry_modes, plus optional code. Matching codes (or the same name in the same department) are skipped. Copy department_code from the Departments lookup sheet. Import departments first."
+        description="Upload Excel with columns: name, department_id, award_type, study_level, duration_years, entry_modes, plus optional code. Matching codes (or the same name in the same department) are skipped. Copy department_id from the Departments lookup sheet. Import departments first."
         onImported={reload}
       />
       <Table rowKey="id" columns={columns} dataSource={visibleRows} loading={loading} scroll={{ x: 1500 }} pagination={{ pageSize: 15 }} locale={{ emptyText: modeFilter ? 'No programmes in this category.' : 'No programmes yet.' }} />
@@ -1024,7 +1024,7 @@ export function CoursesPage() {
         templateUrl="/api/academic/courses/import-template"
         templateFilename="course-catalogue-template.xlsx"
         importUrl="/api/academic/courses/import"
-        description="Upload Excel with columns: code, title, department_code, plus optional units, course_type, programme_code, and level_code. Matching course codes are skipped. Copy codes from the Departments, Programmes, and Levels lookup sheets. Import programmes first."
+        description="Upload Excel with columns: code, title, department_id, plus optional units, course_type, programme_id, and level_id. Matching course codes are skipped. Copy ids from the Departments, Programmes, and Levels lookup sheets. Import programmes first."
         onImported={reload}
       />
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1000 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No courses yet.' }} />

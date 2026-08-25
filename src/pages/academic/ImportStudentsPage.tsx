@@ -186,8 +186,8 @@ export function ImportStudentsPage() {
         <p className="text-sm text-slate-600">
           Download the template, fill one row per student on the Students sheet, then upload. Login uses the supplied matric number.
           The workbook also includes Campuses, Colleges, Departments, Programmes, and Levels so you can copy codes and IDs.
-          Copy programme_code from Programmes and current_level from Levels.
-          Required columns: email, phone, nin, first_name, last_name, programme_code, matric_number, current_level.
+          Copy programme_id from Programmes and current_level from Levels.
+          Required columns: email, phone, nin, first_name, last_name, programme_id, matric_number, current_level.
           Application stage is matriculated. Students appear under Registrations only when tuition invoices show at least 25% paid.
         </p>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 md:items-end">
