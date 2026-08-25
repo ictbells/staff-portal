@@ -141,7 +141,14 @@ type ApplicationRow = {
   intake?: { name?: string; acceptance_fee_amount?: number | string; term?: { session_label?: string } };
   application_fee_invoice?: { status?: string };
   eligibility?: { meets: boolean; failed?: { rule: string; message: string }[] };
-  workflow?: { next_stage?: string; next_label?: string; next_permission?: string; template_code?: string };
+  workflow?: {
+    next_stage?: string;
+    next_label?: string;
+    next_permission?: string;
+    template_code?: string;
+    can_revert?: boolean;
+    revert?: { restore_stage: string; restore_label: string; last_decision?: string | null; last_to_stage?: string } | null;
+  };
   previous_university?: string | null;
   credit_assessment_complete?: boolean;
 };
@@ -960,6 +967,23 @@ export function AdmissionsPipeline({ channel }: Props) {
         onUpdate={async ({ to, decision, reason, acceptanceFeeAmount }) => {
           if (!decisionRow) return false;
           return move(decisionRow.id, to, decision, acceptanceFeeAmount, reason);
+        }}
+        onRevert={async ({ reason }) => {
+          if (!decisionRow) return false;
+          setMoving(true);
+          try {
+            await api.post(`/api/applications/${decisionRow.id}/revert`, {
+              reason: reason || undefined,
+            });
+            message.success('Last decision reverted.');
+            await load(pagination.current);
+            return true;
+          } catch (err: any) {
+            message.error(err.response?.data?.message || 'Unable to revert this decision.');
+            return false;
+          } finally {
+            setMoving(false);
+          }
         }}
       />
 

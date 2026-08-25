@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
-import { Button, Input, InputNumber, Modal, Select, Tag } from 'antd';
+import { Button, Input, InputNumber, Modal, Popconfirm, Select, Tag } from 'antd';
 import type { AdmissionsReferenceColumn } from './constants';
 import { ENTRY_MODES } from '../academic/constants';
 
@@ -20,7 +20,13 @@ export type DecisionApplication = {
   intake?: { name?: string; acceptance_fee_amount?: number | string; term?: { session_label?: string } };
   application_fee_invoice?: { status?: string };
   eligibility?: { meets: boolean; failed?: { rule: string; message: string }[] };
-  workflow?: { next_stage?: string; next_label?: string; next_permission?: string };
+  workflow?: {
+    next_stage?: string;
+    next_label?: string;
+    next_permission?: string;
+    can_revert?: boolean;
+    revert?: { restore_stage: string; restore_label: string; last_decision?: string | null; last_to_stage?: string } | null;
+  };
   previous_university?: string | null;
   credit_assessment_complete?: boolean;
 };
@@ -30,6 +36,10 @@ export type DecisionPayload = {
   decision?: string;
   reason?: string;
   acceptanceFeeAmount?: number;
+};
+
+export type RevertPayload = {
+  reason?: string;
 };
 
 const NEXT_STAGE: Record<string, string> = {
@@ -103,6 +113,7 @@ export function ApplicationDecisionModal({
   saving,
   onClose,
   onUpdate,
+  onRevert,
   onOpenFile,
 }: {
   open: boolean;
@@ -112,6 +123,7 @@ export function ApplicationDecisionModal({
   saving?: boolean;
   onClose: () => void;
   onUpdate: (payload: DecisionPayload) => Promise<boolean> | boolean;
+  onRevert?: (payload: RevertPayload) => Promise<boolean> | boolean;
   onOpenFile?: () => void;
 }) {
   const next = row ? nextFor(row) : undefined;
@@ -134,12 +146,15 @@ export function ApplicationDecisionModal({
 
   const [decision, setDecision] = useState<string | undefined>();
   const [reason, setReason] = useState('');
+  const [revertReason, setRevertReason] = useState('');
   const [acceptanceAmount, setAcceptanceAmount] = useState<number | undefined>();
+  const canRevert = Boolean(onRevert && row?.workflow?.can_revert && row.workflow.revert?.restore_stage);
 
   useEffect(() => {
     if (!open || !row) return;
     setDecision(options[0]?.value);
     setReason('');
+    setRevertReason('');
     setAcceptanceAmount(
       row.intake?.acceptance_fee_amount != null
         ? Number(row.intake.acceptance_fee_amount)
@@ -165,6 +180,12 @@ export function ApplicationDecisionModal({
     if (ok) onClose();
   };
 
+  const revert = async () => {
+    if (!row || !onRevert) return;
+    const ok = await onRevert({ reason: revertReason.trim() || undefined });
+    if (ok) onClose();
+  };
+
   return (
     <Modal
       open={open}
@@ -187,6 +208,18 @@ export function ApplicationDecisionModal({
           >
             Update decision
           </Button>
+        ) : undefined,
+        canRevert ? (
+          <Popconfirm
+            key="revert"
+            title="Revert last decision?"
+            description={`This returns the file to ${row?.workflow?.revert?.restore_label || 'the previous stage'}.`}
+            okText="Revert"
+            okButtonProps={{ danger: true, loading: saving }}
+            onConfirm={revert}
+          >
+            <Button danger loading={saving}>Revert last decision</Button>
+          </Popconfirm>
         ) : undefined,
       ].filter(Boolean)}
     >
@@ -231,10 +264,12 @@ export function ApplicationDecisionModal({
                 Select the outcome for this file, then update the decision.
               </p>
             </div>
-            {options.length === 0 ? (
+            {options.length === 0 && !canRevert ? (
               <p className="text-sm text-slate-600">This file has no further admissions decision.</p>
             ) : (
               <>
+                {options.length > 0 && (
+                  <>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Select decision</label>
                   <Select
@@ -275,6 +310,22 @@ export function ApplicationDecisionModal({
                 )}
                 {rejecting && !reason.trim() && (
                   <p className="text-sm text-amber-700">A reason is required to reject this application.</p>
+                )}
+                  </>
+                )}
+                {canRevert && (
+                  <div className={options.length > 0 ? 'border-t border-slate-200 pt-3 space-y-2' : 'space-y-2'}>
+                    <p className="text-sm text-slate-700">
+                      Last decision can be undone. This returns the file to{' '}
+                      <span className="font-medium">{row?.workflow?.revert?.restore_label}</span>.
+                    </p>
+                    <Input.TextArea
+                      rows={2}
+                      placeholder="Optional note on this revert"
+                      value={revertReason}
+                      onChange={(e) => setRevertReason(e.target.value)}
+                    />
+                  </div>
                 )}
               </>
             )}
