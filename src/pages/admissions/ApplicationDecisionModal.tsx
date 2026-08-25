@@ -155,11 +155,7 @@ export function ApplicationDecisionModal({
     setDecision(options[0]?.value);
     setReason('');
     setRevertReason('');
-    setAcceptanceAmount(
-      row.intake?.acceptance_fee_amount != null
-        ? Number(row.intake.acceptance_fee_amount)
-        : undefined,
-    );
+    setAcceptanceAmount(undefined);
   }, [open, options, row]);
 
   const issuesOffer = decision === 'offer_issued' || decision === 'admission';
@@ -286,7 +282,7 @@ export function ApplicationDecisionModal({
                     <InputNumber
                       min={0}
                       className="w-full"
-                      placeholder="Optional — leave blank for the window default"
+                      placeholder="Optional — catalog, then session default"
                       value={acceptanceAmount}
                       onChange={(value) => setAcceptanceAmount(value ?? undefined)}
                     />

@@ -42,6 +42,7 @@ type Subunit = {
   is_active: boolean;
   nav_keys?: string[];
   nav_links?: NavLinkConfig[];
+  inherited_nav_keys?: string[];
 };
 type Unit = {
   id: number;
@@ -51,6 +52,7 @@ type Unit = {
   is_active: boolean;
   nav_keys?: string[];
   nav_links?: NavLinkConfig[];
+  inherited_nav_keys?: string[];
   subunits: Subunit[];
   head_staff?: HeadStaff;
   needs_unit_head?: boolean;
@@ -63,6 +65,7 @@ type Department = {
   is_active: boolean;
   nav_keys?: string[];
   nav_links?: NavLinkConfig[];
+  inherited_nav_keys?: string[];
   units: Unit[];
   head_staff?: HeadStaff;
   needs_hod?: boolean;
@@ -94,6 +97,7 @@ type TreeRow = {
   deleteMessage: string;
   nav_keys: string[];
   nav_links: NavLinkConfig[];
+  inherited_nav_keys: string[];
   navLinksUrl: string;
   head_staff_id?: number | null;
   head_label?: string;
@@ -191,6 +195,7 @@ function buildTreeRows(tree: Department[]): TreeRow[] {
     deleteMessage: 'Delete this department and all its units?',
     nav_keys: d.nav_keys || [],
     nav_links: configsFromNode(d.nav_keys, d.nav_links),
+    inherited_nav_keys: d.inherited_nav_keys || [],
     navLinksUrl: `/api/office-departments/${d.id}/nav-links`,
     head_staff_id: d.head_staff?.id ?? null,
     head_label: d.head_staff?.name,
@@ -211,6 +216,7 @@ function buildTreeRows(tree: Department[]): TreeRow[] {
           deleteMessage: 'Delete this unit and all its subunits?',
           nav_keys: u.nav_keys || [],
           nav_links: configsFromNode(u.nav_keys, u.nav_links),
+          inherited_nav_keys: u.inherited_nav_keys || [],
           navLinksUrl: `/api/office-units/${u.id}/nav-links`,
           head_staff_id: u.head_staff?.id ?? null,
           head_label: u.head_staff?.name,
@@ -231,6 +237,7 @@ function buildTreeRows(tree: Department[]): TreeRow[] {
                 deleteMessage: 'Delete this subunit?',
                 nav_keys: s.nav_keys || [],
                 nav_links: configsFromNode(s.nav_keys, s.nav_links),
+                inherited_nav_keys: s.inherited_nav_keys || [],
                 navLinksUrl: `/api/office-subunits/${s.id}/nav-links`,
               }))
             : undefined,
@@ -529,8 +536,12 @@ export default function OfficeSetup() {
       title: 'Links',
       dataIndex: 'nav_keys',
       key: 'nav_keys',
-      width: 90,
-      render: (keys: string[]) => <Tag>{keys.length}</Tag>,
+      width: 120,
+      render: (keys: string[], row) => {
+        const inherited = row.inherited_nav_keys?.length || 0;
+        if (!inherited) return <Tag>{keys.length}</Tag>;
+        return <Tag>{keys.length} +{inherited}</Tag>;
+      },
     },
     {
       title: 'Status',
@@ -719,7 +730,9 @@ export default function OfficeSetup() {
         style={{ maxWidth: 'calc(100vw - 2rem)' }}
       >
         <p className="text-slate-500 text-sm mb-4">
-          Choose which staff-portal sidebar links appear for people who <strong>work in</strong> this {linksRow?.level.toLowerCase()}. Checking a module with gated actions asks which Create/Update/Delete steps need approval and who must approve.
+          Choose which staff-portal sidebar links appear for people who <strong>work in</strong> this {linksRow?.level.toLowerCase()}.
+          Units and subunits automatically inherit links assigned on the parent department (and subunits inherit unit links). Role permissions still control what they can do.
+          Checking a module with gated actions asks which Create/Update/Delete steps need approval and who must approve.
           {' '}<strong>Super Admin accounts ignore office link limits</strong> and only need the matching role permission.
         </p>
         {error && linksRow && (
@@ -733,22 +746,32 @@ export default function OfficeSetup() {
               </Divider>
               <div className="grid sm:grid-cols-2 gap-2">
                 {items.map((item) => {
-                  const checked = selectedNavKeys.includes(item.key);
+                  const inherited = !!linksRow?.inherited_nav_keys.includes(item.key)
+                    && !selectedNavKeys.includes(item.key);
+                  const checked = selectedNavKeys.includes(item.key) || inherited;
                   const cfg = navLinkConfigs[item.key];
                   return (
                     <div key={item.key} className="flex items-start gap-1">
                       <Checkbox
                         checked={checked}
+                        disabled={inherited}
                         onChange={(e) => toggleNavKey(item.key, e.target.checked)}
                       >
                         <span className="inline-flex flex-col">
-                          <span>{item.label}</span>
-                          {checked && item.has_approval_actions && cfg && (
+                          <span>
+                            {item.label}
+                            {inherited && (
+                              <Typography.Text type="secondary" className="text-[11px] ml-1">
+                                (inherited)
+                              </Typography.Text>
+                            )}
+                          </span>
+                          {checked && !inherited && item.has_approval_actions && cfg && (
                             <span className="text-[11px] text-slate-500 font-normal">{methodHint(cfg)}</span>
                           )}
                         </span>
                       </Checkbox>
-                      {checked && item.has_approval_actions && (
+                      {checked && !inherited && item.has_approval_actions && (
                         <Button
                           type="text"
                           size="small"
@@ -766,7 +789,10 @@ export default function OfficeSetup() {
           ))}
         </div>
         <p className="text-xs text-slate-500 mt-4">
-          Selected: {selectedNavKeys.length} link{selectedNavKeys.length === 1 ? '' : 's'}
+          Assigned here: {selectedNavKeys.length}
+          {linksRow && linksRow.inherited_nav_keys.length > 0
+            ? ` · Inherited: ${linksRow.inherited_nav_keys.filter((k) => !selectedNavKeys.includes(k)).length}`
+            : ''}
         </p>
       </Modal>
 
