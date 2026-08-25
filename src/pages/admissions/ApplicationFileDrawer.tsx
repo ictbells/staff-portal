@@ -486,6 +486,7 @@ function formFromApp(app: FileApp, programs: ProgramOption[]): FormState {
   const sponsor = { ...kin, ...stepPayload(app, 'sponsor') };
   const contact = { ...sponsor, ...stepPayload(app, 'application_form') };
   const academic = stepPayload(app, 'academic_qualifications');
+  const utmeStep = stepPayload(app, 'utme');
   const programme = stepPayload(app, 'programme_selection');
   const background = stepPayload(app, 'pg_background');
   const research = stepPayload(app, 'pg_research');
@@ -526,7 +527,7 @@ function formFromApp(app: FileApp, programs: ProgramOption[]): FormState {
     sponsor_email: pick(sponsor, 'sponsor_email') || '',
     sponsor_address: pick(sponsor, 'sponsor_address') || '',
     other_qualifications: pick(academic, 'other_qualifications') || '',
-    utme: asUtme(pick(academic, 'utme')),
+    utme: asUtme(pick(utmeStep, 'utme') || pick(academic, 'utme')),
     first_sitting: asSitting(pick(academic, 'first_sitting') || (Array.isArray(academic.olevel_results) ? { ...academic, results: academic.olevel_results } : null)),
     second_sitting: asSitting(pick(academic, 'second_sitting')),
     first_choice_college_id: Number(pick(programme, 'first_choice_college_id') || facultyIdOf(first) || 0) || '',
