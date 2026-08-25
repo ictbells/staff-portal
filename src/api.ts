@@ -16,8 +16,8 @@ let csrfPromise: Promise<void> | null = null;
 
 function ensureCsrfCookie() {
   if (!csrfPromise) {
-    csrfPromise = axios
-      .get(`${baseURL}/sanctum/csrf-cookie`, { withCredentials: true })
+    csrfPromise = api
+      .get('/api/sanctum/csrf-cookie')
       .then(() => undefined)
       .catch((err) => {
         csrfPromise = null;
