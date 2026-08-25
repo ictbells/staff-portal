@@ -168,7 +168,7 @@ export function ImportStudentsPage() {
       <WorkspaceHero
         eyebrow="Enrolment"
         title="Import students"
-        description="Create continuing students with a supplied matric number, a historical application file, and portal login. Import invoices and wallet history first so owing and registration follow real payment records."
+        description="Create continuing students with a supplied matric number, a historical application file, and portal login. Import invoices and wallet history first. Pending invoices match matric, old application number, or JAMB."
         icon={GraduationCap}
       >
         <RefreshButton onClick={loadOptions} />
@@ -188,7 +188,7 @@ export function ImportStudentsPage() {
           The workbook also includes Campuses, Colleges, Departments, Programmes, and Levels so you can copy codes and IDs.
           Copy programme_id from Programmes and current_level from Levels.
           Required columns: email, phone, nin, first_name, last_name, programme_id, matric_number, current_level.
-          Application stage is matriculated. Students appear under Registrations only when tuition invoices show at least 25% paid.
+          Fill old_application_number and jamb_registration when those ids were used to pay application fee. Application stage is matriculated. Students appear under Registrations only when tuition invoices show at least 25% paid.
         </p>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 md:items-end">
           <div>

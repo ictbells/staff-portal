@@ -300,22 +300,14 @@ export function StudentFinance() {
               <tbody>
                 {invoices.map((row: any) => (
                   <tr key={row.id} className={trClass}>
-                    <td className={`${tdClass} font-medium`}>
-                      <div>{row.number}</div>
-                      {row.items?.length ? (
-                        <div className="text-xs text-slate-500">{row.items.map((item: any) => item.description).join(', ')}</div>
+                    <td className={`${tdClass} font-medium`}>{row.number}</td>
+                    <td className={`${tdClass} capitalize`}>
+                      {String(row.category || '').replaceAll('_', ' ')}
+                      {row.installment_percent ? (
+                        <div className="text-xs text-slate-500">{row.installment_percent}% installment</div>
                       ) : null}
                     </td>
-                    <td className={`${tdClass} capitalize`}>{String(row.category || '').replaceAll('_', ' ')}</td>
-                    <td className={tdClass}>
-                      {naira(row.amount)}
-                      {row.full_amount != null && Number(row.full_amount) > Number(row.amount) ? (
-                        <div className="text-xs text-slate-500">
-                          {row.installment_percent ? `${row.installment_percent}% of ` : 'of '}
-                          {naira(row.full_amount)}
-                        </div>
-                      ) : null}
-                    </td>
+                    <td className={tdClass}>{naira(row.amount)}</td>
                     <td className={tdClass}>{naira(row.amount_paid ?? 0)}</td>
                     <td className={tdClass}>{Number(row.rebate_total) > 0 ? naira(row.rebate_total) : '—'}</td>
                     <td className={tdClass}>{naira(row.balance)}</td>

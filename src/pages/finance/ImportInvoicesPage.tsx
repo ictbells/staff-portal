@@ -122,7 +122,7 @@ export function ImportInvoicesPage() {
       <WorkspaceHero
         eyebrow="Fees & payments"
         title="Import invoices"
-        description="Load billed fees and recorded payments by matric number. Rows for students who are not in the system yet stay pending until Import students runs. Wallet credits are a separate sheet."
+        description="Load billed fees and recorded payments by matric, application number, or JAMB. Rows without a matching account stay pending until Import students or Import applicants runs. Wallet credits are a separate sheet."
         icon={Wallet}
       >
         <RefreshButton onClick={loadPending} />
@@ -130,16 +130,16 @@ export function ImportInvoicesPage() {
       </WorkspaceHero>
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         <StatCard label="Posted" value={result?.posted ?? '—'} hint="Attached to a student" icon={Wallet} />
-        <StatCard label="Pending" value={result?.pending ?? pendingList.length} hint="Waiting for student import" icon={FileSpreadsheet} />
+        <StatCard label="Pending" value={result?.pending ?? pendingList.length} hint="Waiting for student or applicant import" icon={FileSpreadsheet} />
         <StatCard label="Skipped" value={result?.skipped ?? '—'} hint="Rows with errors" icon={FileSpreadsheet} />
-        <StatCard label="Matrics waiting" value={pendingList.length} hint="Distinct matric numbers" icon={FileSpreadsheet} />
+        <StatCard label="Accounts waiting" value={pendingList.length} hint="Distinct matric / APP / JAMB keys" icon={FileSpreadsheet} />
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
         <h2 className="text-sm font-semibold text-slate-800">Upload spreadsheet</h2>
         <p className="text-sm text-slate-600">
-          One row is one invoice. Extra rows with the same invoice_number add extra payments.
-          Tuition requires installment_percent (25/50/75/100). paid_amount records money received on the invoice — it does not credit the wallet.
+          One row is one invoice. Identify the payer with matric_number, application_number, or jamb_registration — application fee is often paid with APP or JAMB before a matric exists.
+          Extra rows with the same invoice_number add extra payments. Tuition requires installment_percent (25/50/75/100). paid_amount records money received on the invoice — it does not credit the wallet.
         </p>
         <div className="flex flex-wrap gap-3 items-center">
           <Upload
@@ -175,7 +175,7 @@ export function ImportInvoicesPage() {
         )}
         {!!pendingList.length && (
           <div>
-            <h3 className="text-sm font-medium text-slate-700 mb-2">Pending by matric</h3>
+            <h3 className="text-sm font-medium text-slate-700 mb-2">Pending by account key</h3>
             <ul className="text-sm text-slate-600 list-disc pl-5">
               {pendingList.slice(0, 20).map((row) => (
                 <li key={row.matric_number}>{row.matric_number}: {row.rows} row(s)</li>
