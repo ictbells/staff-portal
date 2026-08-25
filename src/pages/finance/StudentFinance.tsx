@@ -282,13 +282,14 @@ export function StudentFinance() {
             <StatCard label="Outstanding" value={naira(summary.outstanding)} icon={AlertTriangle} tone="rose" />
           </div>
         ) : null}
-        <Card title="Invoices" description="Charges billed to this student, including application and acceptance fees.">
-          <DataTable empty={!invoices.length} emptyMessage="No invoices on this record." colSpan={7} loading={detailLoading}>
+        <Card title="Invoices" description="Charges billed to this student. Paid and balance are calculated from receipts, not a stored status alone.">
+          <DataTable empty={!invoices.length} emptyMessage="No invoices on this record." colSpan={8} loading={detailLoading}>
             <thead>
               <tr>
                 <th className={thClass}>Invoice</th>
                 <th className={thClass}>Category</th>
                 <th className={thClass}>Billed</th>
+                <th className={thClass}>Paid</th>
                 <th className={thClass}>Rebate</th>
                 <th className={thClass}>Balance</th>
                 <th className={thClass}>Status</th>
@@ -315,6 +316,7 @@ export function StudentFinance() {
                         </div>
                       ) : null}
                     </td>
+                    <td className={tdClass}>{naira(row.amount_paid ?? 0)}</td>
                     <td className={tdClass}>{Number(row.rebate_total) > 0 ? naira(row.rebate_total) : '—'}</td>
                     <td className={tdClass}>{naira(row.balance)}</td>
                     <td className={tdClass}>
@@ -330,7 +332,7 @@ export function StudentFinance() {
           </DataTable>
         </Card>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card title="Successful payments" description="Amounts that settled these invoices (installment billed, not the full-year fee). Wallet top-ups are in the wallet ledger. “Recorded” appears only when an import settled an invoice without a matching receipt row.">
+          <Card title="Successful payments" description="Receipts that settled these invoices. Wallet top-ups are in the wallet ledger.">
             <DataTable empty={!payments.length} emptyMessage="No successful invoice payments yet." colSpan={4}>
               <thead>
                 <tr>
