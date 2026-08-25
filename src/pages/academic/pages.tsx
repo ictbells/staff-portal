@@ -3,12 +3,13 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Award, BookOpen, Building2, GraduationCap, Plus } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api';
 import { ConfirmDeleteButton } from '../../components/ConfirmDeleteButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 import { RefreshButton } from '../../components/RefreshButton';
+import { SessionLevelFilters } from '../../components/SessionLevelFilters';
 import { formatNaira } from '../../lib/money';
 import { ENTRY_MODES, STUDY_LEVELS } from './constants';
 import { actionColumn, formatDisplayDate, fromDateTimeValue, fromDateValue, toDateValue, useCrudModal } from './crudHelpers';
@@ -19,6 +20,12 @@ const COURSE_TYPES = [
   { value: 'general', label: 'General' },
   { value: 'faculty', label: 'Faculty' },
   { value: 'departmental', label: 'Departmental' },
+];
+
+const COURSE_STATUSES = [
+  { value: 'core', label: 'Core' },
+  { value: 'elective', label: 'Elective' },
+  { value: 'required', label: 'Required' },
 ];
 
 function entryModeLabel(mode: string) {
@@ -118,7 +125,7 @@ type Program = {
 };
 type WorkflowTemplate = { id: number; name: string; code?: string };
 type Course = {
-  id: number; code: string; title: string; units: number; course_type?: string;
+  id: number; code: string; title: string; units: number; course_type?: string; status?: string;
   department_id?: number; department?: Department; programs?: ProgramRef[];
 };
 type Level = { id: number; name: string; code?: string; study_level: string; sort_order: number; is_active: boolean };
@@ -128,6 +135,8 @@ type Intake = {
   opens_on?: string; closes_on?: string; is_open: boolean;
   application_fee_amount?: number | string;
   acceptance_fee_amount?: number | string;
+  resolved_application_fee_amount?: number | string;
+  resolved_acceptance_fee_amount?: number | string;
   term?: Term;
 };
 
@@ -937,7 +946,7 @@ export function ProgrammesPage() {
         <Form.Item name="name" label="Programme name" rules={[{ required: true }]}><Input /></Form.Item>
         <Form.Item name="code" label="Code"><Input /></Form.Item>
         <Form.Item name="award_type" label="Award type" rules={[{ required: true }]}><Input placeholder="B.Eng" /></Form.Item>
-        <Form.Item name="study_level" label="Study level" rules={[{ required: true }]}><Select options={STUDY_LEVELS} /></Form.Item>
+        <Form.Item name="study_level" label="Degree type" rules={[{ required: true }]}><Select options={STUDY_LEVELS} /></Form.Item>
         <Form.Item name="duration_years" label="Number of years" rules={[{ required: true, type: 'number', min: 1, max: 10 }]}>
           <InputNumber min={1} max={10} className="w-full" />
         </Form.Item>
@@ -1041,7 +1050,11 @@ export function LevelsPage() {
 }
 
 export function CoursesPage() {
-  const { rows, loading, reload } = useResourceList<Course>('/api/academic/courses');
+  const [level, setLevel] = useState<string | undefined>();
+  const endpoint = useMemo(() => (
+    level ? `/api/academic/courses?level=${encodeURIComponent(level)}` : '/api/academic/courses'
+  ), [level]);
+  const { rows, loading, reload } = useResourceList<Course>(endpoint);
   const { rows: departments } = useResourceList<Department>('/api/academic/departments');
   const { rows: programs } = useResourceList<Program>('/api/academic/programs');
   const crud = useCrudModal<Course>();
@@ -1052,6 +1065,7 @@ export function CoursesPage() {
     { title: 'Title', dataIndex: 'title', key: 'title' },
     { title: 'Units', dataIndex: 'units', key: 'units', width: 70 },
     { title: 'Type', dataIndex: 'course_type', key: 'course_type', width: 130, render: (value) => COURSE_TYPES.find((item) => item.value === value)?.label || value || 'Departmental' },
+    { title: 'Status', dataIndex: 'status', key: 'status', width: 110, render: (value) => COURSE_STATUSES.find((item) => item.value === value)?.label || value || 'Core' },
     { title: 'Programmes', key: 'programs', width: 180, render: (_, r) => programTags(r.programs) },
     { title: 'Department', key: 'department', render: (_, r) => r.department?.name || '—' },
     actionColumn(
@@ -1061,6 +1075,7 @@ export function CoursesPage() {
         title: row.title,
         units: row.units,
         course_type: row.course_type || 'departmental',
+        status: row.status || 'core',
         program_ids: row.programs?.map((p) => p.id) ?? [],
       }),
       (row) => crud.remove(`/api/academic/courses/${row.id}`, reload),
@@ -1078,16 +1093,17 @@ export function CoursesPage() {
       description="Course catalogue — general courses are visible to all programmes; faculty and departmental courses follow the owning department."
       loading={loading}
       onRefresh={reload}
-      onAdd={() => crud.openCreate({ units: 3, course_type: 'departmental', program_ids: [] })}
+      onAdd={() => crud.openCreate({ units: 3, course_type: 'departmental', status: 'core', program_ids: [] })}
       canAdd={departments.length > 0}
       count={rows.length}
       countLabel="Courses"
+      extra={<SessionLevelFilters showSession={false} level={level} onLevelChange={setLevel} />}
     >
       <CatalogImportPanel
         templateUrl="/api/academic/courses/import-template"
         templateFilename="course-catalogue-template.xlsx"
         importUrl="/api/academic/courses/import"
-        description="Upload Excel with columns: code, title, department_id, plus optional units, course_type, programme_id, and level_id. Matching course codes are skipped. Copy ids from the Departments, Programmes, and Levels lookup sheets. Import programmes first."
+        description="Upload Excel with columns: code, title, department_id, plus optional units, course_type, status, programme_id, and level_id. Matching course codes are skipped. Copy ids from the Departments, Programmes, and Levels lookup sheets. Import programmes first."
         onImported={reload}
       />
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1000 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No courses yet.' }} />
@@ -1100,6 +1116,9 @@ export function CoursesPage() {
         <Form.Item name="units" label="Credit units" rules={[{ required: true }]}><InputNumber min={1} max={12} className="w-full" /></Form.Item>
         <Form.Item name="course_type" label="Catalogue type" rules={[{ required: true }]} extra="General courses are visible to every student. Faculty and departmental courses follow the owning department.">
           <Select options={COURSE_TYPES} />
+        </Form.Item>
+        <Form.Item name="status" label="Status" rules={[{ required: true }]} extra="Core, elective, or required for registration.">
+          <Select options={COURSE_STATUSES} />
         </Form.Item>
         <Form.Item
           name="program_ids"
@@ -1133,17 +1152,15 @@ export function IntakesPage() {
     { title: 'Closes', dataIndex: 'closes_on', key: 'closes_on', width: 110, render: (v) => formatDisplayDate(v) },
     {
       title: 'Application fee',
-      dataIndex: 'application_fee_amount',
       key: 'application_fee_amount',
       width: 130,
-      render: (value?: number | string) => formatNaira(value),
+      render: (_, row) => formatNaira(row.resolved_application_fee_amount ?? row.application_fee_amount, 'Fee catalog'),
     },
     {
       title: 'Default acceptance',
-      dataIndex: 'acceptance_fee_amount',
       key: 'acceptance_fee_amount',
       width: 150,
-      render: (value?: number | string) => formatNaira(value, 'Set at offer'),
+      render: (_, row) => formatNaira(row.resolved_acceptance_fee_amount ?? row.acceptance_fee_amount, 'Fee catalog'),
     },
     { title: 'Open', dataIndex: 'is_open', key: 'is_open', width: 90, render: (v) => <Tag color={v ? 'success' : 'default'}>{v ? 'Open' : 'Closed'}</Tag> },
     actionColumn(
@@ -1153,8 +1170,6 @@ export function IntakesPage() {
         entry_mode: row.entry_mode,
         opens_on: toDateValue(row.opens_on),
         closes_on: toDateValue(row.closes_on),
-        application_fee_amount: row.application_fee_amount != null ? Number(row.application_fee_amount) : undefined,
-        acceptance_fee_amount: row.acceptance_fee_amount != null ? Number(row.acceptance_fee_amount) : undefined,
         is_open: row.is_open,
       }),
       (row) => crud.remove(`/api/intakes/${row.id}`, reload),
@@ -1174,7 +1189,7 @@ export function IntakesPage() {
   return (
     <ResourceShell
       title="Application sessions"
-      description="Set fees and open/close intakes after the admission session exists (not yet current). After you stop accepting, run admission, then set that admission session current under Admission sessions."
+      description="Open and close intakes after the admission session exists (not yet current). Set application and acceptance fees under Fees & payments → Fee catalog, per entry mode. After you stop accepting, run admission, then set that admission session current under Admission sessions."
       loading={loading}
       onRefresh={reload}
       onAdd={() => crud.openCreate({ is_open: true })}
@@ -1194,21 +1209,6 @@ export function IntakesPage() {
         </Form.Item>
         <Form.Item name="opens_on" label="Application opens" rules={[{ required: true }]}><DatePicker className="w-full" /></Form.Item>
         <Form.Item name="closes_on" label="Application closes" rules={[{ required: true }]}><DatePicker className="w-full" /></Form.Item>
-        <Form.Item
-          name="application_fee_amount"
-          label="Application fee (₦)"
-          rules={[{ required: true, message: 'Set the application fee for this session.' }]}
-          extra="Applicants pay this amount before they can complete the form."
-        >
-          <InputNumber min={0} className="w-full" />
-        </Form.Item>
-        <Form.Item
-          name="acceptance_fee_amount"
-          label="Default acceptance fee (₦)"
-          extra="Optional. Leave blank to set the amount when you issue an offer, or use the fee catalog default."
-        >
-          <InputNumber min={0} className="w-full" placeholder="Optional" />
-        </Form.Item>
         <Form.Item name="is_open" label="Accepting applications" valuePropName="checked"><Switch /></Form.Item>
       </CrudModal>
     </ResourceShell>

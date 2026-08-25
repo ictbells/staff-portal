@@ -6,6 +6,7 @@ import dayjs from 'dayjs';
 import { GraduationCap } from 'lucide-react';
 import api from '../../api';
 import { RefreshButton } from '../../components/RefreshButton';
+import { SessionLevelFilters } from '../../components/SessionLevelFilters';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 
 type Candidate = {
@@ -30,6 +31,7 @@ export function GraduationPage() {
   const [programId, setProgramId] = useState<number | undefined>();
   const [campusId, setCampusId] = useState<number | undefined>();
   const [sessionId, setSessionId] = useState<number | undefined>();
+  const [level, setLevel] = useState<string | undefined>();
   const [selected, setSelected] = useState<number[]>([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 25, total: 0 });
   const [sessions, setSessions] = useState<SessionRow[]>([]);
@@ -62,6 +64,8 @@ export function GraduationPage() {
           search: search || undefined,
           program_id: programId,
           campus_id: campusId,
+          academic_session_id: sessionId,
+          level,
           page,
           per_page: pageSize,
         },
@@ -77,7 +81,7 @@ export function GraduationPage() {
     } finally {
       setLoading(false);
     }
-  }, [campusId, pagination.pageSize, programId, search]);
+  }, [campusId, pagination.pageSize, programId, search, sessionId, level]);
 
   useEffect(() => { load(1); }, [load]);
 
@@ -181,6 +185,7 @@ export function GraduationPage() {
             onChange={setSessionId}
             options={sessions.map((s) => ({ value: s.id, label: s.is_closed ? `${s.label} (closed)` : s.label }))}
           />
+          <SessionLevelFilters showSession={false} level={level} onLevelChange={setLevel} />
         </div>
         <Table<Candidate>
           rowKey="id"

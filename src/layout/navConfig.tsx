@@ -170,7 +170,7 @@ export const navSections: NavSection[] = [
         icon: Wallet,
         items: [
           { key: 'finance', to: '/finance', label: 'Fee catalog', perm: 'finance.invoices.manage', icon: Wallet },
-          { key: 'finance', to: '/finance/sundry', label: 'Sundry fees', perm: 'finance.invoices.manage', icon: Wallet },
+          { key: 'finance', to: '/finance/sundry', label: 'Fee category', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'finance', to: '/finance/rebates', label: 'Rebates', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'finance', to: '/finance/programme-fees', label: 'Programme fees', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'finance', to: '/finance/generate', label: 'Generate invoice', perm: 'finance.invoices.manage', icon: Wallet },

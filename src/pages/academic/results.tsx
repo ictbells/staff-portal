@@ -9,8 +9,9 @@ import { RefreshButton } from '../../components/RefreshButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 import api from '../../api';
 import { useAuth } from '../../auth';
+import { SessionLevelFilters } from '../../components/SessionLevelFilters';
 
-type Term = { id: number; name: string; session_label?: string; is_current?: boolean };
+type Term = { id: number; name: string; session_label?: string; is_current?: boolean; academic_session_id?: number };
 type Faculty = { id: number; name: string };
 type Department = { id: number; name: string; faculty_id?: number };
 
@@ -97,14 +98,16 @@ export function ResultsDashboardPage() {
 export function ResultsStudentsPage() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [sessionId, setSessionId] = useState<number | undefined>();
+  const [level, setLevel] = useState<string | undefined>();
   const [rows, setRows] = useState<any[]>([]);
   const load = useCallback(() => {
     setLoading(true);
-    api.get('/api/academic/results/students', { params: { search } })
+    api.get('/api/academic/results/students', { params: { search, academic_session_id: sessionId, level } })
       .then((r) => setRows(r.data?.data || r.data || []))
       .catch(() => message.error('Could not search students'))
       .finally(() => setLoading(false));
-  }, [search]);
+  }, [search, sessionId, level]);
   useEffect(() => { load(); }, [load]);
   const columns: ColumnsType = [
     { title: 'Matric', dataIndex: 'matric_number' },
@@ -118,7 +121,13 @@ export function ResultsStudentsPage() {
   ];
   return (
     <ResourceShell title="Result entry" description="Search students and enter CA/exam scores." loading={loading} onRefresh={load}
-      extra={<Space><Input.Search placeholder="Matric or name" allowClear onSearch={setSearch} style={{ width: 260 }} /><Button onClick={load}>Search</Button></Space>}
+      extra={(
+        <Space wrap>
+          <SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />
+          <Input.Search placeholder="Matric or name" allowClear onSearch={setSearch} style={{ width: 260 }} />
+          <Button onClick={load}>Search</Button>
+        </Space>
+      )}
     >
       <Table rowKey="id" loading={loading} dataSource={rows} columns={columns} pagination={false} />
     </ResourceShell>
@@ -266,7 +275,7 @@ export function ResultsApprovalsPage() {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<any[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
-  const [filters, setFilters] = useState<{ academic_term_id?: number; status?: string; faculty_id?: number; department_id?: number }>({
+  const [filters, setFilters] = useState<{ academic_term_id?: number; academic_session_id?: number; level?: string; status?: string; faculty_id?: number; department_id?: number }>({
     status: 'submitted',
   });
 
@@ -302,6 +311,12 @@ export function ResultsApprovalsPage() {
     <ResourceShell title="Approvals" description="Submit queue and faculty approve/return. Download printable lists." loading={loading} onRefresh={load}
       extra={(
         <Space wrap>
+          <SessionLevelFilters
+            sessionId={filters.academic_session_id}
+            level={filters.level}
+            onSessionChange={(v) => setFilters((f) => ({ ...f, academic_session_id: v }))}
+            onLevelChange={(v) => setFilters((f) => ({ ...f, level: v }))}
+          />
           <Select placeholder="Term" allowClear style={{ width: 180 }}
             options={terms.map((t) => ({ value: t.id, label: `${t.session_label || ''} ${t.name}`.trim() }))}
             onChange={(v) => setFilters((f) => ({ ...f, academic_term_id: v }))}
@@ -355,20 +370,27 @@ export function ResultsApprovalsPage() {
 export function ResultsBoardPage() {
   const { terms, faculties, departments } = useTermsFaculties();
   const [form] = Form.useForm();
+  const [sessionId, setSessionId] = useState<number | undefined>();
+  const [level, setLevel] = useState<string | undefined>();
+  const termOptions = terms
+    .filter((t) => !sessionId || t.academic_session_id === sessionId || !t.academic_session_id)
+    .map((t) => ({ value: t.id, label: `${t.session_label || ''} ${t.name}`.trim() }));
   const run = async (path: string) => {
     try {
       const values = await form.validateFields();
-      const res = await api.post(path, values);
+      const res = await api.post(path, { ...values, level });
       message.success(`Updated ${res.data?.updated ?? 0}`);
     } catch (e: any) {
       message.error(e.response?.data?.message || 'Board action failed');
     }
   };
   return (
-    <ResourceShell title="Board" description="Clear board-ready results or request corrections. Print board lists." loading={false} onRefresh={() => {}}>
+    <ResourceShell title="Board" description="Clear board-ready results or request corrections. Print board lists." loading={false} onRefresh={() => {}}
+      extra={<SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />}
+    >
       <Form form={form} layout="vertical" className="max-w-lg">
         <Form.Item name="academic_term_id" label="Term" rules={[{ required: true }]}>
-          <Select options={terms.map((t) => ({ value: t.id, label: `${t.session_label || ''} ${t.name}`.trim() }))} />
+          <Select options={termOptions} />
         </Form.Item>
         <Form.Item name="faculty_id" label="Faculty">
           <Select allowClear options={faculties.map((f) => ({ value: f.id, label: f.name }))} />
@@ -398,10 +420,15 @@ export function ResultsBoardPage() {
 export function ResultsReleasePage() {
   const { terms, faculties, departments } = useTermsFaculties();
   const [form] = Form.useForm();
+  const [sessionId, setSessionId] = useState<number | undefined>();
+  const [level, setLevel] = useState<string | undefined>();
+  const termOptions = terms
+    .filter((t) => !sessionId || t.academic_session_id === sessionId || !t.academic_session_id)
+    .map((t) => ({ value: t.id, label: `${t.session_label || ''} ${t.name}`.trim() }));
   const release = async () => {
     try {
       const values = await form.validateFields();
-      const res = await api.post('/api/academic/results/release', values);
+      const res = await api.post('/api/academic/results/release', { ...values, level });
       if (res.data?.pending_approval) {
         message.info(res.data.message || 'Queued for office approval');
       } else {
@@ -412,10 +439,12 @@ export function ResultsReleasePage() {
     }
   };
   return (
-    <ResourceShell title="Release results" description="Release board-cleared grades to the student portal." loading={false} onRefresh={() => {}}>
+    <ResourceShell title="Release results" description="Release board-cleared grades to the student portal." loading={false} onRefresh={() => {}}
+      extra={<SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />}
+    >
       <Form form={form} layout="vertical" className="max-w-lg" onFinish={release}>
         <Form.Item name="academic_term_id" label="Term" rules={[{ required: true }]}>
-          <Select options={terms.map((t) => ({ value: t.id, label: `${t.session_label || ''} ${t.name}`.trim() }))} />
+          <Select options={termOptions} />
         </Form.Item>
         <Form.Item name="faculty_id" label="Faculty">
           <Select allowClear options={faculties.map((f) => ({ value: f.id, label: f.name }))} />

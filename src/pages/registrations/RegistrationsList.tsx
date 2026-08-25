@@ -12,6 +12,7 @@ import { useAuth } from '../../auth';
 import { RefreshButton } from '../../components/RefreshButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 import { ApplicationFileDrawer } from '../admissions/ApplicationFileDrawer';
+import { SessionLevelFilters } from '../../components/SessionLevelFilters';
 import type { RegistrationChannel, RegistrationChannelKey } from './constants';
 import { ENTRY_MODES } from '../academic/constants';
 
@@ -71,6 +72,7 @@ export function RegistrationsList({ channel }: Props) {
   const [search, setSearch] = useState('');
   const [entryModeFilter, setEntryModeFilter] = useState('');
   const [sessionFilter, setSessionFilter] = useState<number | undefined>(undefined);
+  const [levelFilter, setLevelFilter] = useState<string | undefined>(undefined);
   const [programFilter, setProgramFilter] = useState<number | undefined>(undefined);
   const [courseRegFilter, setCourseRegFilter] = useState('');
   const [studentshipFilter, setStudentshipFilter] = useState('current');
@@ -106,7 +108,7 @@ export function RegistrationsList({ channel }: Props) {
     [programs],
   );
 
-  const hasActiveFilters = !!(search || entryModeFilter || sessionFilter || programFilter || courseRegFilter || studentshipFilter !== 'current');
+  const hasActiveFilters = !!(search || entryModeFilter || sessionFilter || levelFilter || programFilter || courseRegFilter || studentshipFilter !== 'current');
 
   const load = useCallback(async (
     page = 1,
@@ -115,6 +117,7 @@ export function RegistrationsList({ channel }: Props) {
       search?: string;
       entryMode?: string;
       session?: number | undefined;
+      level?: string | undefined;
       program?: number | undefined;
       courseReg?: string;
       studentship?: string;
@@ -125,6 +128,7 @@ export function RegistrationsList({ channel }: Props) {
       const nextSearch = overrides && 'search' in overrides ? overrides.search ?? '' : search;
       const nextEntryMode = overrides && 'entryMode' in overrides ? overrides.entryMode ?? '' : entryModeFilter;
       const nextSession = overrides && 'session' in overrides ? overrides.session : sessionFilter;
+      const nextLevel = overrides && 'level' in overrides ? overrides.level : levelFilter;
       const nextProgram = overrides && 'program' in overrides ? overrides.program : programFilter;
       const nextCourseReg = overrides && 'courseReg' in overrides ? overrides.courseReg ?? '' : courseRegFilter;
       const nextStudentship = overrides && 'studentship' in overrides ? overrides.studentship ?? 'current' : studentshipFilter;
@@ -133,6 +137,7 @@ export function RegistrationsList({ channel }: Props) {
           entry_modes: channel.entryModes.join(','),
           entry_mode: nextEntryMode || undefined,
           academic_session_id: nextSession || undefined,
+          level: nextLevel || undefined,
           program_id: nextProgram || undefined,
           course_reg_status: nextCourseReg || undefined,
           studentship: nextStudentship || undefined,
@@ -154,7 +159,7 @@ export function RegistrationsList({ channel }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [channel.entryModes, courseRegFilter, entryModeFilter, pagination.pageSize, programFilter, search, sessionFilter, studentshipFilter]);
+  }, [channel.entryModes, courseRegFilter, entryModeFilter, levelFilter, pagination.pageSize, programFilter, search, sessionFilter, studentshipFilter]);
 
   useEffect(() => {
     api.get('/api/registrations/sessions')
@@ -183,6 +188,7 @@ export function RegistrationsList({ channel }: Props) {
     setSearch('');
     setEntryModeFilter('');
     setSessionFilter(currentId);
+    setLevelFilter(undefined);
     setProgramFilter(undefined);
     setCourseRegFilter('');
     setStudentshipFilter('current');
@@ -190,6 +196,7 @@ export function RegistrationsList({ channel }: Props) {
       search: '',
       entryMode: '',
       session: currentId,
+      level: undefined,
       program: undefined,
       courseReg: '',
       studentship: 'current',
@@ -198,7 +205,7 @@ export function RegistrationsList({ channel }: Props) {
 
   useEffect(() => {
     load(1);
-  }, [search, entryModeFilter, sessionFilter, programFilter, courseRegFilter, studentshipFilter]);
+  }, [search, entryModeFilter, sessionFilter, levelFilter, programFilter, courseRegFilter, studentshipFilter]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -212,11 +219,12 @@ export function RegistrationsList({ channel }: Props) {
     entry_modes: channel.entryModes.join(','),
     entry_mode: entryModeFilter || undefined,
     academic_session_id: sessionFilter || undefined,
+    level: levelFilter || undefined,
     program_id: programFilter || undefined,
     course_reg_status: courseRegFilter || undefined,
     studentship: studentshipFilter || undefined,
     search: search || undefined,
-  }), [channel.entryModes, courseRegFilter, entryModeFilter, programFilter, search, sessionFilter, studentshipFilter]);
+  }), [channel.entryModes, courseRegFilter, entryModeFilter, levelFilter, programFilter, search, sessionFilter, studentshipFilter]);
 
   const download = useCallback(async (format: 'pdf' | 'excel' | 'word') => {
     if (!has('registrations.view')) {
@@ -529,6 +537,7 @@ export function RegistrationsList({ channel }: Props) {
                 onChange={(value) => setSessionFilter(value)}
                 options={sessionOptions}
               />
+              <SessionLevelFilters showSession={false} level={levelFilter} onLevelChange={setLevelFilter} />
               <Select
                 value={studentshipFilter}
                 className="w-full min-w-[180px] sm:w-auto sm:min-w-[200px]"

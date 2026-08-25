@@ -10,6 +10,7 @@ import {
   PageHeader, StatCard, WorkspaceHero, stageBadge, tdClass, thClass, trClass,
 } from '../components/ui';
 import { formatNaira } from '../lib/money';
+import { SessionLevelFilters } from '../components/SessionLevelFilters';
 
 const API_DOCS_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/docs`;
 
@@ -24,15 +25,17 @@ export function Students() {
   const [rows, setRows] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('current');
+  const [sessionId, setSessionId] = useState<number | undefined>();
+  const [level, setLevel] = useState<string | undefined>();
   const [confer, setConfer] = useState<{ id: number; name: string } | null>(null);
   const [conferDate, setConferDate] = useState(dayjs());
   const [conferring, setConferring] = useState(false);
   const canGraduate = has('academic.graduate');
   const load = () => {
     setLoading(true);
-    api.get('/api/students', { params: { status: statusFilter } }).then((r) => setRows(r.data)).finally(() => setLoading(false));
+    api.get('/api/students', { params: { status: statusFilter, academic_session_id: sessionId, level } }).then((r) => setRows(r.data)).finally(() => setLoading(false));
   };
-  useEffect(() => { load(); }, [statusFilter]);
+  useEffect(() => { load(); }, [statusFilter, sessionId, level]);
   const list = rows?.data || (rows?.id ? [rows] : rows) || [];
   const items = Array.isArray(list) ? list : [];
   const withMatric = items.filter((s: any) => s.matric_number).length;
@@ -85,6 +88,7 @@ export function Students() {
           ]}
           className="min-w-[200px]"
         />
+        <SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />
       </div>
       <DataTable empty={!items.length} emptyMessage="No student records found." colSpan={canGraduate ? 7 : 6}>
         <thead>
@@ -223,7 +227,8 @@ export { Invoices } from './finance/Invoices';
 export { GenerateInvoice } from './finance/GenerateInvoice';
 export { FeeCatalog as Finance } from './finance/FeeCatalog';
 export { ProgrammeFees } from './finance/ProgrammeFees';
-export { SundryFees } from './finance/SundryFees';
+export { FeeCategories as SundryFees } from './finance/FeeCategories';
+export { FeeCategories } from './finance/FeeCategories';
 export { StudentFinance } from './finance/StudentFinance';
 export { Rebates } from './finance/Rebates';
 

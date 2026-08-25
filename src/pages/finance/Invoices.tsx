@@ -9,6 +9,7 @@ import {
   StatCard, WorkspaceHero, stageBadge, TablePager, tdClass, thClass, trClass,
 } from '../../components/ui';
 import { formatNaira } from '../../lib/money';
+import { SessionLevelFilters } from '../../components/SessionLevelFilters';
 
 type PageMeta = {
   page: number;
@@ -138,6 +139,8 @@ export function Invoices() {
   const [collegeFilter, setCollegeFilter] = useState<number | undefined>();
   const [departmentFilter, setDepartmentFilter] = useState<number | undefined>();
   const [programFilter, setProgramFilter] = useState<number | undefined>();
+  const [sessionId, setSessionId] = useState<number | undefined>();
+  const [level, setLevel] = useState<string | undefined>();
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -186,6 +189,8 @@ export function Invoices() {
     query = search,
     from = fromDate,
     to = toDate,
+    nextSession = sessionId,
+    nextLevel = level,
   ) => ({
     ...(status && status !== 'all' ? { status } : {}),
     ...(category ? { category } : {}),
@@ -195,6 +200,8 @@ export function Invoices() {
     ...(query.trim() ? { search: query.trim() } : {}),
     ...(from ? { from } : {}),
     ...(to ? { to } : {}),
+    ...(nextSession ? { academic_session_id: nextSession } : {}),
+    ...(nextLevel ? { level: nextLevel } : {}),
   });
 
   const loadInvoices = (
@@ -260,7 +267,7 @@ export function Invoices() {
   useEffect(() => { loadCatalog(); }, []);
   useEffect(() => {
     loadInvoices(invoicePage, statusFilter, categoryFilter, collegeFilter, departmentFilter, programFilter, search, fromDate, toDate);
-  }, [invoicePage, statusFilter, categoryFilter, collegeFilter, departmentFilter, programFilter, search, fromDate, toDate]);
+  }, [invoicePage, statusFilter, categoryFilter, collegeFilter, departmentFilter, programFilter, search, fromDate, toDate, sessionId, level]);
   useEffect(() => { loadPayments(paymentPage); }, [paymentPage]);
 
   useEffect(() => {
@@ -714,6 +721,12 @@ export function Invoices() {
               options={programOptions}
             />
           </label>
+          <SessionLevelFilters
+            sessionId={sessionId}
+            level={level}
+            onSessionChange={(value) => { setSessionId(value); setInvoicePage(1); }}
+            onLevelChange={(value) => { setLevel(value); setInvoicePage(1); }}
+          />
           <label className="block min-w-[170px]">
             <span className={fieldLabelClass}>From</span>
             <div className="flex items-center gap-1">

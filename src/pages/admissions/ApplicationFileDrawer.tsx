@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Drawer, Input, Select, Space, Tag, message } from 'antd';
 import { Eye, FileText, Printer, Save } from 'lucide-react';
 import api from '../../api';
+import { useAuth } from '../../auth';
 import { requiredDocumentsFor } from './requiredDocuments';
 
 type Step = { step_key?: string; payload?: Record<string, any> };
@@ -270,6 +271,8 @@ function stepPayload(app: FileApp | null, key: string): Record<string, any> {
   return payload && typeof payload === 'object' ? payload : {};
 }
 
+const OLEVEL_SUBJECT_CAP = 9;
+
 function emptySitting(): Sitting {
   return { exam_type: '', exam_center: '', exam_year: '', exam_number: '', results: [{ subject_id: 0, subject_name: '', grade: '' }] };
 }
@@ -293,9 +296,11 @@ function emptyUtme(): Utme {
   };
 }
 
-function asUtme(raw: any): Utme {
+function asUtme(raw: any, universityName = ''): Utme {
   const base = emptyUtme();
-  if (!raw || typeof raw !== 'object') return base;
+  if (!raw || typeof raw !== 'object') {
+    return universityName ? withDefaultFirstInstitution(base, universityName) : base;
+  }
   const subjects = Array.isArray(raw.subjects) && raw.subjects.length
     ? raw.subjects.map((row: any) => ({
         subject: row.subject || '',
@@ -311,12 +316,37 @@ function asUtme(raw: any): Utme {
       }))
     : emptyUtmeChoices();
   while (choices.length < 4) choices.push({ choice_order: choices.length + 1, institution_name: '', programme_name: '' });
-  return {
+  return withDefaultFirstInstitution({
     aggregate: raw.aggregate != null ? String(raw.aggregate) : '',
     course_choice: raw.course_choice || '',
     exam_year: raw.exam_year != null ? String(raw.exam_year) : '',
     subjects,
     institution_choices: choices.slice(0, 4),
+  }, universityName);
+}
+
+function catalogueProgramLabel(program: ProgramOption) {
+  if (!program.name) return '';
+  return program.code ? `${program.name} (${program.code})` : program.name;
+}
+
+function programmeSelectOptions(programs: ProgramOption[], current?: string) {
+  const options = programs
+    .filter((program) => program.name)
+    .map((program) => ({ value: program.name as string, label: catalogueProgramLabel(program) }));
+  if (current && !options.some((option) => option.value === current)) {
+    options.unshift({ value: current, label: current });
+  }
+  return options;
+}
+
+function withDefaultFirstInstitution(utme: Utme, universityName = ''): Utme {
+  if (!universityName || utme.institution_choices[0]?.institution_name) return utme;
+  return {
+    ...utme,
+    institution_choices: utme.institution_choices.map((row, index) => (
+      index === 0 ? { ...row, institution_name: universityName } : row
+    )),
   };
 }
 
@@ -478,7 +508,7 @@ function levelAfterProgrammeChange(level: number | string | undefined) {
   return stored >= 100 ? stored - 100 : Math.max(1, stored - 1);
 }
 
-function formFromApp(app: FileApp, programs: ProgramOption[]): FormState {
+function formFromApp(app: FileApp, programs: ProgramOption[], universityName = ''): FormState {
   const biodata = stepPayload(app, 'biodata');
   const personal = { ...biodata, ...stepPayload(app, 'personal_details') };
   const health = { ...personal, ...stepPayload(app, 'health_information') };
@@ -527,7 +557,7 @@ function formFromApp(app: FileApp, programs: ProgramOption[]): FormState {
     sponsor_email: pick(sponsor, 'sponsor_email') || '',
     sponsor_address: pick(sponsor, 'sponsor_address') || '',
     other_qualifications: pick(academic, 'other_qualifications') || '',
-    utme: asUtme(pick(utmeStep, 'utme') || pick(academic, 'utme')),
+    utme: asUtme(pick(utmeStep, 'utme') || pick(academic, 'utme'), universityName),
     first_sitting: asSitting(pick(academic, 'first_sitting') || (Array.isArray(academic.olevel_results) ? { ...academic, results: academic.olevel_results } : null)),
     second_sitting: asSitting(pick(academic, 'second_sitting')),
     first_choice_college_id: Number(pick(programme, 'first_choice_college_id') || facultyIdOf(first) || 0) || '',
@@ -654,9 +684,11 @@ function SittingEditor({
           </div>
         ))}
         <Space>
-          <Button onClick={() => onChange({ ...sitting, results: [...sitting.results, { subject_id: 0, subject_name: '', grade: '' }] })}>
-            Add subject
-          </Button>
+          {sitting.results.length < OLEVEL_SUBJECT_CAP && (
+            <Button onClick={() => onChange({ ...sitting, results: [...sitting.results, { subject_id: 0, subject_name: '', grade: '' }] })}>
+              Add subject
+            </Button>
+          )}
           {onClear && <Button onClick={onClear}>Clear sitting</Button>}
         </Space>
       </div>
@@ -685,6 +717,8 @@ export function ApplicationFileDrawer({
   onSaved?: () => void;
   mode?: 'application' | 'student';
 }) {
+  const { auth } = useAuth();
+  const universityName = auth?.university?.name || '';
   const [app, setApp] = useState<FileApp | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
@@ -728,8 +762,8 @@ export function ApplicationFileDrawer({
   }, [open]);
 
   useEffect(() => {
-    if (app) setForm(formFromApp(app, programs));
-  }, [app, programs]);
+    if (app) setForm(formFromApp(app, programs, universityName));
+  }, [app, programs, universityName]);
 
   useEffect(() => {
     if (!form?.state_id) {
@@ -1217,7 +1251,16 @@ export function ApplicationFileDrawer({
                   <Input value={form.utme.aggregate} onChange={(e) => setField('utme', { ...form.utme, aggregate: e.target.value })} />
                 </Field>
                 <Field label="Course choice">
-                  <Input value={form.utme.course_choice} onChange={(e) => setField('utme', { ...form.utme, course_choice: e.target.value })} />
+                  <Select
+                    className="w-full"
+                    showSearch
+                    allowClear
+                    optionFilterProp="label"
+                    placeholder="Select programme"
+                    value={form.utme.course_choice || undefined}
+                    options={programmeSelectOptions(programs, form.utme.course_choice)}
+                    onChange={(value) => setField('utme', { ...form.utme, course_choice: value || '' })}
+                  />
                 </Field>
               </div>
               <div className="space-y-2">
@@ -1267,11 +1310,16 @@ export function ApplicationFileDrawer({
                         setField('utme', { ...form.utme, institution_choices: next });
                       }}
                     />
-                    <Input
+                    <Select
+                      className="w-full"
+                      showSearch
+                      allowClear
+                      optionFilterProp="label"
                       placeholder="Programme"
-                      value={row.programme_name}
-                      onChange={(e) => {
-                        const next = form.utme.institution_choices.map((item, i) => i === index ? { ...item, programme_name: e.target.value } : item);
+                      value={row.programme_name || undefined}
+                      options={programmeSelectOptions(programs, row.programme_name)}
+                      onChange={(value) => {
+                        const next = form.utme.institution_choices.map((item, i) => i === index ? { ...item, programme_name: value || '' } : item);
                         setField('utme', { ...form.utme, institution_choices: next });
                       }}
                     />

@@ -46,7 +46,7 @@ import ResourceView from './pages/ResourceView';
 import HostelManagement from './pages/HostelManagement';
 import {
   Documents, Finance, Institution,
-  GenerateInvoice, Integrations, Invoices, Medical, Notifications, Pg, ProgrammeFees, Rebates, Students, StudentFinance, SundryFees,
+  GenerateInvoice, Integrations, Invoices, Medical, Notifications, Pg, ProgrammeFees, Rebates, Students, StudentFinance, FeeCategories,
 } from './pages/Modules';
 import Announcements from './pages/Announcements';
 import Audit from './pages/Audit';
@@ -134,7 +134,8 @@ export default function App() {
         <Route path="pg" element={<Pg />} />
         <Route path="exam-clearance" element={<ExamClearance />} />
         <Route path="finance" element={<Finance />} />
-        <Route path="finance/sundry" element={<SundryFees />} />
+        <Route path="finance/sundry" element={<FeeCategories />} />
+        <Route path="finance/categories" element={<FeeCategories />} />
         <Route path="finance/rebates" element={<Rebates />} />
         <Route path="finance/programme-fees" element={<ProgrammeFees />} />
         <Route path="finance/generate" element={<GenerateInvoice />} />

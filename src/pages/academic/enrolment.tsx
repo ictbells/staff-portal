@@ -10,6 +10,7 @@ import { useAuth } from '../../auth';
 import { RefreshButton } from '../../components/RefreshButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 import { formatNaira } from '../../lib/money';
+import { SessionLevelFilters } from '../../components/SessionLevelFilters';
 import { actionColumn, useCrudModal } from './crudHelpers';
 import { useResourceList } from './useResourceList';
 
@@ -27,7 +28,7 @@ type Term = {
   is_current?: boolean;
   extension_price_per_unit?: number | string | null;
 };
-type CourseRef = { id: number; code: string; title: string; units?: number; course_type?: string };
+type CourseRef = { id: number; code: string; title: string; units?: number; course_type?: string; status?: string };
 type Lecturer = { id: number; title?: string; staff_number?: string; user?: { name?: string } };
 type Offering = {
   id: number;
@@ -118,6 +119,12 @@ function bucketLabel(value?: string) {
   return BUCKETS.find((item) => item.value === value)?.label || value || '—';
 }
 
+function courseStatusLabel(value?: string) {
+  if (value === 'elective') return 'Elective';
+  if (value === 'required') return 'Required';
+  return 'Core';
+}
+
 function rosterLabel(status?: string) {
   if (status === 'registered') return 'Registered';
   if (status === 'in_progress') return 'In progress';
@@ -125,7 +132,18 @@ function rosterLabel(status?: string) {
 }
 
 export function OfferingsPage() {
-  const { rows, loading, reload } = useResourceList<Offering>('/api/academic/offerings');
+  const [sessionId, setSessionId] = useState<number | undefined>();
+  const [level, setLevel] = useState<string | undefined>();
+  const [termId, setTermId] = useState<number | undefined>();
+  const endpoint = useMemo(() => {
+    const qs = new URLSearchParams();
+    if (sessionId) qs.set('academic_session_id', String(sessionId));
+    if (termId) qs.set('academic_term_id', String(termId));
+    if (level) qs.set('level', level);
+    const query = qs.toString();
+    return query ? `/api/academic/offerings?${query}` : '/api/academic/offerings';
+  }, [sessionId, termId, level]);
+  const { rows, loading, reload } = useResourceList<Offering>(endpoint);
   const { rows: terms } = useResourceList<Term>('/api/academic/terms');
   const { rows: courses } = useResourceList<CourseRef>('/api/academic/courses');
   const { rows: lecturers } = useResourceList<Lecturer>('/api/academic/lecturers');
@@ -134,6 +152,7 @@ export function OfferingsPage() {
   const columns: ColumnsType<Offering> = [
     { title: 'Course', key: 'course', render: (_, row) => (row.course ? `${row.course.code} — ${row.course.title}` : '—') },
     { title: 'Type', key: 'type', width: 130, render: (_, row) => bucketLabel(row.course?.course_type) },
+    { title: 'Status', key: 'status', width: 110, render: (_, row) => courseStatusLabel(row.course?.status) },
     { title: 'Section', dataIndex: 'section', key: 'section', width: 90, render: (value) => value || 'A' },
     { title: 'Semester', key: 'term', render: (_, row) => (row.term ? `${row.term.session_label || ''} ${row.term.name}`.trim() : '—') },
     { title: 'Lecturer', key: 'lecturer', render: (_, row) => row.lecturer?.user?.name || '—' },
@@ -171,6 +190,19 @@ export function OfferingsPage() {
       canAdd={courses.length > 0 && terms.length > 0}
       count={rows.length}
       countLabel="Offerings"
+      extra={(
+        <div className="flex flex-wrap gap-2">
+          <SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />
+          <Select
+            allowClear
+            className="min-w-[180px]"
+            placeholder="Semester"
+            value={termId}
+            onChange={setTermId}
+            options={terms.map((term) => ({ value: term.id, label: `${term.session_label || ''} ${term.name}`.trim() }))}
+          />
+        </div>
+      )}
     >
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1100 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No offerings yet.' }} />
       <Modal title={crud.isEdit ? 'Edit offering' : 'Add offering'} open={crud.open} onCancel={crud.close} onOk={submit} confirmLoading={crud.saving} destroyOnHidden width={520}>
@@ -198,6 +230,8 @@ export function CourseRegistrationPage() {
   const { has } = useAuth();
   const [params] = useSearchParams();
   const [search, setSearch] = useState('');
+  const [sessionId, setSessionId] = useState<number | undefined>();
+  const [level, setLevel] = useState<string | undefined>();
   const [matches, setMatches] = useState<any[]>([]);
   const [studentId, setStudentId] = useState<number | null>(null);
   const [ctx, setCtx] = useState<any>(null);
@@ -229,7 +263,9 @@ export function CourseRegistrationPage() {
 
   const findStudents = async () => {
     try {
-      const { data } = await api.get('/api/academic/course-registration/students', { params: { search } });
+      const { data } = await api.get('/api/academic/course-registration/students', {
+        params: { search, academic_session_id: sessionId, level },
+      });
       const list = Array.isArray(data) ? data : [];
       setMatches(list);
       if (list.length === 1) loadContext(list[0].id);
@@ -303,6 +339,7 @@ export function CourseRegistrationPage() {
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
         <div className="flex flex-wrap gap-2">
+          <SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />
           <Input
             className="max-w-sm"
             placeholder="Search by name, matric, or email"
@@ -345,14 +382,14 @@ export function CourseRegistrationPage() {
             <Alert type="warning" showIcon message="This student has paid less than 25% of current-session tuition. Staff can still register with a reason." />
           )}
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <h3 className="text-sm font-semibold text-slate-800 mb-3">Units vs limits</h3>
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+            <h3 className="text-sm font-semibold text-slate-800 px-4 pt-3 pb-2">Units vs limits</h3>
+            <div className="grid grid-cols-4 divide-x divide-slate-100 border-t border-slate-100">
               {BUCKETS.map((bucket) => {
                 const limit = ctx.limits?.[bucket.value] || {};
                 const used = ctx.units?.[bucket.value] ?? 0;
                 return (
-                  <div key={bucket.value} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                  <div key={bucket.value} className="px-3 py-2">
                     <p className="text-xs uppercase tracking-wide text-slate-500">{bucket.label}</p>
                     <p className="text-sm font-semibold text-slate-800">{used} / {limit.max ?? '—'} units</p>
                     <p className="text-xs text-slate-500">Min {limit.min ?? '—'}{limit.grace ? ` · grace +${limit.grace}` : ''}</p>
@@ -386,6 +423,7 @@ export function CourseRegistrationPage() {
                 { title: 'Course', render: (_, row: any) => `${row.offering?.course?.code || ''} ${row.offering?.course?.title || ''}`.trim() },
                 { title: 'Units', width: 70, render: (_, row: any) => row.offering?.course?.units ?? '—' },
                 { title: 'Bucket', width: 130, render: (_, row: any) => bucketLabel(row.bucket) },
+                { title: 'Status', width: 110, render: (_, row: any) => courseStatusLabel(row.offering?.course?.status) },
                 { title: 'Carry-over', width: 110, render: (_, row: any) => (row.is_carry_over ? <Tag color="orange">Required</Tag> : '—') },
                 {
                   title: '',
@@ -412,6 +450,7 @@ export function CourseRegistrationPage() {
                 { title: 'Course', render: (_, row: any) => `${row.course?.code || ''} ${row.course?.title || ''}`.trim() },
                 { title: 'Units', width: 70, render: (_, row: any) => row.course?.units ?? '—' },
                 { title: 'Bucket', width: 130, render: (_, row: any) => bucketLabel(row.bucket || row.course?.course_type) },
+                { title: 'Status', width: 110, render: (_, row: any) => courseStatusLabel(row.course?.status) },
                 { title: 'Seats', width: 80, dataIndex: 'seats_left' },
                 {
                   title: '',
@@ -430,7 +469,16 @@ export function CourseRegistrationPage() {
 }
 
 export function UnitLimitsPage() {
-  const { rows, loading, reload } = useResourceList<UnitLimit>('/api/academic/unit-limits');
+  const [sessionId, setSessionId] = useState<number | undefined>();
+  const [level, setLevel] = useState<string | undefined>();
+  const endpoint = useMemo(() => {
+    const qs = new URLSearchParams();
+    if (sessionId) qs.set('academic_session_id', String(sessionId));
+    if (level) qs.set('level', level);
+    const query = qs.toString();
+    return query ? `/api/academic/unit-limits?${query}` : '/api/academic/unit-limits';
+  }, [sessionId, level]);
+  const { rows, loading, reload } = useResourceList<UnitLimit>(endpoint);
   const crud = useCrudModal<UnitLimit>();
   const [meta, setMeta] = useState<{ programs: any[]; levels: any[]; terms: Term[] }>({ programs: [], levels: [], terms: [] });
 
@@ -480,6 +528,7 @@ export function UnitLimitsPage() {
       onAdd={() => crud.openCreate({ bucket: 'overall', min_units: 15, max_units: 24 })}
       count={rows.length}
       countLabel="Limits"
+      extra={<SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />}
     >
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 900 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No unit limits yet.' }} />
       <Modal title={crud.isEdit ? 'Edit unit limit' : 'Add unit limit'} open={crud.open} onCancel={crud.close} onOk={submit} confirmLoading={crud.saving} destroyOnHidden>
@@ -508,10 +557,16 @@ export function UnitLimitsPage() {
 
 export function RegistrationExtensionsPage() {
   const [status, setStatus] = useState<string | undefined>('pending');
-  const endpoint = useMemo(
-    () => (status ? `/api/academic/registration-extensions?status=${status}` : '/api/academic/registration-extensions'),
-    [status],
-  );
+  const [sessionId, setSessionId] = useState<number | undefined>();
+  const [level, setLevel] = useState<string | undefined>();
+  const endpoint = useMemo(() => {
+    const qs = new URLSearchParams();
+    if (status) qs.set('status', status);
+    if (sessionId) qs.set('academic_session_id', String(sessionId));
+    if (level) qs.set('level', level);
+    const query = qs.toString();
+    return query ? `/api/academic/registration-extensions?${query}` : '/api/academic/registration-extensions';
+  }, [status, sessionId, level]);
   const { rows, loading, reload } = useResourceList<Extension>(endpoint);
   const [note, setNote] = useState('');
   const [unitsById, setUnitsById] = useState<Record<number, number>>({});
@@ -594,6 +649,7 @@ export function RegistrationExtensionsPage() {
         <RefreshButton onClick={reload} loading={loading} />
       </WorkspaceHero>
       <div className="flex flex-wrap gap-2">
+        <SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />
         <Select
           allowClear
           className="w-44"

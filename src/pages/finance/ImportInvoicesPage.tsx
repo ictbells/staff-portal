@@ -122,7 +122,7 @@ export function ImportInvoicesPage() {
       <WorkspaceHero
         eyebrow="Fees & payments"
         title="Import invoices"
-        description="Load billed fees and recorded payments by matric, application number, or JAMB. Rows without a matching account stay pending until Import students or Import applicants runs. Wallet credits are a separate sheet."
+        description="Load billed fees and recorded payments by matric, application number, or JAMB. The template includes a paid application_fee sample and a Categories sheet — copy category codes from there. Rows stay pending until Import students or Import applicants runs."
         icon={Wallet}
       >
         <RefreshButton onClick={loadPending} />
@@ -138,7 +138,8 @@ export function ImportInvoicesPage() {
       <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
         <h2 className="text-sm font-semibold text-slate-800">Upload spreadsheet</h2>
         <p className="text-sm text-slate-600">
-          One row is one invoice. Identify the payer with matric_number, application_number, or jamb_registration — application fee is often paid with APP or JAMB before a matric exists.
+          One row is one invoice. Identify the payer with matric_number, application_number, or jamb_registration.
+          Download the template for a tuition sample, a paid application_fee sample (APP + JAMB), and a Categories sheet of valid category codes.
           Extra rows with the same invoice_number add extra payments. Tuition requires installment_percent (25/50/75/100). paid_amount records money received on the invoice — it does not credit the wallet.
         </p>
         <div className="flex flex-wrap gap-3 items-center">

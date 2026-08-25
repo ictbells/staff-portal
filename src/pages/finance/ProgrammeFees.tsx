@@ -8,6 +8,7 @@ import {
   StatCard, WorkspaceHero, tdClass, thClass, trClass,
 } from '../../components/ui';
 import { formatNaira } from '../../lib/money';
+import { SessionLevelFilters } from '../../components/SessionLevelFilters';
 
 const LEVEL_OPTIONS = [
   { value: 'all', label: 'All levels' },
@@ -58,6 +59,7 @@ export function ProgrammeFees() {
   const [departmentId, setDepartmentId] = useState<number | undefined>();
   const [studyLevel, setStudyLevel] = useState<string | undefined>();
   const [scheduled, setScheduled] = useState<string>('all');
+  const [level, setLevel] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
@@ -116,6 +118,7 @@ export function ProgrammeFees() {
         ...(departmentId ? { department_id: departmentId } : {}),
         ...(studyLevel ? { study_level: studyLevel } : {}),
         ...(scheduled !== 'all' ? { scheduled } : {}),
+        ...(level ? { level } : {}),
       },
     }).then((r) => {
       setRows(r.data.data || []);
@@ -149,7 +152,7 @@ export function ProgrammeFees() {
     const timer = window.setTimeout(() => setSearch(searchInput.trim()), 250);
     return () => window.clearTimeout(timer);
   }, [searchInput]);
-  useEffect(() => { loadSummaries(); }, [search, facultyId, departmentId, studyLevel, scheduled]);
+  useEffect(() => { loadSummaries(); }, [search, facultyId, departmentId, studyLevel, scheduled, level]);
 
   const openAssign = (program?: ProgrammeSummary, line?: any) => {
     setEditingLine(line || null);
@@ -280,6 +283,7 @@ export function ProgrammeFees() {
               ]}
             />
           </label>
+          <SessionLevelFilters showSession={false} level={level} onLevelChange={setLevel} />
           <label className="block min-w-[160px]">
             <span className={fieldLabelClass}>Schedule</span>
             <Select

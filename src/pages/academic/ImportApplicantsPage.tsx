@@ -24,6 +24,7 @@ type ImportResult = {
   emailed?: number;
   nin_failed?: number;
   invoices_posted?: number;
+  application_fees_generated?: number;
   errors?: { row: number; email?: string; nin?: string; message: string }[];
   message?: string;
 };
@@ -167,17 +168,18 @@ export function ImportApplicantsPage() {
       <WorkspaceHero
         eyebrow="Application setup"
         title="Import applicants"
-        description="Bring applicants from another portal into this admissions pipeline. Import does not submit the file — applicants must upload required documents and submit after they sign in. Import invoices first if application fee was paid with APP or JAMB. Applicants sign in with application number or JAMB, not email."
+        description="Bring applicants from another portal into this admissions pipeline. Import does not submit the file — applicants must upload required documents and submit after they sign in. Import invoices first if application fee was paid (APP or JAMB); otherwise an unpaid fee is generated from the application session. Applicants sign in with application number or JAMB, not email."
         icon={UserPlus}
       >
         <RefreshButton onClick={loadOptions} />
         <Button icon={<Download size={14} />} onClick={downloadTemplate}>Template</Button>
       </WorkspaceHero>
-      <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 xl:grid-cols-6 gap-3">
         <StatCard label="Created" value={result?.created ?? '—'} hint="New applicant accounts" icon={UserPlus} />
         <StatCard label="Skipped" value={result?.skipped ?? '—'} hint="Rows with errors" icon={FileSpreadsheet} />
         <StatCard label="Emailed" value={result?.emailed ?? '—'} hint="New passwords sent" icon={Download} />
         <StatCard label="Invoices posted" value={result?.invoices_posted ?? '—'} hint="Matched APP / JAMB invoices" icon={FileSpreadsheet} />
+        <StatCard label="Fees generated" value={result?.application_fees_generated ?? '—'} hint="New unpaid application fees" icon={FileSpreadsheet} />
         <StatCard label="NIN failed" value={result?.nin_failed ?? '—'} hint="Rejected by Prembly" icon={FileSpreadsheet} />
       </div>
 
@@ -189,7 +191,7 @@ export function ImportApplicantsPage() {
           Copy first_choice_programme_id from Programmes. Documents cannot travel in Excel; import never submits the application. Applicants must upload required documents and submit after they sign in.
           Leave password blank to generate a new password and email it.
           Required columns: email, phone, nin, first_name, last_name, first_choice_programme_id, plus jamb_registration for UTME and Direct Entry.
-          If application fee was already paid, import those invoices first (application_number or JAMB); this step posts them and marks the fee paid.
+          If application fee was already paid, import those invoices first (category application_fee, application_number or JAMB); this step posts them and marks the fee paid. Otherwise an unpaid fee is generated from the selected application session.
         </p>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 md:items-end">
           <div>
@@ -240,7 +242,7 @@ export function ImportApplicantsPage() {
           <Alert
             type="success"
             showIcon
-            message={`Imported ${result.created || 0} applicant(s). ${result.skipped || 0} skipped. ${result.emailed || 0} email(s) sent. ${result.invoices_posted || 0} invoice(s) posted.`}
+            message={`Imported ${result.created || 0} applicant(s). ${result.skipped || 0} skipped. ${result.emailed || 0} email(s) sent. ${result.invoices_posted || 0} invoice(s) posted. ${result.application_fees_generated || 0} fee(s) generated.`}
           />
         )}
         {!!result?.errors?.length && (

@@ -7,6 +7,7 @@ import {
   StatCard, WorkspaceHero, tdClass, thClass, trClass,
 } from '../../components/ui';
 import { formatNaira } from '../../lib/money';
+import { ENTRY_MODES } from '../academic/constants';
 
 const ONLINE_ONLY_FEE_CATEGORIES = ['application_fee', 'acceptance_fee'];
 
@@ -26,6 +27,7 @@ export function FeeCatalog() {
     name: '',
     description: '',
     category: 'sundry',
+    entry_mode: '',
     amount: '',
     is_active: true,
   });
@@ -48,7 +50,7 @@ export function FeeCatalog() {
 
   const openCreateFee = () => {
     setEditingFee(null);
-    setFeeForm({ name: '', description: '', category: 'tuition', amount: '', is_active: true });
+    setFeeForm({ name: '', description: '', category: 'tuition', entry_mode: '', amount: '', is_active: true });
     setFeeModalOpen(true);
   };
 
@@ -58,6 +60,7 @@ export function FeeCatalog() {
       name: fee.name || '',
       description: fee.description || '',
       category: fee.category || 'sundry',
+      entry_mode: fee.entry_mode || '',
       amount: String(fee.amount ?? ''),
       is_active: fee.is_active !== false,
     });
@@ -66,12 +69,14 @@ export function FeeCatalog() {
 
   const saveFee = async () => {
     if (!feeForm.name.trim() || feeForm.amount === '') return;
+    if (feeForm.category === 'application_fee' && !feeForm.entry_mode) return;
     setSaving(true);
     try {
       const payload = {
         name: feeForm.name.trim(),
         description: feeForm.description.trim() || null,
         category: feeForm.category,
+        entry_mode: feeForm.category === 'application_fee' ? (feeForm.entry_mode || null) : null,
         amount: Number(feeForm.amount),
         is_active: feeForm.is_active,
       };
@@ -106,6 +111,7 @@ export function FeeCatalog() {
         { value: 'hostel', label: 'Hostel' },
         { value: 'sundry', label: 'Sundry' },
         { value: 'acceptance_fee', label: 'Acceptance fee' },
+        { value: 'application_fee', label: 'Application fee' },
         { value: 'other', label: 'Other' },
       ];
 
@@ -117,7 +123,7 @@ export function FeeCatalog() {
       <WorkspaceHero
         eyebrow="Fees & payments"
         title="Fee catalog"
-        description="Define reusable school-fee lines. School charges are paid from the campus wallet. Only application and acceptance fees are paid online. Application fees are set per application session under Academic → Application sessions."
+        description="Define reusable school-fee lines with amounts. Categories come from Fee category. Create an application fee line for each entry mode (UTME, DE, JUPEB, Transfer, PG). School charges are paid from the campus wallet; application and acceptance fees are paid online."
         icon={Wallet}
       >
         <RefreshButton onClick={load} loading={loading} />
@@ -130,16 +136,17 @@ export function FeeCatalog() {
 
       <Card
         title="Fee items"
-        description="Schedule categories (tuition, library, medical, …) are assigned per programme on Programme fees. Operational items (hostel, sundry, acceptance) are invoiced directly."
+        description="Pick a category from Fee category when creating a line. Application fees are per entry mode. Schedule categories are assigned per programme on Programme fees; operational categories are invoiced directly."
       >
         <div className="mb-4">
           <Btn className="!text-white" onClick={openCreateFee}>Add fee item</Btn>
         </div>
-        <DataTable empty={!fees.length} emptyMessage="No fees configured." colSpan={7}>
+        <DataTable empty={!fees.length} emptyMessage="No fees configured." colSpan={8}>
           <thead>
             <tr>
               <th className={thClass}>Fee</th>
               <th className={thClass}>Category</th>
+              <th className={thClass}>Entry mode</th>
               <th className={thClass}>Type</th>
               <th className={thClass}>Default amount</th>
               <th className={thClass}>Payment</th>
@@ -159,6 +166,11 @@ export function FeeCatalog() {
                       {f.description && <div className="text-xs text-slate-500">{f.description}</div>}
                     </td>
                     <td className={tdClass}><Badge variant="info">{(f.category || '').replaceAll('_', ' ')}</Badge></td>
+                    <td className={tdClass}>
+                      {f.category === 'application_fee'
+                        ? (ENTRY_MODES.find((mode) => mode.value === f.entry_mode)?.label || f.entry_mode || '—')
+                        : '—'}
+                    </td>
                     <td className={tdClass}>
                       <Badge variant={isSchedule ? 'success' : 'default'}>
                         {isSchedule ? 'Programme schedule' : 'Operational'}
@@ -209,11 +221,29 @@ export function FeeCatalog() {
                 ))}
               </select>
               <p className="mt-1 text-xs text-slate-500">
-                {isOnlineOnlyFee(feeForm.category)
-                  ? 'Application and acceptance fees are paid online. They cannot be paid from the wallet.'
-                  : 'This charge is paid from the campus wallet after the student funds it.'}
+                {categories.length === 0
+                  ? 'No fee categories yet. Add them under Fees & payments → Fee category.'
+                  : isOnlineOnlyFee(feeForm.category)
+                    ? 'Application and acceptance fees are paid online. They cannot be paid from the wallet.'
+                    : 'This charge is paid from the campus wallet after the student funds it.'}
               </p>
             </label>
+            {feeForm.category === 'application_fee' && (
+              <label className="block">
+                <span className={fieldLabelClass}>Entry mode</span>
+                <select
+                  className={inputClass}
+                  value={feeForm.entry_mode}
+                  onChange={(e) => setFeeForm((s) => ({ ...s, entry_mode: e.target.value }))}
+                >
+                  <option value="">Select entry mode</option>
+                  {ENTRY_MODES.map((mode) => (
+                    <option key={mode.value} value={mode.value}>{mode.label}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">Applicants in this category pay this amount. Create a separate line for each entry mode.</p>
+              </label>
+            )}
             <label className="block">
               <span className={fieldLabelClass}>Default amount (₦)</span>
               <input className={inputClass} type="number" min={0} value={feeForm.amount} onChange={(e) => setFeeForm((s) => ({ ...s, amount: e.target.value }))} />
@@ -228,7 +258,7 @@ export function FeeCatalog() {
             </label>
             <div className="flex justify-end gap-2 pt-2">
               <Btn variant="secondary" onClick={() => setFeeModalOpen(false)}>Cancel</Btn>
-              <Btn onClick={saveFee} disabled={saving}>{saving ? 'Saving…' : 'Save fee'}</Btn>
+              <Btn onClick={saveFee} disabled={saving || (feeForm.category === 'application_fee' && !feeForm.entry_mode)}>{saving ? 'Saving…' : 'Save fee'}</Btn>
             </div>
           </div>
         </div>
