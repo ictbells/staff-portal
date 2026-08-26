@@ -24,7 +24,10 @@ export function hasAcademicResourcePermission(
   if (LEGACY_INSTITUTION_KEYS.has(resource.key) && has('institution.manage')) {
     return true;
   }
-  if (resource.key === 'results-approvals' && (has('results.submit') || has('results.faculty_approve'))) {
+  if (resource.key === 'results-approvals' && (has('results.faculty_approve') || has('results.submit'))) {
+    return true;
+  }
+  if (resource.key === 'results-department' && (has('results.submit') || has('results.read'))) {
     return true;
   }
   if (resource.key === 'import-students' && has('students.manage')) {

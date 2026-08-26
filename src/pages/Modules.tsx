@@ -14,7 +14,7 @@ import { SessionLevelFilters } from '../components/SessionLevelFilters';
 
 const API_DOCS_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/docs`;
 
-const ONLINE_ONLY_FEE_CATEGORIES = ['application_fee', 'acceptance_fee'];
+const ONLINE_ONLY_FEE_CATEGORIES = ['application_fee', 'acceptance_fee', 'transcript'];
 
 function isOnlineOnlyFee(category?: string) {
   return ONLINE_ONLY_FEE_CATEGORIES.includes(String(category || ''));

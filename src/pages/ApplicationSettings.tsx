@@ -47,6 +47,11 @@ type SecuritySettings = {
   staff_support_email: string;
   staff_support_phone: string;
   studentship_years_after_graduation: number;
+  transcript_requests_enabled: boolean;
+  transcript_delivery_collect: boolean;
+  transcript_delivery_generated_pdf: boolean;
+  transcript_delivery_uploaded_pdf: boolean;
+  transcript_collect_instructions: string;
 };
 
 const DEFAULT_EXAM_CLEARANCE: ExamClearanceSettings = {
@@ -85,6 +90,12 @@ const EMPTY_SETTINGS: SecuritySettings = {
   staff_support_email: '',
   staff_support_phone: '',
   studentship_years_after_graduation: 2,
+  transcript_requests_enabled: false,
+  transcript_delivery_collect: true,
+  transcript_delivery_generated_pdf: true,
+  transcript_delivery_uploaded_pdf: true,
+  transcript_collect_instructions:
+    'Please collect your official transcript from the Registry during office hours. Bring a valid ID and your request reference.',
 };
 
 function normalizeSettings(data: Partial<SecuritySettings> = {}): SecuritySettings {
@@ -98,6 +109,13 @@ function normalizeSettings(data: Partial<SecuritySettings> = {}): SecuritySettin
     staff_support_email: data.staff_support_email || '',
     staff_support_phone: data.staff_support_phone || '',
     studentship_years_after_graduation: data.studentship_years_after_graduation || 2,
+    transcript_requests_enabled: data.transcript_requests_enabled === true,
+    transcript_delivery_collect: data.transcript_delivery_collect !== false,
+    transcript_delivery_generated_pdf: data.transcript_delivery_generated_pdf !== false,
+    transcript_delivery_uploaded_pdf: data.transcript_delivery_uploaded_pdf !== false,
+    transcript_collect_instructions:
+      data.transcript_collect_instructions
+      || EMPTY_SETTINGS.transcript_collect_instructions,
   };
 }
 
@@ -446,6 +464,45 @@ export default function ApplicationSettings() {
             </div>
           </Card>
       </div>
+
+      <Card
+        title="Official transcript requests"
+        description="Public school-website form on the student portal. Finance sets the fee under Fee catalog (category Official transcript). Registry processes paid requests."
+      >
+        <div className="space-y-3">
+          <ToggleRow
+            title="Accept public transcript requests"
+            description="When on, /transcript-request on the student portal accepts matric + email requests and Paystack payment."
+            checked={settings.transcript_requests_enabled}
+            onChange={(checked) => setSettings((s) => ({ ...s, transcript_requests_enabled: checked }))}
+          />
+          <ToggleRow
+            title="Collect at Registry"
+            description="Staff can mark a request ready for collection; the email includes the collection instructions below."
+            checked={settings.transcript_delivery_collect}
+            onChange={(checked) => setSettings((s) => ({ ...s, transcript_delivery_collect: checked }))}
+          />
+          <ToggleRow
+            title="System-generated PDF"
+            description="Staff can issue a system official PDF (with signature block) and email a download link."
+            checked={settings.transcript_delivery_generated_pdf}
+            onChange={(checked) => setSettings((s) => ({ ...s, transcript_delivery_generated_pdf: checked }))}
+          />
+          <ToggleRow
+            title="Staff-uploaded PDF"
+            description="Staff can upload a scanned/signed PDF and email a download link."
+            checked={settings.transcript_delivery_uploaded_pdf}
+            onChange={(checked) => setSettings((s) => ({ ...s, transcript_delivery_uploaded_pdf: checked }))}
+          />
+          <Field label="Collection instructions" hint="Included in ready emails when delivery is collect at Registry.">
+            <textarea
+              className={`${inputClass} min-h-[96px]`}
+              value={settings.transcript_collect_instructions}
+              onChange={(e) => setSettings((s) => ({ ...s, transcript_collect_instructions: e.target.value }))}
+            />
+          </Field>
+        </div>
+      </Card>
 
       <Card
         title="Exam clearance"

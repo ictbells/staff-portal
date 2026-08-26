@@ -16,6 +16,7 @@ import {
   Network,
   Plug,
   School,
+  ScrollText,
   Settings2,
   Shield,
   Stethoscope,
@@ -182,6 +183,7 @@ export const navSections: NavSection[] = [
       { key: 'medical', to: '/medical', label: 'Clinic', perm: 'medical.view_any', icon: Stethoscope },
       { key: 'hostel', to: '/hostel', label: 'Hostel', perm: 'hostel.view', icon: Building2 },
       { key: 'documents', to: '/documents', label: 'Documents', perm: 'documents.issue', icon: FileText },
+      { key: 'transcript-requests', to: '/transcript-requests', label: 'Transcript requests', perm: 'transcripts.view', icon: ScrollText },
     ],
   },
   {

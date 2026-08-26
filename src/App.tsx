@@ -28,6 +28,7 @@ import {
   ResultsApprovalsPage,
   ResultsBoardPage,
   ResultsDashboardPage,
+  ResultsDepartmentUploadsPage,
   ResultsGradingScalePage,
   ResultsImportPage,
   ResultsReleasePage,
@@ -44,6 +45,7 @@ import ExamClearance from './pages/ExamClearance';
 import Resources from './pages/Resources';
 import ResourceView from './pages/ResourceView';
 import HostelManagement from './pages/HostelManagement';
+import TranscriptRequests from './pages/TranscriptRequests';
 import {
   Documents, Finance, Institution,
   GenerateInvoice, Integrations, Invoices, Medical, Notifications, ProgrammeFees, Rebates, Students, StudentFinance, FeeCategories,
@@ -126,6 +128,7 @@ export default function App() {
           <Route path="results/students" element={<AcademicResourceGuard resourceKey="results-students"><ResultsStudentsPage /></AcademicResourceGuard>} />
           <Route path="results/students/:id" element={<AcademicResourceGuard resourceKey="results-students"><ResultsStudentDetailPage /></AcademicResourceGuard>} />
           <Route path="results/import" element={<AcademicResourceGuard resourceKey="results-import"><ResultsImportPage /></AcademicResourceGuard>} />
+          <Route path="results/department" element={<AcademicResourceGuard resourceKey="results-department"><ResultsDepartmentUploadsPage /></AcademicResourceGuard>} />
           <Route path="results/approvals" element={<AcademicResourceGuard resourceKey="results-approvals"><ResultsApprovalsPage /></AcademicResourceGuard>} />
           <Route path="results/board" element={<AcademicResourceGuard resourceKey="results-board"><ResultsBoardPage /></AcademicResourceGuard>} />
           <Route path="results/release" element={<AcademicResourceGuard resourceKey="results-release"><ResultsReleasePage /></AcademicResourceGuard>} />
@@ -147,6 +150,7 @@ export default function App() {
         <Route path="medical" element={<Medical />} />
         <Route path="hostel" element={<HostelManagement />} />
         <Route path="documents" element={<Documents />} />
+        <Route path="transcript-requests" element={<TranscriptRequests />} />
         <Route path="users" element={<Users />} />
         <Route path="profile" element={<Profile />} />
         <Route path="roles" element={<Roles />} />

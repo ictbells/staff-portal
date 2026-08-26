@@ -9,7 +9,7 @@ import {
 import { formatNaira } from '../../lib/money';
 import { ENTRY_MODES } from '../academic/constants';
 
-const ONLINE_ONLY_FEE_CATEGORIES = ['application_fee', 'acceptance_fee'];
+const ONLINE_ONLY_FEE_CATEGORIES = ['application_fee', 'acceptance_fee', 'transcript'];
 
 function isOnlineOnlyFee(category?: string) {
   return ONLINE_ONLY_FEE_CATEGORIES.includes(String(category || ''));
@@ -51,6 +51,8 @@ export function FeeCatalog() {
 
   useEffect(() => { load(); }, []);
 
+  const isTuitionFee = (category?: string) => String(category || '') === 'tuition';
+
   const isScheduleFee = (category?: string) =>
     scheduleCategories.includes(String(category || ''))
     || !!categories.find((c) => c.value === category)?.schedule;
@@ -85,7 +87,7 @@ export function FeeCatalog() {
         description: feeForm.description.trim() || null,
         category: feeForm.category,
         entry_mode: feeForm.category === 'application_fee' ? (feeForm.entry_mode || null) : null,
-        installment_tranche: isScheduleFee(feeForm.category) && feeForm.installment_tranche !== ''
+        installment_tranche: isTuitionFee(feeForm.category) && feeForm.installment_tranche !== ''
           ? Number(feeForm.installment_tranche)
           : null,
         amount: Number(feeForm.amount),
@@ -148,7 +150,7 @@ export function FeeCatalog() {
 
       <Card
         title="Fee items"
-        description="Pick a category from Fee category when creating a line. Tag schedule lines with an installment share so students are billed those amounts (not a percentage of a single total). Application fees are per entry mode. Schedule categories are assigned per programme on Programme fees. Clinic visit charges use operational Clinic services lines; the Medical levy is the programme schedule charge."
+        description="Pick a category from Fee category when creating a line. Only tuition lines can have an installment share (1st/2nd/3rd/4th 25% or Full 100%). Other schedule categories are billed as a single amount. Application fees are per entry mode. Schedule categories are assigned per programme on Programme fees. Clinic visit charges use operational Clinic services lines; the Medical levy is the programme schedule charge."
       >
         <div className="mb-4">
           <Btn className="!text-white" onClick={openCreateFee}>Add fee item</Btn>
@@ -233,7 +235,7 @@ export function FeeCatalog() {
                 onChange={(e) => setFeeForm((s) => ({
                   ...s,
                   category: e.target.value,
-                  installment_tranche: isScheduleFee(e.target.value) ? s.installment_tranche : '',
+                  installment_tranche: isTuitionFee(e.target.value) ? s.installment_tranche : '',
                 }))}
               >
                 {categoryOptions.map((c) => (
@@ -248,7 +250,7 @@ export function FeeCatalog() {
                     : 'This charge is paid from the campus wallet after the student funds it.'}
               </p>
             </label>
-            {isScheduleFee(feeForm.category) && (
+            {isTuitionFee(feeForm.category) && (
               <label className="block">
                 <span className={fieldLabelClass}>Installment share</span>
                 <select
@@ -262,7 +264,7 @@ export function FeeCatalog() {
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-slate-500">
-                  Create separate catalog lines for each 25% share, plus an optional Full 100% line for students who pay at once. Assign those lines on Programme fees.
+                  Create separate tuition catalog lines for each 25% share, plus an optional Full 100% line for students who pay at once. Assign those lines on Programme fees. Other categories do not use installment shares.
                 </p>
               </label>
             )}

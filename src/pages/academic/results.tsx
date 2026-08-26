@@ -88,7 +88,8 @@ export function ResultsDashboardPage() {
       </div>
       <div className="flex flex-wrap gap-2 pt-2">
         <Link to="/academic/results/students"><Button type="primary">Enter results</Button></Link>
-        <Link to="/academic/results/approvals"><Button>Approvals</Button></Link>
+        <Link to="/academic/results/department"><Button>Department uploads</Button></Link>
+        <Link to="/academic/results/approvals"><Button>Faculty Approval</Button></Link>
         <Link to="/academic/results/release"><Button>Release</Button></Link>
       </div>
     </ResourceShell>
@@ -269,6 +270,120 @@ export function ResultsImportPage() {
   );
 }
 
+export function ResultsDepartmentUploadsPage() {
+  const { has } = useAuth();
+  const { terms, faculties, departments } = useTermsFaculties();
+  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState<any[]>([]);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [filters, setFilters] = useState<{ academic_term_id?: number; academic_session_id?: number; level?: string; status?: string; faculty_id?: number; department_id?: number }>({
+    status: 'draft',
+  });
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.get('/api/academic/results/grades', { params: { ...filters, per_page: 100 } })
+      .then((r) => setRows(r.data?.data || []))
+      .catch(() => message.error('Could not load department uploads'))
+      .finally(() => setLoading(false));
+  }, [filters]);
+  useEffect(() => { load(); }, [load]);
+
+  const act = async (path: string, body: any) => {
+    try {
+      const res = await api.post(path, body);
+      message.success(`Updated ${res.data?.updated ?? 0}`);
+      if (res.data?.errors?.length) message.warning(res.data.errors.join('; '));
+      setSelected([]);
+      load();
+    } catch (e: any) {
+      message.error(e.response?.data?.message || 'Action failed');
+    }
+  };
+
+  const columns: ColumnsType = [
+    { title: 'Matric', render: (_, r) => r.enrollment?.student?.matric_number },
+    { title: 'Student', render: (_, r) => `${r.enrollment?.student?.first_name || ''} ${r.enrollment?.student?.last_name || ''}`.trim() || '—' },
+    { title: 'Course', render: (_, r) => r.enrollment?.offering?.course?.code },
+    { title: 'CA', dataIndex: 'ca_score', width: 70 },
+    { title: 'Exam', dataIndex: 'exam_score', width: 70 },
+    { title: 'Score', dataIndex: 'score', width: 70 },
+    { title: 'Letter', dataIndex: 'letter', width: 70 },
+    { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{String(v || '').replace(/_/g, ' ')}</Tag> },
+  ];
+
+  return (
+    <ResourceShell
+      title="Department uploads"
+      description="Review grades entered by the department. Submit drafts for faculty approval and print the department list."
+      loading={loading}
+      onRefresh={load}
+      extra={(
+        <Space wrap>
+          <SessionLevelFilters
+            sessionId={filters.academic_session_id}
+            level={filters.level}
+            onSessionChange={(v) => setFilters((f) => ({ ...f, academic_session_id: v }))}
+            onLevelChange={(v) => setFilters((f) => ({ ...f, level: v }))}
+          />
+          <Select
+            placeholder="Term"
+            allowClear
+            style={{ width: 180 }}
+            options={terms.map((t) => ({ value: t.id, label: `${t.session_label || ''} ${t.name}`.trim() }))}
+            onChange={(v) => setFilters((f) => ({ ...f, academic_term_id: v }))}
+          />
+          <Select
+            placeholder="Status"
+            style={{ width: 180 }}
+            value={filters.status}
+            options={['draft', 'submitted', 'correction_required', 'board_ready'].map((s) => ({ value: s, label: s.replace(/_/g, ' ') }))}
+            onChange={(v) => setFilters((f) => ({ ...f, status: v }))}
+          />
+          {has('results.submit') && (
+            <Button type="primary" onClick={() => act('/api/academic/results/submit', { ids: selected })} disabled={!selected.length}>
+              Submit selected
+            </Button>
+          )}
+          <Button onClick={() => openPrintable('/api/academic/results/reports/submission-list/department', {
+            academic_term_id: filters.academic_term_id,
+            department_id: filters.department_id,
+            status: filters.status,
+          })}
+          >
+            Print dept list
+          </Button>
+        </Space>
+      )}
+    >
+      <Space className="mb-3" wrap>
+        <Select
+          placeholder="Faculty"
+          allowClear
+          style={{ width: 180 }}
+          options={faculties.map((f) => ({ value: f.id, label: f.name }))}
+          onChange={(v) => setFilters((f) => ({ ...f, faculty_id: v }))}
+        />
+        <Select
+          placeholder="Department"
+          allowClear
+          style={{ width: 180 }}
+          options={departments.map((d) => ({ value: d.id, label: d.name }))}
+          onChange={(v) => setFilters((f) => ({ ...f, department_id: v }))}
+        />
+      </Space>
+      <Table
+        rowKey="id"
+        loading={loading}
+        dataSource={rows}
+        columns={columns}
+        rowSelection={{ selectedRowKeys: selected, onChange: (keys) => setSelected(keys as number[]) }}
+        pagination={false}
+      />
+    </ResourceShell>
+  );
+}
+
 export function ResultsApprovalsPage() {
   const { has } = useAuth();
   const { terms, faculties, departments } = useTermsFaculties();
@@ -283,7 +398,7 @@ export function ResultsApprovalsPage() {
     setLoading(true);
     api.get('/api/academic/results/grades', { params: { ...filters, per_page: 100 } })
       .then((r) => setRows(r.data?.data || []))
-      .catch(() => message.error('Could not load queue'))
+      .catch(() => message.error('Could not load faculty approval queue'))
       .finally(() => setLoading(false));
   }, [filters]);
   useEffect(() => { load(); }, [load]);
@@ -293,6 +408,7 @@ export function ResultsApprovalsPage() {
       const res = await api.post(path, body);
       message.success(`Updated ${res.data?.updated ?? 0}`);
       if (res.data?.errors?.length) message.warning(res.data.errors.join('; '));
+      setSelected([]);
       load();
     } catch (e: any) {
       message.error(e.response?.data?.message || 'Action failed');
@@ -301,14 +417,19 @@ export function ResultsApprovalsPage() {
 
   const columns: ColumnsType = [
     { title: 'Matric', render: (_, r) => r.enrollment?.student?.matric_number },
+    { title: 'Student', render: (_, r) => `${r.enrollment?.student?.first_name || ''} ${r.enrollment?.student?.last_name || ''}`.trim() || '—' },
     { title: 'Course', render: (_, r) => r.enrollment?.offering?.course?.code },
     { title: 'Score', dataIndex: 'score' },
     { title: 'Letter', dataIndex: 'letter' },
-    { title: 'Status', dataIndex: 'status' },
+    { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{String(v || '').replace(/_/g, ' ')}</Tag> },
   ];
 
   return (
-    <ResourceShell title="Approvals" description="Submit queue and faculty approve/return. Download printable lists." loading={loading} onRefresh={load}
+    <ResourceShell
+      title="Faculty Approval"
+      description="Approve or return department submissions. Print the faculty list from this page."
+      loading={loading}
+      onRefresh={load}
       extra={(
         <Space wrap>
           <SessionLevelFilters
@@ -317,40 +438,49 @@ export function ResultsApprovalsPage() {
             onSessionChange={(v) => setFilters((f) => ({ ...f, academic_session_id: v }))}
             onLevelChange={(v) => setFilters((f) => ({ ...f, level: v }))}
           />
-          <Select placeholder="Term" allowClear style={{ width: 180 }}
+          <Select
+            placeholder="Term"
+            allowClear
+            style={{ width: 180 }}
             options={terms.map((t) => ({ value: t.id, label: `${t.session_label || ''} ${t.name}`.trim() }))}
             onChange={(v) => setFilters((f) => ({ ...f, academic_term_id: v }))}
           />
-          <Select placeholder="Status" style={{ width: 160 }} value={filters.status}
-            options={['draft', 'submitted', 'board_ready', 'correction_required', 'board_cleared'].map((s) => ({ value: s, label: s }))}
+          <Select
+            placeholder="Status"
+            style={{ width: 160 }}
+            value={filters.status}
+            options={['submitted', 'board_ready', 'correction_required'].map((s) => ({ value: s, label: s.replace(/_/g, ' ') }))}
             onChange={(v) => setFilters((f) => ({ ...f, status: v }))}
           />
-          {has('results.submit') && <Button onClick={() => act('/api/academic/results/submit', { ids: selected })} disabled={!selected.length}>Submit</Button>}
           {has('results.faculty_approve') && (
             <>
               <Button type="primary" onClick={() => act('/api/academic/results/faculty-approve', { ids: selected })} disabled={!selected.length}>Approve</Button>
               <Button danger onClick={() => act('/api/academic/results/faculty-return', { ids: selected, note: 'Returned for correction' })} disabled={!selected.length}>Return</Button>
             </>
           )}
-          <Button onClick={() => openPrintable('/api/academic/results/reports/submission-list/department', {
-            academic_term_id: filters.academic_term_id,
-            department_id: filters.department_id,
-            status: filters.status,
-          })}>Print dept list</Button>
           <Button onClick={() => openPrintable('/api/academic/results/reports/submission-list/faculty', {
             academic_term_id: filters.academic_term_id,
             faculty_id: filters.faculty_id,
             status: filters.status,
-          })}>Print faculty list</Button>
+          })}
+          >
+            Print faculty list
+          </Button>
         </Space>
       )}
     >
       <Space className="mb-3" wrap>
-        <Select placeholder="Faculty" allowClear style={{ width: 180 }}
+        <Select
+          placeholder="Faculty"
+          allowClear
+          style={{ width: 180 }}
           options={faculties.map((f) => ({ value: f.id, label: f.name }))}
           onChange={(v) => setFilters((f) => ({ ...f, faculty_id: v }))}
         />
-        <Select placeholder="Department" allowClear style={{ width: 180 }}
+        <Select
+          placeholder="Department"
+          allowClear
+          style={{ width: 180 }}
           options={departments.map((d) => ({ value: d.id, label: d.name }))}
           onChange={(v) => setFilters((f) => ({ ...f, department_id: v }))}
         />
@@ -370,36 +500,102 @@ export function ResultsApprovalsPage() {
 export function ResultsBoardPage() {
   const { terms, faculties, departments } = useTermsFaculties();
   const [form] = Form.useForm();
+  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState<any[]>([]);
   const [sessionId, setSessionId] = useState<number | undefined>();
   const [level, setLevel] = useState<string | undefined>();
+  const [status, setStatus] = useState('board_ready');
   const termOptions = terms
     .filter((t) => !sessionId || t.academic_session_id === sessionId || !t.academic_session_id)
     .map((t) => ({ value: t.id, label: `${t.session_label || ''} ${t.name}`.trim() }));
+
+  const load = useCallback(async () => {
+    const values = form.getFieldsValue();
+    setLoading(true);
+    try {
+      const { data } = await api.get('/api/academic/results/grades', {
+        params: {
+          status,
+          academic_term_id: values.academic_term_id,
+          faculty_id: values.faculty_id,
+          department_id: values.department_id,
+          academic_session_id: sessionId,
+          level,
+          per_page: 100,
+        },
+      });
+      setRows(data?.data || []);
+    } catch {
+      message.error('Could not load board records');
+    } finally {
+      setLoading(false);
+    }
+  }, [form, status, sessionId, level]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
   const run = async (path: string) => {
     try {
       const values = await form.validateFields();
       const res = await api.post(path, { ...values, level });
       message.success(`Updated ${res.data?.updated ?? 0}`);
+      await load();
     } catch (e: any) {
       message.error(e.response?.data?.message || 'Board action failed');
     }
   };
+
+  const columns: ColumnsType = [
+    { title: 'Matric', render: (_, r) => r.enrollment?.student?.matric_number },
+    { title: 'Student', render: (_, r) => `${r.enrollment?.student?.first_name || ''} ${r.enrollment?.student?.last_name || ''}`.trim() || '—' },
+    { title: 'Course', render: (_, r) => r.enrollment?.offering?.course?.code },
+    { title: 'Score', dataIndex: 'score', width: 70 },
+    { title: 'Letter', dataIndex: 'letter', width: 70 },
+    { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{String(v || '').replace(/_/g, ' ')}</Tag> },
+  ];
+
   return (
-    <ResourceShell title="Board" description="Clear board-ready results or request corrections. Print board lists." loading={false} onRefresh={() => {}}
+    <ResourceShell
+      title="Board"
+      description="Review board-ready grades, clear them, or request corrections. Print the board list when needed."
+      loading={loading}
+      onRefresh={load}
       extra={<SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />}
     >
-      <Form form={form} layout="vertical" className="max-w-lg">
-        <Form.Item name="academic_term_id" label="Term" rules={[{ required: true }]}>
-          <Select options={termOptions} />
-        </Form.Item>
-        <Form.Item name="faculty_id" label="Faculty">
-          <Select allowClear options={faculties.map((f) => ({ value: f.id, label: f.name }))} />
-        </Form.Item>
-        <Form.Item name="department_id" label="Department">
-          <Select allowClear options={departments.map((d) => ({ value: d.id, label: d.name }))} />
-        </Form.Item>
+      <Form
+        form={form}
+        layout="vertical"
+        className="max-w-3xl"
+        onValuesChange={() => {
+          window.setTimeout(() => { void load(); }, 0);
+        }}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Form.Item name="academic_term_id" label="Term" rules={[{ required: true }]}>
+            <Select options={termOptions} placeholder="Select term" />
+          </Form.Item>
+          <Form.Item label="Status">
+            <Select
+              value={status}
+              options={[
+                { value: 'board_ready', label: 'board ready' },
+                { value: 'board_cleared', label: 'board cleared' },
+                { value: 'correction_required', label: 'correction required' },
+              ]}
+              onChange={setStatus}
+            />
+          </Form.Item>
+          <Form.Item name="faculty_id" label="Faculty">
+            <Select allowClear options={faculties.map((f) => ({ value: f.id, label: f.name }))} />
+          </Form.Item>
+          <Form.Item name="department_id" label="Department">
+            <Select allowClear options={departments.map((d) => ({ value: d.id, label: d.name }))} />
+          </Form.Item>
+        </div>
         <Form.Item name="note" label="Note"><Input.TextArea rows={2} /></Form.Item>
-        <Space wrap>
+        <Space wrap className="mb-4">
           <Button type="primary" onClick={() => run('/api/academic/results/board-scopes/clear')}>Board clear</Button>
           <Button danger onClick={() => run('/api/academic/results/board-scopes/request-corrections')}>Request corrections</Button>
           <Button onClick={() => {
@@ -408,11 +604,23 @@ export function ResultsBoardPage() {
               academic_term_id: v.academic_term_id,
               faculty_id: v.faculty_id,
               department_id: v.department_id,
-              status: 'board_ready',
+              status: status || 'board_ready',
             });
-          }}>Print board list</Button>
+          }}
+          >
+            Print board list
+          </Button>
+          <Button onClick={load}>Refresh list</Button>
         </Space>
       </Form>
+      <Table
+        rowKey="id"
+        loading={loading}
+        dataSource={rows}
+        columns={columns}
+        pagination={false}
+        locale={{ emptyText: 'No board records for these filters. Select a term to load the list.' }}
+      />
     </ResourceShell>
   );
 }
