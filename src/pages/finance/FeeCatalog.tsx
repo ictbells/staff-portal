@@ -19,6 +19,7 @@ export function FeeCatalog() {
   const [fees, setFees] = useState<any[]>([]);
   const [categories, setCategories] = useState<{ value: string; label: string; schedule?: boolean }[]>([]);
   const [scheduleCategories, setScheduleCategories] = useState<string[]>([]);
+  const [installmentTranches, setInstallmentTranches] = useState<{ value: number; label: string; percent: number }[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [feeModalOpen, setFeeModalOpen] = useState(false);
@@ -28,6 +29,7 @@ export function FeeCatalog() {
     description: '',
     category: 'sundry',
     entry_mode: '',
+    installment_tranche: '',
     amount: '',
     is_active: true,
   });
@@ -36,21 +38,26 @@ export function FeeCatalog() {
     setLoading(true);
     Promise.all([
       api.get('/api/fees'),
-      api.get('/api/fees/meta').catch(() => ({ data: { categories: [], schedule_categories: [] } })),
+      api.get('/api/fees/meta').catch(() => ({ data: { categories: [], schedule_categories: [], installment_tranches: [] } })),
     ])
       .then(([feesRes, metaRes]) => {
         setFees(Array.isArray(feesRes.data) ? feesRes.data : feesRes.data?.data || []);
         setCategories(metaRes.data.categories || []);
         setScheduleCategories(metaRes.data.schedule_categories || []);
+        setInstallmentTranches(metaRes.data.installment_tranches || []);
       })
       .finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, []);
 
+  const isScheduleFee = (category?: string) =>
+    scheduleCategories.includes(String(category || ''))
+    || !!categories.find((c) => c.value === category)?.schedule;
+
   const openCreateFee = () => {
     setEditingFee(null);
-    setFeeForm({ name: '', description: '', category: 'tuition', entry_mode: '', amount: '', is_active: true });
+    setFeeForm({ name: '', description: '', category: 'tuition', entry_mode: '', installment_tranche: '', amount: '', is_active: true });
     setFeeModalOpen(true);
   };
 
@@ -61,6 +68,7 @@ export function FeeCatalog() {
       description: fee.description || '',
       category: fee.category || 'sundry',
       entry_mode: fee.entry_mode || '',
+      installment_tranche: fee.installment_tranche != null ? String(fee.installment_tranche) : '',
       amount: String(fee.amount ?? ''),
       is_active: fee.is_active !== false,
     });
@@ -77,6 +85,9 @@ export function FeeCatalog() {
         description: feeForm.description.trim() || null,
         category: feeForm.category,
         entry_mode: feeForm.category === 'application_fee' ? (feeForm.entry_mode || null) : null,
+        installment_tranche: isScheduleFee(feeForm.category) && feeForm.installment_tranche !== ''
+          ? Number(feeForm.installment_tranche)
+          : null,
         amount: Number(feeForm.amount),
         is_active: feeForm.is_active,
       };
@@ -123,7 +134,7 @@ export function FeeCatalog() {
       <WorkspaceHero
         eyebrow="Fees & payments"
         title="Fee catalog"
-        description="Define reusable school-fee lines with amounts. Categories come from Fee category. Create an application fee line for each entry mode (UTME, DE, JUPEB, Transfer, PG). School charges are paid from the campus wallet; application and acceptance fees are paid online."
+        description="Define reusable school-fee lines with amounts. For tuition installments, create separate lines for 1st/2nd/3rd/4th 25% and optionally a full 100% pay-at-once package. Categories come from Fee category. Create an application fee line for each entry mode (UTME, DE, JUPEB, Transfer, PG). School charges are paid from the campus wallet; application and acceptance fees are paid online."
         icon={Wallet}
       >
         <RefreshButton onClick={load} loading={loading} />
@@ -136,16 +147,17 @@ export function FeeCatalog() {
 
       <Card
         title="Fee items"
-        description="Pick a category from Fee category when creating a line. Application fees are per entry mode. Schedule categories are assigned per programme on Programme fees; operational categories are invoiced directly."
+        description="Pick a category from Fee category when creating a line. Tag schedule lines with an installment share so students are billed those amounts (not a percentage of a single total). Application fees are per entry mode. Schedule categories are assigned per programme on Programme fees."
       >
         <div className="mb-4">
           <Btn className="!text-white" onClick={openCreateFee}>Add fee item</Btn>
         </div>
-        <DataTable empty={!fees.length} emptyMessage="No fees configured." colSpan={8}>
+        <DataTable empty={!fees.length} emptyMessage="No fees configured." colSpan={9}>
           <thead>
             <tr>
               <th className={thClass}>Fee</th>
               <th className={thClass}>Category</th>
+              <th className={thClass}>Installment</th>
               <th className={thClass}>Entry mode</th>
               <th className={thClass}>Type</th>
               <th className={thClass}>Default amount</th>
@@ -157,8 +169,8 @@ export function FeeCatalog() {
           {!fees.length ? null : (
             <tbody>
               {fees.map((f) => {
-                const isSchedule = scheduleCategories.includes(f.category)
-                  || categories.find((c) => c.value === f.category)?.schedule;
+                const isSchedule = isScheduleFee(f.category);
+                const trancheLabel = installmentTranches.find((t) => t.value === Number(f.installment_tranche))?.label;
                 return (
                   <tr key={f.id} className={trClass}>
                     <td className={`${tdClass} font-medium`}>
@@ -166,6 +178,9 @@ export function FeeCatalog() {
                       {f.description && <div className="text-xs text-slate-500">{f.description}</div>}
                     </td>
                     <td className={tdClass}><Badge variant="info">{(f.category || '').replaceAll('_', ' ')}</Badge></td>
+                    <td className={tdClass}>
+                      {trancheLabel ? <Badge variant="success">{trancheLabel}</Badge> : '—'}
+                    </td>
                     <td className={tdClass}>
                       {f.category === 'application_fee'
                         ? (ENTRY_MODES.find((mode) => mode.value === f.entry_mode)?.label || f.entry_mode || '—')
@@ -214,7 +229,11 @@ export function FeeCatalog() {
               <select
                 className={inputClass}
                 value={feeForm.category}
-                onChange={(e) => setFeeForm((s) => ({ ...s, category: e.target.value }))}
+                onChange={(e) => setFeeForm((s) => ({
+                  ...s,
+                  category: e.target.value,
+                  installment_tranche: isScheduleFee(e.target.value) ? s.installment_tranche : '',
+                }))}
               >
                 {categoryOptions.map((c) => (
                   <option key={c.value} value={c.value}>{c.label}</option>
@@ -228,6 +247,24 @@ export function FeeCatalog() {
                     : 'This charge is paid from the campus wallet after the student funds it.'}
               </p>
             </label>
+            {isScheduleFee(feeForm.category) && (
+              <label className="block">
+                <span className={fieldLabelClass}>Installment share</span>
+                <select
+                  className={inputClass}
+                  value={feeForm.installment_tranche}
+                  onChange={(e) => setFeeForm((s) => ({ ...s, installment_tranche: e.target.value }))}
+                >
+                  <option value="">None (legacy full-fee line)</option>
+                  {installmentTranches.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">
+                  Create separate catalog lines for each 25% share, plus an optional Full 100% line for students who pay at once. Assign those lines on Programme fees.
+                </p>
+              </label>
+            )}
             {feeForm.category === 'application_fee' && (
               <label className="block">
                 <span className={fieldLabelClass}>Entry mode</span>

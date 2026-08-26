@@ -606,7 +606,7 @@ export function SessionsPage() {
 
   return (
     <ResourceShell
-      title="Admission sessions"
+      title="Academic Sessions"
       description="Create the academic session first (not current). Open application sessions next, stop accepting, run admission, then set a semester current. Close session at year end to promote students."
       loading={loading}
       onRefresh={reload}
@@ -800,13 +800,16 @@ export function SessionsPage() {
 
 export function ProgrammesPage() {
   const { rows, loading, reload } = useResourceList<Program>('/api/academic/programs');
+  const { rows: faculties } = useResourceList<Faculty>('/api/academic/faculties');
   const { rows: departments } = useResourceList<Department>('/api/academic/departments');
   const { rows: allCourses } = useResourceList<Course>('/api/academic/courses');
   const { rows: templates } = useResourceList<WorkflowTemplate>('/api/academic/workflow-templates');
   const crud = useCrudModal<Program>();
   const [modeFilter, setModeFilter] = useState<string | null>(null);
   const watchedModes = Form.useWatch('entry_modes', crud.form) || [];
+  const selectedCollegeId = Form.useWatch('faculty_id', crud.form);
   const showPgEligibility = Array.isArray(watchedModes) && watchedModes.includes('pg');
+  const departmentsInCollege = departments.filter((d) => Number(d.faculty_id ?? d.faculty?.id) === Number(selectedCollegeId));
 
   const hasMode = (row: Program, mode: string) => (row.entry_modes ?? []).includes(mode);
   const utmeCount = rows.filter((row) => hasMode(row, 'utme')).length;
@@ -835,6 +838,7 @@ export function ProgrammesPage() {
     { title: 'Status', dataIndex: 'is_active', key: 'is_active', width: 90, render: (v) => <Tag color={v ? 'success' : 'default'}>{v ? 'Active' : 'Inactive'}</Tag> },
     actionColumn(
       (row) => crud.openEdit(row, {
+        faculty_id: row.department?.faculty_id ?? row.department?.faculty?.id,
         department_id: row.department_id ?? row.department?.id,
         name: row.name,
         code: row.code,
@@ -861,9 +865,9 @@ export function ProgrammesPage() {
 
   const submit = async () => {
     const values = await crud.form.validateFields();
-    const eligibility = values.eligibility || {};
+    const { faculty_id: _collegeId, eligibility = {}, ...rest } = values;
     await crud.save('/api/programs', (id) => `/api/programs/${id}`, {
-      ...values,
+      ...rest,
       is_research_degree: !!values.is_research_degree,
       workflow_template_id: values.workflow_template_id || null,
       eligibility: {
@@ -884,7 +888,7 @@ export function ProgrammesPage() {
       loading={loading}
       onRefresh={reload}
       onAdd={() => crud.openCreate({ duration_years: 4, is_active: true, entry_modes: ['utme'], course_ids: [], is_research_degree: false, eligibility: { min_referees: 2, nysc_required: false } })}
-      canAdd={departments.length > 0}
+      canAdd={faculties.length > 0 && departments.length > 0}
       stats={(
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
           <StatCard
@@ -933,14 +937,25 @@ export function ProgrammesPage() {
       />
       <Table rowKey="id" columns={columns} dataSource={visibleRows} loading={loading} scroll={{ x: 1500 }} pagination={{ pageSize: 15 }} locale={{ emptyText: modeFilter ? 'No programmes in this category.' : 'No programmes yet.' }} />
       <CrudModal title="programme" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit} width={640}>
-        <Form.Item name="department_id" label="Department" rules={[{ required: true }]}>
+        <Form.Item name="faculty_id" label="College" rules={[{ required: true, message: 'Select a college' }]}>
           <Select
-            options={departments.map((d) => ({
-              value: d.id,
-              label: d.faculty?.name ? `(${d.faculty.name}) ${d.name}` : d.name,
+            options={faculties.map((f) => ({
+              value: f.id,
+              label: f.campus?.name ? `${f.name} (${f.campus.name})` : f.name,
             }))}
+            placeholder="Select college"
             showSearch
             optionFilterProp="label"
+            onChange={() => crud.form.setFieldValue('department_id', undefined)}
+          />
+        </Form.Item>
+        <Form.Item name="department_id" label="Department" rules={[{ required: true, message: 'Select a department' }]}>
+          <Select
+            options={departmentsInCollege.map((d) => ({ value: d.id, label: d.name }))}
+            placeholder={selectedCollegeId ? 'Select department' : 'Select a college first'}
+            showSearch
+            optionFilterProp="label"
+            disabled={!selectedCollegeId}
           />
         </Form.Item>
         <Form.Item name="name" label="Programme name" rules={[{ required: true }]}><Input /></Form.Item>
@@ -1089,7 +1104,7 @@ export function CoursesPage() {
 
   return (
     <ResourceShell
-      title="Courses"
+      title="Course catalog"
       description="Course catalogue — general courses are visible to all programmes; faculty and departmental courses follow the owning department."
       loading={loading}
       onRefresh={reload}
@@ -1097,6 +1112,7 @@ export function CoursesPage() {
       canAdd={departments.length > 0}
       count={rows.length}
       countLabel="Courses"
+      eyebrow="Courses"
       extra={<SessionLevelFilters showSession={false} level={level} onLevelChange={setLevel} />}
     >
       <CatalogImportPanel
@@ -1189,7 +1205,7 @@ export function IntakesPage() {
   return (
     <ResourceShell
       title="Application sessions"
-      description="Open and close intakes after the admission session exists (not yet current). Set application and acceptance fees under Fees & payments → Fee catalog, per entry mode. After you stop accepting, run admission, then set that admission session current under Admission sessions."
+      description="Open and close intakes after the admission session exists (not yet current). Set application and acceptance fees under Fees & payments → Fee catalog, per entry mode. After you stop accepting, run admission, then set that admission session current under Academic Sessions."
       loading={loading}
       onRefresh={reload}
       onAdd={() => crud.openCreate({ is_open: true })}

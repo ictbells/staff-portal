@@ -7,10 +7,10 @@ import { useAuth } from '../../auth';
 import { AccessDeniedPanel } from '../../components/AccessDeniedPanel';
 import { PortalAccessNotice } from '../../components/PortalAccessNotice';
 import { accessibleAcademicResources } from './access';
-  import {
+import {
   ADMISSION_SETUP_RESOURCES,
   APPLICATION_SETUP_RESOURCES,
-  ENROLMENT_RESOURCES,
+  COURSES_RESOURCES,
   RESULTS_RESOURCES,
   ACADEMIC_RESOURCES,
   type AcademicResource,
@@ -85,9 +85,9 @@ export default function AcademicLayout() {
     ),
     [auth?.nav_link_keys, auth?.nav_unrestricted, has],
   );
-  const enrolmentLinks = useMemo(
+  const coursesLinks = useMemo(
     () => accessibleAcademicResources(
-      ENROLMENT_RESOURCES,
+      COURSES_RESOURCES,
       has,
       auth?.nav_unrestricted,
       auth?.nav_link_keys,
@@ -104,8 +104,8 @@ export default function AcademicLayout() {
     [auth?.nav_link_keys, auth?.nav_unrestricted, has],
   );
   const allLinks = useMemo(
-    () => [...admissionLinks, ...applicationLinks, ...enrolmentLinks, ...resultsLinks],
-    [admissionLinks, applicationLinks, enrolmentLinks, resultsLinks],
+    () => [...admissionLinks, ...applicationLinks, ...coursesLinks, ...resultsLinks],
+    [admissionLinks, applicationLinks, coursesLinks, resultsLinks],
   );
 
   if (!allLinks.length) {
@@ -153,11 +153,11 @@ export default function AcademicLayout() {
             onOpenChange={(next) => setOpenDropdown(next ? 'application-setup' : null)}
           />
           <SetupDropdown
-            label="Enrolment"
-            links={enrolmentLinks}
+            label="Courses"
+            links={coursesLinks}
             pathname={location.pathname}
-            open={openDropdown === 'enrolment'}
-            onOpenChange={(next) => setOpenDropdown(next ? 'enrolment' : null)}
+            open={openDropdown === 'courses'}
+            onOpenChange={(next) => setOpenDropdown(next ? 'courses' : null)}
           />
           <SetupDropdown
             label="Results"

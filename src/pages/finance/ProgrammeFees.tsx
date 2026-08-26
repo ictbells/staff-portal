@@ -32,6 +32,19 @@ function apiMessage(err: unknown, fallback: string) {
   return ax.response?.data?.message || fallback;
 }
 
+const TRANCHE_LABELS: Record<number, string> = {
+  1: '1st 25%',
+  2: '2nd 25%',
+  3: '3rd 25%',
+  4: '4th 25%',
+  100: 'Full 100%',
+};
+
+function installmentTrancheLabel(tranche: number | null | undefined) {
+  if (tranche == null) return '';
+  return TRANCHE_LABELS[Number(tranche)] || '';
+}
+
 type ProgrammeSummary = {
   id: number;
   name: string;
@@ -399,7 +412,12 @@ export function ProgrammeFees() {
                       <tr key={line.id} className={trClass}>
                         <td className={`${tdClass} font-medium`}>
                           <div>{line.fee_item?.name || '—'}</div>
-                          <div className="text-xs text-slate-500">{(line.fee_item?.category || '').replaceAll('_', ' ')}</div>
+                          <div className="text-xs text-slate-500">
+                            {(line.fee_item?.category || '').replaceAll('_', ' ')}
+                            {line.fee_item?.installment_tranche_label
+                              ? ` · ${line.fee_item.installment_tranche_label}`
+                              : ''}
+                          </div>
                         </td>
                         <td className={tdClass}>{line.level_code || 'all'}</td>
                         <td className={tdClass}>{line.semester || 'both'}</td>
@@ -457,7 +475,7 @@ export function ProgrammeFees() {
                 }))}
                 options={scheduleFeeItems.map((f) => ({
                   value: f.id,
-                  label: `${f.name} (${formatNaira(f.amount)})`,
+                  label: `${f.name}${f.installment_tranche != null ? ` · ${installmentTrancheLabel(f.installment_tranche)}` : ''} (${formatNaira(f.amount)})`,
                 }))}
               />
             </label>

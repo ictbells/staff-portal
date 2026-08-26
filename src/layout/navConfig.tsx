@@ -27,7 +27,7 @@ import {
   ACADEMIC_RESOURCES,
   ADMISSION_SETUP_RESOURCES,
   APPLICATION_SETUP_RESOURCES,
-  ENROLMENT_RESOURCES,
+  COURSES_RESOURCES,
   RESULTS_RESOURCES,
   type AcademicResource,
 } from '../pages/academic/constants';
@@ -146,10 +146,10 @@ export const navSections: NavSection[] = [
         items: APPLICATION_SETUP_RESOURCES.map((r) => academicNavItem(r)),
       },
       {
-        key: 'enrolment',
-        label: 'Enrolment',
+        key: 'courses',
+        label: 'Courses',
         icon: ClipboardList,
-        items: ENROLMENT_RESOURCES.map((r) => academicNavItem(r)),
+        items: COURSES_RESOURCES.map((r) => academicNavItem(r)),
       },
       {
         key: 'results',

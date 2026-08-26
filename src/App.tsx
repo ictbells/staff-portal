@@ -54,6 +54,7 @@ import ReportsHome from './pages/reports/ReportsHome';
 import ReportBuilder from './pages/reports/ReportBuilder';
 import ReportRun from './pages/reports/ReportRun';
 import PaymentCallback from './pages/PaymentCallback';
+import NotFound from './pages/NotFound';
 
 const STUDENT_PORTAL = import.meta.env.VITE_STUDENT_URL || 'http://localhost:5174/student';
 
@@ -129,6 +130,7 @@ export default function App() {
           <Route path="results/board" element={<AcademicResourceGuard resourceKey="results-board"><ResultsBoardPage /></AcademicResourceGuard>} />
           <Route path="results/release" element={<AcademicResourceGuard resourceKey="results-release"><ResultsReleasePage /></AcademicResourceGuard>} />
           <Route path="results/grading-scale" element={<AcademicResourceGuard resourceKey="results-grading-scale"><ResultsGradingScalePage /></AcademicResourceGuard>} />
+          <Route path="*" element={<NotFound />} />
         </Route>
         <Route path="academic-setup" element={<Navigate to="/academic/campuses" replace />} />
         <Route path="exam-clearance" element={<ExamClearance />} />
@@ -161,9 +163,11 @@ export default function App() {
         <Route path="announcements" element={<Announcements />} />
         <Route path="integrations" element={<Integrations />} />
         <Route path="application-settings" element={<ApplicationSettings />} />
-        <Route path="resources" element={<Resources />} />
-        <Route path="resources/:slug" element={<ResourceView />} />
-      </Route>
-    </Routes>
+          <Route path="resources" element={<Resources />} />
+          <Route path="resources/:slug" element={<ResourceView />} />
+          <Route path="*" element={<NotFound />} />
+        </Route>
+        <Route path="*" element={<NotFound />} />
+      </Routes>
   );
 }

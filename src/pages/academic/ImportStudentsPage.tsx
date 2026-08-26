@@ -166,7 +166,7 @@ export function ImportStudentsPage() {
   return (
     <div className="space-y-5">
       <WorkspaceHero
-        eyebrow="Enrolment"
+        eyebrow="Admission Setup"
         title="Import students"
         description="Create continuing students with a supplied matric number, a historical application file, and portal login. Import invoices and wallet history first. Pending invoices match matric, old application number, or JAMB."
         icon={GraduationCap}

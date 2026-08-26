@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Form, Input, Select, Table, Upload, message } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload';
-import { BookOpen, ClipboardList, GraduationCap, Upload as UploadIcon } from 'lucide-react';
+import { BookOpen, ClipboardList, Download, GraduationCap, Upload as UploadIcon } from 'lucide-react';
 import api from '../../api';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 import { RefreshButton } from '../../components/RefreshButton';
@@ -19,33 +19,49 @@ type CandidateRow = {
   created_at?: string;
 };
 
-type Term = { id: number; session_label: string; name: string; is_current?: boolean };
+type IntakeOption = {
+  id: number;
+  name: string;
+  entry_mode?: string;
+  session_label?: string | null;
+  is_accepting?: boolean;
+  is_open?: boolean;
+  term?: { session_label?: string; name?: string } | null;
+};
+
+function intakeSessionLabel(item: IntakeOption) {
+  return item.session_label || item.term?.session_label || '';
+}
+
+function intakeLabel(item: IntakeOption) {
+  const session = intakeSessionLabel(item);
+  return session ? `${item.name} · ${session}` : item.name;
+}
 
 export function CandidateDataPage() {
   const [rows, setRows] = useState<CandidateRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [sessions, setSessions] = useState<Term[]>([]);
+  const [intakes, setIntakes] = useState<IntakeOption[]>([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 25, total: 0 });
   const [filters, setFilters] = useState({ registration_number: '', candidate_name: '', academic_year: '' });
-  const [uploadYear, setUploadYear] = useState('');
+  const [uploadIntakeId, setUploadIntakeId] = useState<number | undefined>();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
 
   const loadSessions = () => {
     api.get('/api/candidate-data/sessions')
       .then(({ data }) => {
-        const list = data.terms ?? [];
-        const openSessions: string[] = data.open_intake_sessions ?? [];
-        setSessions(list);
-        if (!uploadYear) {
-          if (openSessions.length) {
-            setUploadYear(openSessions[0]);
-          } else {
-            const current = list.find((term: Term) => term.is_current) ?? list[0];
-            if (current) setUploadYear(current.session_label);
+        const list: IntakeOption[] = data.intakes ?? [];
+        setIntakes(list);
+        setUploadIntakeId((current) => {
+          if (current && list.some((item) => item.id === current)) {
+            return current;
           }
-        }
+          const accepting = list.find((item) => item.is_accepting && intakeSessionLabel(item));
+          const withSession = list.find((item) => intakeSessionLabel(item));
+          return accepting?.id ?? withSession?.id ?? list[0]?.id;
+        });
       })
       .catch(() => {});
   };
@@ -83,10 +99,20 @@ export function CandidateDataPage() {
     load(1, pagination.pageSize);
   }, [filters.academic_year]);
 
-  const sessionOptions = useMemo(
-    () => sessions.map((term) => ({ value: term.session_label, label: term.session_label })),
-    [sessions],
+  const intakeOptions = useMemo(
+    () => intakes.map((item) => ({ value: item.id, label: intakeLabel(item) })),
+    [intakes],
   );
+
+  const filterOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return intakes.flatMap((item) => {
+      const year = intakeSessionLabel(item);
+      if (!year || seen.has(year)) return [];
+      seen.add(year);
+      return [{ value: year, label: intakeLabel(item) }];
+    });
+  }, [intakes]);
 
   const columns: ColumnsType<CandidateRow> = [
     { title: 'JAMB no.', dataIndex: 'rg_num', key: 'rg_num' },
@@ -102,20 +128,36 @@ export function CandidateDataPage() {
     load(pager.current ?? 1, pager.pageSize ?? 25);
   };
 
+  const downloadTemplate = async () => {
+    try {
+      const { data } = await api.get('/api/candidate-data/import-template', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'candidate-data-import-template.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      message.error('Unable to download the template.');
+    }
+  };
+
   const submitUpload = async () => {
     const file = fileList[0]?.originFileObj;
     if (!file) {
       message.warning('Choose a spreadsheet file to upload.');
       return;
     }
-    if (!uploadYear) {
-      message.warning('Select the academic session for this upload.');
+    if (!uploadIntakeId) {
+      message.warning('Select the application session for this upload.');
       return;
     }
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('academic_year', uploadYear);
+    formData.append('intake_id', String(uploadIntakeId));
 
     setUploading(true);
     setUploadResult(null);
@@ -137,36 +179,41 @@ export function CandidateDataPage() {
   return (
     <div className="space-y-5">
       <WorkspaceHero
-        eyebrow="Admission setup"
+        eyebrow="Application setup"
         title="Candidate data"
-        description="Upload JAMB candidate lists before applicants sign up. Students must verify their registration number against this list."
+        description="Upload JAMB candidate lists for an application session before applicants sign up. Students must verify their registration number against this list."
         icon={GraduationCap}
       >
         <RefreshButton onClick={() => load()} loading={loading} />
+        <Button icon={<Download className="h-4 w-4" />} onClick={downloadTemplate}>Template</Button>
       </WorkspaceHero>
       <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
         <StatCard label="Candidates" value={pagination.total} hint="Matching current filters" icon={GraduationCap} />
         <StatCard label="On this page" value={rows.length} hint="Current table page" icon={ClipboardList} />
-        <StatCard label="Sessions" value={sessions.length} hint="Available academic years" icon={BookOpen} />
+        <StatCard label="Application sessions" value={intakes.length} hint="Available application windows" icon={BookOpen} />
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
         <h2 className="text-sm font-semibold text-slate-800">Upload spreadsheet</h2>
         <p className="text-sm text-slate-600">
-          Accepted formats: Excel (.xlsx, .xls) or CSV. Required column: registration number (`rg_num`, `registration_number`, etc.).
+          Download the template, then upload Excel (.xlsx, .xls) or CSV. Required column: registration number.
           Optional columns include candidate name, sex, state, aggregate, course, LGA, and UTME subject scores.
+          The application session is selected here, not in the file.
         </p>
-        <div className="grid gap-3 md:grid-cols-[240px_1fr_auto] md:items-end">
+        <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr_auto] md:items-end">
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Academic session</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Application session</label>
             <Select
               className="w-full"
-              placeholder="Select session"
-              value={uploadYear || undefined}
-              onChange={setUploadYear}
-              options={sessionOptions}
+              placeholder="Select application session"
+              value={uploadIntakeId}
+              onChange={setUploadIntakeId}
+              options={intakeOptions}
+              showSearch
+              optionFilterProp="label"
             />
           </div>
+          <Button icon={<Download className="h-4 w-4" />} onClick={downloadTemplate}>Template</Button>
           <Upload
             beforeUpload={() => false}
             maxCount={1}
@@ -199,14 +246,16 @@ export function CandidateDataPage() {
               placeholder="Search"
             />
           </Form.Item>
-          <Form.Item label="Session">
+          <Form.Item label="Application session">
             <Select
               allowClear
-              className="min-w-[160px]"
+              className="min-w-[220px]"
               placeholder="All sessions"
               value={filters.academic_year || undefined}
               onChange={(value) => setFilters((current) => ({ ...current, academic_year: value ?? '' }))}
-              options={sessionOptions}
+              options={filterOptions}
+              showSearch
+              optionFilterProp="label"
             />
           </Form.Item>
           <Form.Item>

@@ -82,7 +82,7 @@ function ResourceShell({
 }) {
   return (
     <div className="space-y-4">
-      <WorkspaceHero eyebrow="Enrolment" title={title} description={description} icon={BookOpen}>
+      <WorkspaceHero eyebrow="Courses" title={title} description={description} icon={BookOpen}>
         <div className="flex gap-2">
           {extra}
           <RefreshButton onClick={onRefresh} loading={loading} />
@@ -329,7 +329,7 @@ export function CourseRegistrationPage() {
   return (
     <div className="space-y-4">
       <WorkspaceHero
-        eyebrow="Enrolment"
+        eyebrow="Courses"
         title="Course registration"
         description="Add or drop courses for a student. A reason is required when the window is closed, tuition is below 25%, or a carry-over is dropped."
         icon={BookOpen}
@@ -641,7 +641,7 @@ export function RegistrationExtensionsPage() {
   return (
     <div className="space-y-4">
       <WorkspaceHero
-        eyebrow="Enrolment"
+        eyebrow="Courses"
         title="Registration extensions"
         description="Review late-registration requests. Approval invoices the approved units at the semester price per unit."
         icon={BookOpen}

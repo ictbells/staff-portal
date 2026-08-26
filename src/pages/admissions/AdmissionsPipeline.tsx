@@ -221,6 +221,7 @@ export function AdmissionsPipeline({ channel }: Props) {
     id: number;
     session_label: string;
     name?: string;
+    entry_mode?: string;
     is_open?: boolean;
     is_current?: boolean;
   }[]>([]);
@@ -245,13 +246,17 @@ export function AdmissionsPipeline({ channel }: Props) {
   );
 
   const sessionOptions = useMemo(
-    () => sessions.map((intake) => ({
-      value: intake.id,
-      label: (intake.is_open || intake.is_current)
-        ? `${intake.session_label} (open)`
-        : intake.session_label,
-    })),
-    [sessions],
+    () => sessions.map((intake) => {
+      const mode = intake.entry_mode && channel.showEntryMode
+        ? `${entryModeLabel(intake.entry_mode)} — `
+        : '';
+      const label = `${mode}${intake.session_label}`;
+      return {
+        value: intake.id,
+        label: (intake.is_open || intake.is_current) ? `${label} (open)` : label,
+      };
+    }),
+    [channel.showEntryMode, sessions],
   );
 
   const collegeOptions = useMemo(() => {
@@ -354,15 +359,27 @@ export function AdmissionsPipeline({ channel }: Props) {
   }, [channel.entryModes, collegeFilter, departmentFilter, entryModeFilter, feeStatusFilter, pagination.pageSize, programFilter, search, sessionFilter, stageFilter]);
 
   useEffect(() => {
-    api.get('/api/applications/sessions')
+    let cancelled = false;
+    const modes = entryModeFilter ? [entryModeFilter] : channel.entryModes;
+    api.get('/api/applications/sessions', { params: { entry_modes: modes.join(',') } })
       .then(({ data }) => {
+        if (cancelled) return;
         const list = Array.isArray(data) ? data : [];
         setSessions(list);
-        const openId = list.find((s: { is_open?: boolean; is_current?: boolean }) => s.is_open || s.is_current)?.id;
-        if (openId) setSessionFilter(openId);
+        setSessionFilter((current) => {
+          if (current && list.some((item: { id: number }) => item.id === current)) {
+            return current;
+          }
+          return list.find((item: { is_open?: boolean; is_current?: boolean }) => item.is_open || item.is_current)?.id;
+        });
       })
-      .catch(() => setSessions([]));
-  }, []);
+      .catch(() => {
+        if (cancelled) return;
+        setSessions([]);
+        setSessionFilter(undefined);
+      });
+    return () => { cancelled = true; };
+  }, [channel.entryModes, channel.key, entryModeFilter]);
 
   useEffect(() => {
     setProgramFilter(undefined);
@@ -377,12 +394,11 @@ export function AdmissionsPipeline({ channel }: Props) {
   }, [channel.entryModes, channel.key, entryModeFilter]);
 
   useEffect(() => {
-    const openId = sessions.find((s) => s.is_open || s.is_current)?.id;
     setSearchInput('');
     setSearch('');
     setStageFilter('');
     setEntryModeFilter('');
-    setSessionFilter(openId);
+    setSessionFilter(undefined);
     setProgramFilter(undefined);
     setCollegeFilter(undefined);
     setDepartmentFilter(undefined);
@@ -393,7 +409,7 @@ export function AdmissionsPipeline({ channel }: Props) {
       search: '',
       stage: '',
       entryMode: '',
-      session: openId,
+      session: undefined,
       program: undefined,
       college: undefined,
       department: undefined,
