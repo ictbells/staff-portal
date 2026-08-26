@@ -370,7 +370,7 @@ export function AdmissionsPipeline({ channel }: Props) {
           if (current && list.some((item: { id: number }) => item.id === current)) {
             return current;
           }
-          return list.find((item: { is_open?: boolean; is_current?: boolean }) => item.is_open || item.is_current)?.id;
+          return undefined;
         });
       })
       .catch(() => {

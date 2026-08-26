@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { message } from 'antd';
 import { List, Tag } from 'lucide-react';
 import api from '../../api';
@@ -11,12 +12,18 @@ import {
 const emptyForm = {
   name: '',
   description: '',
-  is_schedule: false,
+  is_schedule: true,
   is_active: true,
 };
 
+function apiMessage(err: unknown, fallback: string) {
+  const data = (err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } })?.response?.data;
+  const firstError = data?.errors && Object.values(data.errors).flat().find(Boolean);
+  return firstError || data?.message || fallback;
+}
+
 export function FeeCategories() {
-  const [items, setItems] = useState<any[]>([]);
+  const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -27,10 +34,9 @@ export function FeeCategories() {
     setLoading(true);
     api.get('/api/fee-categories')
       .then((res) => {
-        const list = Array.isArray(res.data) ? res.data : res.data?.data || [];
-        setItems(list);
+        setRows(Array.isArray(res.data) ? res.data : res.data?.data || []);
       })
-      .catch(() => message.error('Could not load fee categories.'))
+      .catch((err) => message.error(apiMessage(err, 'Could not load fee categories.')))
       .finally(() => setLoading(false));
   };
 
@@ -66,17 +72,16 @@ export function FeeCategories() {
         is_schedule: form.is_schedule,
         is_active: form.is_active,
       };
-      if (editing) {
-        await api.patch(`/api/fee-categories/${editing.id}`, payload);
-        message.success('Fee category updated.');
-      } else {
-        await api.post('/api/fee-categories', payload);
-        message.success('Fee category created.');
+      const res = editing
+        ? await api.patch(`/api/fee-categories/${editing.id}`, payload)
+        : await api.post('/api/fee-categories', payload);
+      if (res.status !== 202 && res.data?.status !== 'pending_approval') {
+        message.success(editing ? 'Category updated.' : 'Category created.');
       }
       setModalOpen(false);
       load();
-    } catch (err: any) {
-      message.error(err.response?.data?.message || 'Could not save fee category.');
+    } catch (err) {
+      message.error(apiMessage(err, 'Could not save category.'));
     } finally {
       setSaving(false);
     }
@@ -87,41 +92,52 @@ export function FeeCategories() {
       message.error('System fee categories cannot be deleted.');
       return;
     }
-    if (!window.confirm(`Remove fee category “${row.name}”?`)) return;
+    if (!window.confirm(`Remove category “${row.name}”?`)) return;
     try {
-      await api.delete(`/api/fee-categories/${row.id}`);
-      message.success('Fee category removed.');
+      const res = await api.delete(`/api/fee-categories/${row.id}`);
+      if (res.status !== 202 && res.data?.status !== 'pending_approval') {
+        message.success('Category removed.');
+      }
       load();
-    } catch (err: any) {
-      message.error(err.response?.data?.message || 'Could not remove fee category.');
+    } catch (err) {
+      message.error(apiMessage(err, 'Could not remove category.'));
     }
   };
 
-  const activeItems = items.filter((row) => row.is_active !== false).length;
+  const activeCount = rows.filter((row) => row.is_active !== false).length;
+  const scheduleCount = rows.filter((row) => row.is_schedule).length;
 
   return (
     <div className="space-y-6">
       <WorkspaceHero
         eyebrow="Fees & payments"
-        title="Fee category"
-        description="Define fee categories without amounts. These appear as Category options when you create items in Fee catalog."
+        title="Fee categories"
+        description="Types used when creating fee items. Mark Programme schedule for charges that belong on school fees / Programme fees. System categories cannot be deleted. Add priced lines on Fee items after the category exists."
         icon={Tag}
       >
+        <Link
+          to="/finance"
+          className="inline-flex items-center justify-center rounded-lg bg-white/15 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/25"
+        >
+          Fee items
+        </Link>
         <RefreshButton onClick={load} loading={loading} />
       </WorkspaceHero>
+
       <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
-        <StatCard label="Categories" value={items.length} hint="Available in fee catalog" icon={List} />
-        <StatCard label="Active" value={activeItems} hint="Shown when creating fees" icon={Tag} tone="emerald" />
+        <StatCard label="Categories" value={rows.length} hint={`${activeCount} active`} icon={Tag} />
+        <StatCard label="Programme schedule" value={scheduleCount} hint="Assigned per programme" icon={List} />
+        <StatCard label="Operational" value={rows.length - scheduleCount} hint="Invoiced directly" icon={Tag} />
       </div>
 
       <Card
-        title="Fee categories"
-        description="No amount is set here. Create fee amounts under Fee catalog and assign a category from this list."
+        title="Categories"
+        description="Add a category when a new school charge has no matching type, then create the fee item with an amount."
         actions={<Btn className="!text-white" onClick={openCreate}>Add category</Btn>}
       >
         <DataTable
-          empty={!items.length}
-          emptyMessage="No fee categories yet. Add a category to use in the fee catalog."
+          empty={!rows.length}
+          emptyMessage="No categories yet. Add one before creating fee items."
           colSpan={5}
           loading={loading}
         >
@@ -134,9 +150,9 @@ export function FeeCategories() {
               <th className={thClass}>Actions</th>
             </tr>
           </thead>
-          {!items.length ? null : (
+          {!rows.length ? null : (
             <tbody>
-              {items.map((row) => (
+              {rows.map((row) => (
                 <tr key={row.id} className={trClass}>
                   <td className={`${tdClass} font-medium`}>
                     <div>{row.name}</div>
@@ -171,14 +187,14 @@ export function FeeCategories() {
       {modalOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4">
           <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl space-y-4">
-            <h3 className="text-lg font-semibold text-slate-900">{editing ? 'Edit fee category' : 'Add fee category'}</h3>
+            <h3 className="text-lg font-semibold text-slate-900">{editing ? 'Edit category' : 'Add category'}</h3>
             <label className="block">
               <span className={fieldLabelClass}>Name</span>
               <input
                 className={inputClass}
                 value={form.name}
                 onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
-                placeholder="e.g. Transcript"
+                placeholder="e.g. Accreditation levy"
               />
             </label>
             <label className="block">
@@ -196,7 +212,7 @@ export function FeeCategories() {
                 checked={form.is_schedule}
                 onChange={(e) => setForm((s) => ({ ...s, is_schedule: e.target.checked }))}
               />
-              Programme schedule category (assignable on Programme fees)
+              Programme schedule (shows on school fees / Programme fees)
             </label>
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input

@@ -41,6 +41,7 @@ export const APPLICATION_SETUP_RESOURCES: AcademicResource[] = [
 /** Course catalog, offerings, registration, unit limits, extensions */
 export const COURSES_RESOURCES: AcademicResource[] = [
   { key: 'courses', path: '/academic/courses', label: 'Course catalog', perm: 'academic.courses.manage' },
+  { key: 'programme-courses', path: '/academic/programme-courses', label: 'Programme courses', perm: 'academic.programmes.manage' },
   { key: 'offerings', path: '/academic/offerings', label: 'Offerings', perm: 'academic.offerings.manage' },
   { key: 'course-registration', path: '/academic/course-registration', label: 'Course registration', perm: 'academic.enrollments.manage' },
   { key: 'unit-limits', path: '/academic/unit-limits', label: 'Unit limits', perm: 'academic.enrollments.manage' },

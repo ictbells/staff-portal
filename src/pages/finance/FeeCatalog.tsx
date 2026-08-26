@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { message } from 'antd';
 import { List, Wallet } from 'lucide-react';
 import api from '../../api';
 import { RefreshButton } from '../../components/RefreshButton';
@@ -8,6 +10,7 @@ import {
 } from '../../components/ui';
 import { formatNaira } from '../../lib/money';
 import { ENTRY_MODES } from '../academic/constants';
+import { TRANSCRIPT_TYPES } from '../transcripts/constants';
 
 const ONLINE_ONLY_FEE_CATEGORIES = ['application_fee', 'acceptance_fee', 'transcript'];
 
@@ -15,11 +18,21 @@ function isOnlineOnlyFee(category?: string) {
   return ONLINE_ONLY_FEE_CATEGORIES.includes(String(category || ''));
 }
 
+function apiMessage(err: unknown, fallback: string) {
+  const data = (err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } })?.response?.data;
+  const firstError = data?.errors && Object.values(data.errors).flat().find(Boolean);
+  return firstError || data?.message || fallback;
+}
+
 export function FeeCatalog() {
   const [fees, setFees] = useState<any[]>([]);
   const [categories, setCategories] = useState<{ value: string; label: string; schedule?: boolean }[]>([]);
   const [scheduleCategories, setScheduleCategories] = useState<string[]>([]);
   const [installmentTranches, setInstallmentTranches] = useState<{ value: number; label: string; percent: number }[]>([]);
+  const [programs, setPrograms] = useState<{ id: number; name: string; code?: string | null }[]>([]);
+  const [transcriptTypes, setTranscriptTypes] = useState<{ value: string; label: string }[]>(
+    TRANSCRIPT_TYPES.map((t) => ({ value: t.value, label: t.label })),
+  );
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [feeModalOpen, setFeeModalOpen] = useState(false);
@@ -29,6 +42,8 @@ export function FeeCatalog() {
     description: '',
     category: 'sundry',
     entry_mode: '',
+    transcript_type: '',
+    program_id: '',
     installment_tranche: '',
     amount: '',
     is_active: true,
@@ -38,13 +53,18 @@ export function FeeCatalog() {
     setLoading(true);
     Promise.all([
       api.get('/api/fees'),
-      api.get('/api/fees/meta').catch(() => ({ data: { categories: [], schedule_categories: [], installment_tranches: [] } })),
+      api.get('/api/fees/meta').catch(() => ({ data: { categories: [], schedule_categories: [], installment_tranches: [], transcript_types: [] } })),
+      api.get('/api/programs').catch(() => ({ data: [] })),
     ])
-      .then(([feesRes, metaRes]) => {
+      .then(([feesRes, metaRes, programsRes]) => {
         setFees(Array.isArray(feesRes.data) ? feesRes.data : feesRes.data?.data || []);
         setCategories(metaRes.data.categories || []);
         setScheduleCategories(metaRes.data.schedule_categories || []);
         setInstallmentTranches(metaRes.data.installment_tranches || []);
+        if (Array.isArray(metaRes.data.transcript_types) && metaRes.data.transcript_types.length) {
+          setTranscriptTypes(metaRes.data.transcript_types);
+        }
+        setPrograms(Array.isArray(programsRes.data) ? programsRes.data : programsRes.data?.data || []);
       })
       .finally(() => setLoading(false));
   };
@@ -59,7 +79,7 @@ export function FeeCatalog() {
 
   const openCreateFee = () => {
     setEditingFee(null);
-    setFeeForm({ name: '', description: '', category: 'tuition', entry_mode: '', installment_tranche: '', amount: '', is_active: true });
+    setFeeForm({ name: '', description: '', category: 'tuition', entry_mode: '', transcript_type: '', program_id: '', installment_tranche: '', amount: '', is_active: true });
     setFeeModalOpen(true);
   };
 
@@ -70,6 +90,8 @@ export function FeeCatalog() {
       description: fee.description || '',
       category: fee.category || 'sundry',
       entry_mode: fee.entry_mode || '',
+      transcript_type: fee.transcript_type || '',
+      program_id: fee.program_id != null ? String(fee.program_id) : '',
       installment_tranche: fee.installment_tranche != null ? String(fee.installment_tranche) : '',
       amount: String(fee.amount ?? ''),
       is_active: fee.is_active !== false,
@@ -78,8 +100,18 @@ export function FeeCatalog() {
   };
 
   const saveFee = async () => {
-    if (!feeForm.name.trim() || feeForm.amount === '') return;
-    if (feeForm.category === 'application_fee' && !feeForm.entry_mode) return;
+    if (!feeForm.name.trim() || feeForm.amount === '') {
+      message.error('Enter a name and amount.');
+      return;
+    }
+    if (feeForm.category === 'application_fee' && !feeForm.entry_mode) {
+      message.error('Select an entry mode for application fees.');
+      return;
+    }
+    if (feeForm.category === 'transcript' && (!feeForm.transcript_type || !feeForm.program_id)) {
+      message.error('Select a transcript type and programme for official transcript fees.');
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -87,19 +119,24 @@ export function FeeCatalog() {
         description: feeForm.description.trim() || null,
         category: feeForm.category,
         entry_mode: feeForm.category === 'application_fee' ? (feeForm.entry_mode || null) : null,
+        transcript_type: feeForm.category === 'transcript' ? (feeForm.transcript_type || null) : null,
+        program_id: feeForm.category === 'transcript' ? Number(feeForm.program_id) : null,
         installment_tranche: isTuitionFee(feeForm.category) && feeForm.installment_tranche !== ''
           ? Number(feeForm.installment_tranche)
           : null,
         amount: Number(feeForm.amount),
         is_active: feeForm.is_active,
       };
-      if (editingFee) {
-        await api.patch(`/api/fees/${editingFee.id}`, payload);
-      } else {
-        await api.post('/api/fees', payload);
+      const res = editingFee
+        ? await api.patch(`/api/fees/${editingFee.id}`, payload)
+        : await api.post('/api/fees', payload);
+      if (res.status !== 202 && res.data?.status !== 'pending_approval') {
+        message.success(editingFee ? 'Fee item updated.' : 'Fee item created.');
       }
       setFeeModalOpen(false);
       load();
+    } catch (err) {
+      message.error(apiMessage(err, 'Could not save fee item.'));
     } finally {
       setSaving(false);
     }
@@ -107,8 +144,15 @@ export function FeeCatalog() {
 
   const removeFee = async (fee: any) => {
     if (!window.confirm(`Remove fee “${fee.name}”?`)) return;
-    await api.delete(`/api/fees/${fee.id}`);
-    load();
+    try {
+      const res = await api.delete(`/api/fees/${fee.id}`);
+      if (res.status !== 202 && res.data?.status !== 'pending_approval') {
+        message.success('Fee item removed.');
+      }
+      load();
+    } catch (err) {
+      message.error(apiMessage(err, 'Could not remove fee item.'));
+    }
   };
 
   const categoryOptions = categories.length
@@ -136,32 +180,37 @@ export function FeeCatalog() {
     <div className="space-y-6">
       <WorkspaceHero
         eyebrow="Fees & payments"
-        title="Fee catalog"
-        description="Define reusable school-fee lines with amounts. For tuition installments, create separate lines for 1st/2nd/3rd/4th 25% and optionally a full 100% pay-at-once package. Categories come from Fee category. Create an application fee line for each entry mode (UTME, DE, JUPEB, Transfer, PG). School charges are paid from the campus wallet; application and acceptance fees are paid online."
+        title="Fee items"
+        description="Priced lines with amounts. Add a category on Fee categories when a new school charge has no matching type. Programme-schedule lines are assigned per programme under Programme fees. Tuition uses installment shares; application, acceptance, and transcript fees are online-only."
         icon={Wallet}
       >
+        <Link
+          to="/finance/categories"
+          className="inline-flex items-center justify-center rounded-lg bg-white/15 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/25"
+        >
+          Fee categories
+        </Link>
         <RefreshButton onClick={load} loading={loading} />
       </WorkspaceHero>
       <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
-        <StatCard label="Fee items" value={fees.length} hint="Lines in the catalog" icon={List} />
-        <StatCard label="Active" value={activeFees} hint="Available to invoice" icon={Wallet} tone="emerald" />
-        <StatCard label="Online only" value={onlineFees} hint="Application and acceptance" icon={Wallet} tone="amber" />
+        <StatCard label="Fee items" value={fees.length} hint="Lines with amounts" icon={List} />
+        <StatCard label="Active items" value={activeFees} hint="Available to invoice" icon={Wallet} tone="emerald" />
+        <StatCard label="Online only" value={onlineFees} hint="App, acceptance, transcript" icon={Wallet} tone="amber" />
       </div>
 
       <Card
         title="Fee items"
-        description="Pick a category from Fee category when creating a line. Only tuition lines can have an installment share (1st/2nd/3rd/4th 25% or Full 100%). Other schedule categories are billed as a single amount. Application fees are per entry mode. Schedule categories are assigned per programme on Programme fees. Clinic visit charges use operational Clinic services lines; the Medical levy is the programme schedule charge."
+        description="Only tuition can use installment shares. Application fees need an entry mode; transcript fees need type and programme. Assign schedule lines on Programme fees."
+        actions={<Btn className="!text-white" onClick={openCreateFee}>Add fee item</Btn>}
       >
-        <div className="mb-4">
-          <Btn className="!text-white" onClick={openCreateFee}>Add fee item</Btn>
-        </div>
-        <DataTable empty={!fees.length} emptyMessage="No fees configured." colSpan={9}>
+        <DataTable empty={!fees.length} emptyMessage="No fees configured." colSpan={10} loading={loading}>
           <thead>
             <tr>
               <th className={thClass}>Fee</th>
               <th className={thClass}>Category</th>
               <th className={thClass}>Installment</th>
-              <th className={thClass}>Entry mode</th>
+              <th className={thClass}>Entry mode / type</th>
+              <th className={thClass}>Programme</th>
               <th className={thClass}>Type</th>
               <th className={thClass}>Default amount</th>
               <th className={thClass}>Payment</th>
@@ -187,6 +236,13 @@ export function FeeCatalog() {
                     <td className={tdClass}>
                       {f.category === 'application_fee'
                         ? (ENTRY_MODES.find((mode) => mode.value === f.entry_mode)?.label || f.entry_mode || '—')
+                        : f.category === 'transcript'
+                          ? (transcriptTypes.find((t) => t.value === f.transcript_type)?.label || f.transcript_type || '—')
+                          : '—'}
+                    </td>
+                    <td className={tdClass}>
+                      {f.category === 'transcript'
+                        ? (f.program?.name || programs.find((p) => p.id === f.program_id)?.name || '—')
                         : '—'}
                     </td>
                     <td className={tdClass}>
@@ -244,9 +300,9 @@ export function FeeCatalog() {
               </select>
               <p className="mt-1 text-xs text-slate-500">
                 {categories.length === 0
-                  ? 'No fee categories yet. Add them under Fees & payments → Fee category.'
+                  ? 'No categories yet. Add one under Fees & payments → Fee categories.'
                   : isOnlineOnlyFee(feeForm.category)
-                    ? 'Application and acceptance fees are paid online. They cannot be paid from the wallet.'
+                    ? 'Application, acceptance, and transcript fees are paid online. They cannot be paid from the wallet.'
                     : 'This charge is paid from the campus wallet after the student funds it.'}
               </p>
             </label>
@@ -264,7 +320,7 @@ export function FeeCatalog() {
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-slate-500">
-                  Create separate tuition catalog lines for each 25% share, plus an optional Full 100% line for students who pay at once. Assign those lines on Programme fees. Other categories do not use installment shares.
+                  Create separate tuition catalog lines for each 25% share, plus an optional Full 100% line for students who pay at once. Assign those lines on Programme fees.
                 </p>
               </label>
             )}
@@ -284,6 +340,40 @@ export function FeeCatalog() {
                 <p className="mt-1 text-xs text-slate-500">Applicants in this category pay this amount. Create a separate line for each entry mode.</p>
               </label>
             )}
+            {feeForm.category === 'transcript' && (
+              <>
+                <label className="block">
+                  <span className={fieldLabelClass}>Transcript type</span>
+                  <select
+                    className={inputClass}
+                    value={feeForm.transcript_type}
+                    onChange={(e) => setFeeForm((s) => ({ ...s, transcript_type: e.target.value }))}
+                  >
+                    <option value="">Select transcript type</option>
+                    {transcriptTypes.map((type) => (
+                      <option key={type.value} value={type.value}>{type.label}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">Create a separate line for e-copy, within Nigeria, outside Nigeria, and student copy.</p>
+                </label>
+                <label className="block">
+                  <span className={fieldLabelClass}>Programme</span>
+                  <select
+                    className={inputClass}
+                    value={feeForm.program_id}
+                    onChange={(e) => setFeeForm((s) => ({ ...s, program_id: e.target.value }))}
+                  >
+                    <option value="">Select programme</option>
+                    {programs.map((program) => (
+                      <option key={program.id} value={program.id}>
+                        {program.name}{program.code ? ` (${program.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">The public form quotes this amount after the student picks this programme and type.</p>
+                </label>
+              </>
+            )}
             <label className="block">
               <span className={fieldLabelClass}>Default amount (₦)</span>
               <input className={inputClass} type="number" min={0} value={feeForm.amount} onChange={(e) => setFeeForm((s) => ({ ...s, amount: e.target.value }))} />
@@ -298,7 +388,7 @@ export function FeeCatalog() {
             </label>
             <div className="flex justify-end gap-2 pt-2">
               <Btn variant="secondary" onClick={() => setFeeModalOpen(false)}>Cancel</Btn>
-              <Btn onClick={saveFee} disabled={saving || (feeForm.category === 'application_fee' && !feeForm.entry_mode)}>{saving ? 'Saving…' : 'Save fee'}</Btn>
+              <Btn onClick={saveFee} disabled={saving || (feeForm.category === 'application_fee' && !feeForm.entry_mode) || (feeForm.category === 'transcript' && (!feeForm.transcript_type || !feeForm.program_id))}>{saving ? 'Saving…' : 'Save fee'}</Btn>
             </div>
           </div>
         </div>

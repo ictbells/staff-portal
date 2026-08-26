@@ -467,7 +467,7 @@ export default function ApplicationSettings() {
 
       <Card
         title="Official transcript requests"
-        description="Public school-website form on the student portal. Finance sets the fee under Fee catalog (category Official transcript). Registry processes paid requests."
+        description="Public school-website form on the student portal. Finance sets the fee under Fee items (category Official transcript). Registry processes paid requests."
       >
         <div className="space-y-3">
           <ToggleRow

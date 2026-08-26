@@ -21,6 +21,11 @@ export function hasAcademicResourcePermission(
   if (LEGACY_CATALOG_KEYS.has(resource.key) && has('academic.catalog.manage')) {
     return true;
   }
+  if (resource.key === 'programme-courses' && (
+    has('academic.courses.manage') || has('academic.catalog.manage')
+  )) {
+    return true;
+  }
   if (LEGACY_INSTITUTION_KEYS.has(resource.key) && has('institution.manage')) {
     return true;
   }

@@ -111,7 +111,7 @@ export default function AcademicLayout() {
   if (!allLinks.length) {
     const hasAnyPermission = ACADEMIC_RESOURCES.some((resource) => {
       if (has(resource.perm)) return true;
-      if (has('academic.catalog.manage') && ['programmes', 'courses'].includes(resource.key)) return true;
+      if (has('academic.catalog.manage') && ['programmes', 'courses', 'programme-courses'].includes(resource.key)) return true;
       if (has('institution.manage') && !['programmes', 'courses'].includes(resource.key)) return true;
       return false;
     });

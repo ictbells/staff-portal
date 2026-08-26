@@ -884,7 +884,7 @@ export function ProgrammesPage() {
   return (
     <ResourceShell
       title="Programmes"
-      description="Define programmes and curriculum. School fees (tuition and related lines) are assigned under Fees & payments → Programme fees."
+      description="Define programmes. Assign their curriculum under Academic → Programme courses. School fees are set under Fees & payments → Programme fees."
       loading={loading}
       onRefresh={reload}
       onAdd={() => crud.openCreate({ duration_years: 4, is_active: true, entry_modes: ['utme'], course_ids: [], is_research_degree: false, eligibility: { min_referees: 2, nysc_required: false } })}
@@ -968,8 +968,12 @@ export function ProgrammesPage() {
         <Form.Item name="entry_modes" label="Admission categories" rules={[{ required: true, type: 'array', min: 1 }]} extra="Which entry modes can select this programme on the application form.">
           <Select mode="multiple" options={ENTRY_MODES} placeholder="Select UTME, DE, JUPEB, PG…" />
         </Form.Item>
-        <Form.Item name="workflow_template_id" label="Workflow" extra="Admissions and enrolment stages for this programme.">
-          <Select allowClear options={templates.map((t) => ({ value: t.id, label: t.name }))} placeholder="Default from study level" />
+        <Form.Item
+          name="workflow_template_id"
+          label="Workflow"
+          extra="Leave blank to assign screening → verification → shortlisting → recommended → approved → offer issued (Undergraduate / JUPEB). Postgraduate programmes get the matching PG path."
+        >
+          <Select allowClear options={templates.map((t) => ({ value: t.id, label: t.name }))} placeholder="Default if none selected" />
         </Form.Item>
         <Form.Item name="is_research_degree" label="Research degree" valuePropName="checked" extra="Requires a proposed area and supervisor preference on the applicant form.">
           <Switch />
@@ -1105,7 +1109,7 @@ export function CoursesPage() {
   return (
     <ResourceShell
       title="Course catalog"
-      description="Course catalogue — general courses are visible to all programmes; faculty and departmental courses follow the owning department."
+      description="Course catalogue — assign a course to programmes on Programme courses. Students register from current-term offerings of those mapped courses."
       loading={loading}
       onRefresh={reload}
       onAdd={() => crud.openCreate({ units: 3, course_type: 'departmental', status: 'core', program_ids: [] })}
@@ -1130,7 +1134,7 @@ export function CoursesPage() {
         <Form.Item name="code" label="Course code" rules={[{ required: true }]}><Input placeholder="CPE 201" /></Form.Item>
         <Form.Item name="title" label="Title" rules={[{ required: true }]}><Input /></Form.Item>
         <Form.Item name="units" label="Credit units" rules={[{ required: true }]}><InputNumber min={1} max={12} className="w-full" /></Form.Item>
-        <Form.Item name="course_type" label="Catalogue type" rules={[{ required: true }]} extra="General courses are visible to every student. Faculty and departmental courses follow the owning department.">
+        <Form.Item name="course_type" label="Catalogue type" rules={[{ required: true }]} extra="General, faculty, or departmental. Programme courses controls which students can register.">
           <Select options={COURSE_TYPES} />
         </Form.Item>
         <Form.Item name="status" label="Status" rules={[{ required: true }]} extra="Core, elective, or required for registration.">
@@ -1140,7 +1144,7 @@ export function CoursesPage() {
           name="program_ids"
           label="Programmes"
           rules={courseType === 'general' ? [] : [{ required: true, type: 'array', min: 1 }]}
-          extra={courseType === 'general' ? 'Optional for general courses.' : 'Which programmes include this course in their curriculum.'}
+          extra={courseType === 'general' ? 'Optional here. Prefer Academic → Programme courses to map curriculum to students.' : 'Which programmes include this course. You can also assign from Academic → Programme courses.'}
         >
           <Select
             mode="multiple"
@@ -1170,13 +1174,13 @@ export function IntakesPage() {
       title: 'Application fee',
       key: 'application_fee_amount',
       width: 130,
-      render: (_, row) => formatNaira(row.resolved_application_fee_amount ?? row.application_fee_amount, 'Fee catalog'),
+      render: (_, row) => formatNaira(row.resolved_application_fee_amount ?? row.application_fee_amount, 'Fee items'),
     },
     {
       title: 'Default acceptance',
       key: 'acceptance_fee_amount',
       width: 150,
-      render: (_, row) => formatNaira(row.resolved_acceptance_fee_amount ?? row.acceptance_fee_amount, 'Fee catalog'),
+      render: (_, row) => formatNaira(row.resolved_acceptance_fee_amount ?? row.acceptance_fee_amount, 'Fee items'),
     },
     { title: 'Open', dataIndex: 'is_open', key: 'is_open', width: 90, render: (v) => <Tag color={v ? 'success' : 'default'}>{v ? 'Open' : 'Closed'}</Tag> },
     actionColumn(
@@ -1205,7 +1209,7 @@ export function IntakesPage() {
   return (
     <ResourceShell
       title="Application sessions"
-      description="Open and close intakes after the admission session exists (not yet current). Set application and acceptance fees under Fees & payments → Fee catalog, per entry mode. After you stop accepting, run admission, then set that admission session current under Academic Sessions."
+      description="Open and close intakes after the admission session exists (not yet current). Set application and acceptance fees under Fees & payments → Fee items, per entry mode. After you stop accepting, run admission, then set that admission session current under Academic Sessions."
       loading={loading}
       onRefresh={reload}
       onAdd={() => crud.openCreate({ is_open: true })}

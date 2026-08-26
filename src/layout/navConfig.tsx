@@ -34,11 +34,14 @@ import {
 } from '../pages/academic/constants';
 import { ADMISSIONS_CHANNELS } from '../pages/admissions/constants';
 import { REGISTRATION_CHANNELS } from '../pages/registrations/constants';
+import { TRANSCRIPT_CHANNELS } from '../pages/transcripts/constants';
 
 export type NavItem = {
   key: string;
   to: string;
   label: string;
+  /** Short destination context for dashboard cards (e.g. Applications vs Registrations). */
+  hint?: string;
   perm: string | null;
   permAny?: string[];
   icon: LucideIcon;
@@ -107,8 +110,8 @@ export const navSections: NavSection[] = [
     title: 'Overview',
     items: [
       { key: 'home', to: '/', label: 'Home', perm: null, icon: Home },
-      { key: 'approvals', to: '/approvals', label: 'Approvals', perm: null, icon: ClipboardCheck },
-      { key: 'students', to: '/students', label: 'Students', perm: 'students.view_any', icon: GraduationCap },
+      { key: 'approvals', to: '/approvals', label: 'Approvals', hint: 'Pending office requests', perm: null, icon: ClipboardCheck },
+      { key: 'students', to: '/students', label: 'Students', hint: 'Student records', perm: 'students.view_any', icon: GraduationCap },
     ],
   },
   {
@@ -117,6 +120,7 @@ export const navSections: NavSection[] = [
       key: channel.navKey,
       to: channel.path,
       label: channel.label,
+      hint: 'Applications',
       perm: 'admissions.view' as string | null,
       icon: channel.key === 'undergraduate' ? School : channel.key === 'jupeb' ? BookOpen : Award,
     })),
@@ -127,6 +131,7 @@ export const navSections: NavSection[] = [
       key: channel.navKey,
       to: channel.path,
       label: channel.label,
+      hint: 'Registrations',
       perm: 'registrations.view' as string | null,
       icon: channel.key === 'undergraduate' ? GraduationCap : channel.key === 'jupeb' ? BookOpen : ClipboardList,
     })),
@@ -169,8 +174,8 @@ export const navSections: NavSection[] = [
         label: 'Fees & payments',
         icon: Wallet,
         items: [
-          { key: 'finance', to: '/finance', label: 'Fee catalog', perm: 'finance.invoices.manage', icon: Wallet },
-          { key: 'finance', to: '/finance/sundry', label: 'Fee category', perm: 'finance.invoices.manage', icon: Wallet },
+          { key: 'finance', to: '/finance/categories', label: 'Fee categories', perm: 'finance.invoices.manage', icon: Wallet },
+          { key: 'finance', to: '/finance', label: 'Fee items', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'finance', to: '/finance/rebates', label: 'Rebates', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'finance', to: '/finance/programme-fees', label: 'Programme fees', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'finance', to: '/finance/generate', label: 'Generate invoice', perm: 'finance.invoices.manage', icon: Wallet },
@@ -183,7 +188,19 @@ export const navSections: NavSection[] = [
       { key: 'medical', to: '/medical', label: 'Clinic', perm: 'medical.view_any', icon: Stethoscope },
       { key: 'hostel', to: '/hostel', label: 'Hostel', perm: 'hostel.view', icon: Building2 },
       { key: 'documents', to: '/documents', label: 'Documents', perm: 'documents.issue', icon: FileText },
-      { key: 'transcript-requests', to: '/transcript-requests', label: 'Transcript requests', perm: 'transcripts.view', icon: ScrollText },
+      {
+        key: 'transcript-requests',
+        label: 'Transcript Requests',
+        icon: ScrollText,
+        items: TRANSCRIPT_CHANNELS.map((channel) => ({
+          key: channel.navKey,
+          to: channel.path,
+          label: channel.label,
+          hint: 'Transcript requests',
+          perm: 'transcripts.view' as string | null,
+          icon: ScrollText,
+        })),
+      },
     ],
   },
   {
@@ -226,4 +243,24 @@ export function canShowNavGroup(
 
 export function flattenNavEntries(entries: NavEntry[]): NavItem[] {
   return entries.flatMap((entry) => (isNavGroup(entry) ? entry.items : [entry]));
+}
+
+export type QuickNavItem = NavItem & { hint: string };
+
+/** Flatten nav with a destination hint so dashboard cards are not ambiguous. */
+export function flattenNavForQuickAccess(): QuickNavItem[] {
+  return navSections.flatMap((section) =>
+    section.items.flatMap((entry) => {
+      if (isNavGroup(entry)) {
+        return entry.items.map((item) => ({
+          ...item,
+          hint: item.hint ?? entry.label,
+        }));
+      }
+      return [{
+        ...entry,
+        hint: entry.hint ?? (section.title === 'Overview' ? 'Open' : section.title),
+      }];
+    }),
+  );
 }

@@ -1,14 +1,18 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Input, Select, Tag, message } from 'antd';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { DatePicker, Input, Select, Tag, message } from 'antd';
+import type { Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
 import { FileText, Search } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../auth';
 import { AccessDeniedPanel } from '../components/AccessDeniedPanel';
 import { RefreshButton } from '../components/RefreshButton';
 import {
-  Badge, Btn, Card, DataTable, Spinner, StatCard, TablePager, WorkspaceHero, tdClass, thClass, trClass,
+  Badge, Btn, Card, DataTable, Spinner, StatCard, TablePager, WorkspaceHero, fieldLabelClass, tdClass, thClass, trClass,
 } from '../components/ui';
 import { formatNaira } from '../lib/money';
+import type { TranscriptChannel } from './transcripts/constants';
+import { TRANSCRIPT_TYPES } from './transcripts/constants';
 
 type StaffRow = {
   id: number;
@@ -18,6 +22,11 @@ type StaffRow = {
   copies: number;
   purpose?: string | null;
   contact_email: string;
+  transcript_type?: string | null;
+  transcript_type_label?: string | null;
+  delivery_email?: string | null;
+  delivery_address?: string | null;
+  collection_method?: string | null;
   rejected_reason?: string | null;
   paid_at?: string | null;
   ready_at?: string | null;
@@ -47,6 +56,16 @@ const MODE_LABELS: Record<string, string> = {
   uploaded_pdf: 'Upload PDF',
 };
 
+const COLLECTION_OPTIONS = [
+  { value: 'collect', label: 'Collect at Registry' },
+  { value: 'post', label: 'Post to address' },
+];
+
+const DATE_FORMAT = 'DD/MM/YYYY';
+const API_DATE = 'YYYY-MM-DD';
+
+type DateRange = [Dayjs, Dayjs] | null;
+
 function statusTone(status: string): 'default' | 'success' | 'warning' | 'danger' | 'info' {
   if (status === 'ready') return 'success';
   if (status === 'paid' || status === 'processing') return 'info';
@@ -55,7 +74,7 @@ function statusTone(status: string): 'default' | 'success' | 'warning' | 'danger
   return 'default';
 }
 
-export default function TranscriptRequests() {
+export default function TranscriptRequests({ channel }: { channel: TranscriptChannel }) {
   const { has } = useAuth();
   const canView = has('transcripts.view');
   const canProcess = has('transcripts.process');
@@ -64,6 +83,11 @@ export default function TranscriptRequests() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<string | undefined>();
+  const [transcriptType, setTranscriptType] = useState<string | undefined>();
+  const [programId, setProgramId] = useState<number | undefined>();
+  const [collectionMethod, setCollectionMethod] = useState<string | undefined>();
+  const [dateRange, setDateRange] = useState<DateRange>(null);
+  const [programs, setPrograms] = useState<{ id: number; name: string; code?: string | null }[]>([]);
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ page: 1, lastPage: 1, total: 0, from: null as number | null, to: null as number | null });
   const [detail, setDetail] = useState<StaffRow | null>(null);
@@ -72,7 +96,27 @@ export default function TranscriptRequests() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  const load = useCallback(async (nextPage = page, nextSearch = search, nextStatus = status) => {
+  const from = dateRange?.[0]?.format(API_DATE);
+  const to = dateRange?.[1]?.format(API_DATE);
+
+  const programOptions = useMemo(
+    () => programs.map((program) => ({
+      value: program.id,
+      label: program.code ? `${program.name} (${program.code})` : program.name,
+    })),
+    [programs],
+  );
+
+  const load = useCallback(async (
+    nextPage = page,
+    nextSearch = search,
+    nextStatus = status,
+    nextType = transcriptType,
+    nextProgramId = programId,
+    nextCollection = collectionMethod,
+    nextFrom = from,
+    nextTo = to,
+  ) => {
     if (!canView) return;
     setLoading(true);
     try {
@@ -81,6 +125,12 @@ export default function TranscriptRequests() {
           page: nextPage,
           search: nextSearch || undefined,
           status: nextStatus || undefined,
+          transcript_type: nextType || undefined,
+          program_id: nextProgramId || undefined,
+          collection_method: nextCollection || undefined,
+          from: nextFrom || undefined,
+          to: nextTo || undefined,
+          channel: channel.key,
         },
       });
       setRows(Array.isArray(data.data) ? data.data : []);
@@ -96,11 +146,30 @@ export default function TranscriptRequests() {
     } finally {
       setLoading(false);
     }
-  }, [canView, page, search, status]);
+  }, [canView, channel.key, page, search, status, transcriptType, programId, collectionMethod, from, to]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const next = searchInput.trim();
+      if (next === search) return;
+      setSearch(next);
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchInput, search]);
+
+  useEffect(() => {
+    api.get('/api/programs', { params: { entry_modes: channel.entryModes.join(',') } })
+      .then((res) => {
+        const list = Array.isArray(res.data) ? res.data : res.data?.data || [];
+        setPrograms(list);
+      })
+      .catch(() => setPrograms([]));
+  }, [channel.entryModes]);
 
   const openDetail = async (id: number) => {
     try {
@@ -181,9 +250,9 @@ export default function TranscriptRequests() {
   return (
     <div className="space-y-5">
       <WorkspaceHero
-        eyebrow="Services"
-        title="Transcript requests"
-        description="Paid official transcript requests from the public student-portal form. Notify requesters by email when ready."
+        eyebrow="Transcript Requests"
+        title={channel.title}
+        description={channel.description}
         icon={FileText}
       >
         <RefreshButton onClick={() => load()} loading={loading} />
@@ -197,32 +266,89 @@ export default function TranscriptRequests() {
 
       <Card
         title="Request queue"
-        description="Search by matric, name, email, or reference token."
-        actions={(
-          <div className="flex flex-wrap gap-2">
-            <Input
-              allowClear
-              prefix={<Search className="h-4 w-4 text-slate-400" />}
-              placeholder="Search"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onPressEnter={() => { setSearch(searchInput.trim()); setPage(1); }}
-              className="w-56"
-            />
-            <Select
-              allowClear
-              placeholder="Status"
-              className="w-44"
-              value={status}
-              onChange={(value) => { setStatus(value); setPage(1); }}
-              options={STATUS_OPTIONS.filter((o) => o.value !== undefined) as any}
-            />
-            <Btn type="button" onClick={() => { setSearch(searchInput.trim()); setPage(1); }}>
-              Filter
-            </Btn>
-          </div>
-        )}
+        description="Filter by status, type, programme, collection, and date. Search by matric, name, email, programme, or reference token."
       >
+        <div className="mb-4 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <label className="block min-w-0 sm:col-span-2 xl:col-span-1">
+              <span className={fieldLabelClass}>Search</span>
+              <Input
+                allowClear
+                prefix={<Search className="h-4 w-4 text-slate-400" />}
+                placeholder="Matric, name, email, token"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className={fieldLabelClass}>Status</span>
+              <Select
+                allowClear
+                placeholder="All statuses"
+                className="w-full"
+                value={status}
+                onChange={(value) => { setStatus(value); setPage(1); }}
+                options={STATUS_OPTIONS.filter((o) => o.value !== undefined) as { value: string; label: string }[]}
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className={fieldLabelClass}>Transcript type</span>
+              <Select
+                allowClear
+                placeholder="All types"
+                className="w-full"
+                value={transcriptType}
+                onChange={(value) => { setTranscriptType(value); setPage(1); }}
+                options={TRANSCRIPT_TYPES.map((type) => ({ value: type.value, label: type.label }))}
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className={fieldLabelClass}>Programme</span>
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder="All programmes"
+                className="w-full"
+                value={programId}
+                onChange={(value) => { setProgramId(value); setPage(1); }}
+                options={programOptions}
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className={fieldLabelClass}>Collection</span>
+              <Select
+                allowClear
+                placeholder="All methods"
+                className="w-full"
+                value={collectionMethod}
+                onChange={(value) => { setCollectionMethod(value); setPage(1); }}
+                options={COLLECTION_OPTIONS}
+              />
+            </label>
+            <label className="block min-w-0 sm:col-span-2">
+              <span className={fieldLabelClass}>Created</span>
+              <DatePicker.RangePicker
+                allowClear
+                className="w-full"
+                format={DATE_FORMAT}
+                placeholder={['From', 'To']}
+                value={dateRange}
+                disabledDate={(current) => !!current && current.isAfter(dayjs(), 'day')}
+                presets={[
+                  { label: 'Today', value: [dayjs().startOf('day'), dayjs()] },
+                  { label: 'Last 7 days', value: [dayjs().subtract(6, 'day'), dayjs()] },
+                  { label: 'Last 30 days', value: [dayjs().subtract(29, 'day'), dayjs()] },
+                  { label: 'This month', value: [dayjs().startOf('month'), dayjs()] },
+                ]}
+                onChange={(next) => {
+                  setDateRange(next && next[0] && next[1] ? [next[0], next[1]] : null);
+                  setPage(1);
+                }}
+              />
+            </label>
+          </div>
+        </div>
         {loading ? (
           <div className="flex justify-center py-12 text-slate-500"><Spinner label="Loading…" /></div>
         ) : (
@@ -231,6 +357,7 @@ export default function TranscriptRequests() {
               <thead>
                 <tr className={trClass}>
                   <th className={thClass}>Student</th>
+                  <th className={thClass}>Type</th>
                   <th className={thClass}>Status</th>
                   <th className={thClass}>Fee</th>
                   <th className={thClass}>Copies</th>
@@ -248,6 +375,7 @@ export default function TranscriptRequests() {
                       <div className="font-medium text-slate-800">{row.student?.name || '—'}</div>
                       <div className="text-xs text-slate-500">{row.student?.matric_number}</div>
                     </td>
+                    <td className={tdClass}>{row.transcript_type_label || row.transcript_type || '—'}</td>
                     <td className={tdClass}><Badge variant={statusTone(row.status)}>{row.status.replaceAll('_', ' ')}</Badge></td>
                     <td className={tdClass}>{row.invoice?.amount != null ? formatNaira(row.invoice.amount) : '—'}</td>
                     <td className={tdClass}>{row.copies}</td>
@@ -255,7 +383,7 @@ export default function TranscriptRequests() {
                   </tr>
                 ))}
                 {rows.length === 0 && (
-                  <tr><td className={tdClass} colSpan={5}>No transcript requests match these filters.</td></tr>
+                  <tr><td className={tdClass} colSpan={6}>No transcript requests match these filters.</td></tr>
                 )}
               </tbody>
             </DataTable>
@@ -282,6 +410,11 @@ export default function TranscriptRequests() {
               <p><span className="text-slate-500">Status:</span> <Tag>{detail.status}</Tag></p>
               <p><span className="text-slate-500">Token:</span> <span className="font-mono text-xs">{detail.public_token}</span></p>
               <p><span className="text-slate-500">Programme:</span> {detail.program?.name || detail.student?.programme || '—'}</p>
+              <p><span className="text-slate-500">Transcript type:</span> {detail.transcript_type_label || detail.transcript_type || '—'}</p>
+              {detail.delivery_email && <p><span className="text-slate-500">Send e-copy to:</span> {detail.delivery_email}</p>}
+              {detail.delivery_address && <p><span className="text-slate-500">Address:</span> {detail.delivery_address}</p>}
+              {detail.collection_method === 'collect' && <p><span className="text-slate-500">Collection:</span> Physical collection at Registry</p>}
+              {detail.collection_method === 'post' && !detail.delivery_address && <p><span className="text-slate-500">Collection:</span> Post</p>}
               <p><span className="text-slate-500">Purpose:</span> {detail.purpose || '—'}</p>
               <p><span className="text-slate-500">CGPA:</span> {detail.transcript?.cgpa ?? '—'}</p>
               <p><span className="text-slate-500">Invoice:</span> {detail.invoice?.number || '—'} ({detail.invoice?.status || '—'})</p>

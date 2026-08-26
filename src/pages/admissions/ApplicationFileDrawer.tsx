@@ -301,12 +301,12 @@ function asUtme(raw: any, universityName = ''): Utme {
   if (!raw || typeof raw !== 'object') {
     return universityName ? withDefaultFirstInstitution(base, universityName) : base;
   }
-  const subjects = Array.isArray(raw.subjects) && raw.subjects.length
-    ? raw.subjects.map((row: any) => ({
-        subject: row.subject || '',
-        score: row.score != null ? String(row.score) : '',
-      }))
-    : base.subjects;
+  const subjects = (Array.isArray(raw.subjects) ? raw.subjects : [])
+    .slice(0, 4)
+    .map((row: any) => ({
+      subject: row.subject || '',
+      score: row.score != null ? String(row.score) : '',
+    }));
   while (subjects.length < 4) subjects.push({ subject: '', score: '' });
   const choices = Array.isArray(raw.institution_choices) && raw.institution_choices.length
     ? raw.institution_choices.map((row: any, index: number) => ({
@@ -459,8 +459,8 @@ function asSitting(raw: any): Sitting {
       }))
     : base.results;
   return {
-    exam_type: pick(raw, 'exam_type', 'exam_type') || '',
-    exam_center: pick(raw, 'exam_center', 'exam_center') || '',
+    exam_type: pick(raw, 'exam_type', 'examType') || '',
+    exam_center: pick(raw, 'exam_center', 'exam_centre', 'examCenter') || '',
     exam_year: String(pick(raw, 'exam_year') || ''),
     exam_number: String(pick(raw, 'exam_number') || ''),
     results,
@@ -869,7 +869,7 @@ export function ApplicationFileDrawer({
     }
     setSaving(true);
     try {
-      const { data } = await api.patch(`/api/applications/${app.id}`, {
+      const { data, status } = await api.patch(`/api/applications/${app.id}`, {
         ...form,
         state_id: form.state_id || null,
         lga_id: form.lga_id || null,
@@ -916,6 +916,11 @@ export function ApplicationFileDrawer({
             }
           : undefined,
       });
+      if (status === 202 || data?.status === 'pending_approval') {
+        message.success('Submitted for approval.');
+        onSaved?.();
+        return;
+      }
       setApp(data);
       message.success(mode === 'student' ? 'Student record saved.' : 'Application file saved.');
       onSaved?.();
@@ -1264,8 +1269,9 @@ export function ApplicationFileDrawer({
                 </Field>
               </div>
               <div className="space-y-2">
-                {form.utme.subjects.map((row, index) => (
-                  <div key={index} className="grid grid-cols-[minmax(0,1fr)_5.75rem_auto] gap-2 items-center">
+                <p className="text-xs font-medium text-slate-500">Subject scores (4)</p>
+                {asUtme(form.utme).subjects.map((row, index) => (
+                  <div key={index} className="grid grid-cols-[minmax(0,1fr)_5.75rem] gap-2 items-center">
                     <Select
                       className="!w-full min-w-0"
                       style={{ width: '100%' }}
@@ -1276,7 +1282,7 @@ export function ApplicationFileDrawer({
                       value={row.subject || undefined}
                       options={utmeSubjectOptions(subjects, row.subject)}
                       onChange={(value) => {
-                        const next = form.utme.subjects.map((item, i) => i === index ? { ...item, subject: value || '' } : item);
+                        const next = asUtme(form.utme).subjects.map((item, i) => i === index ? { ...item, subject: value || '' } : item);
                         setField('utme', { ...form.utme, subjects: next });
                       }}
                     />
@@ -1284,18 +1290,12 @@ export function ApplicationFileDrawer({
                       placeholder="Score"
                       value={row.score}
                       onChange={(e) => {
-                        const next = form.utme.subjects.map((item, i) => i === index ? { ...item, score: e.target.value } : item);
+                        const next = asUtme(form.utme).subjects.map((item, i) => i === index ? { ...item, score: e.target.value } : item);
                         setField('utme', { ...form.utme, subjects: next });
                       }}
                     />
-                    <Button onClick={() => setField('utme', { ...form.utme, subjects: form.utme.subjects.filter((_, i) => i !== index) })}>
-                      Remove
-                    </Button>
                   </div>
                 ))}
-                <Button onClick={() => setField('utme', { ...form.utme, subjects: [...form.utme.subjects, { subject: '', score: '' }] })}>
-                  Add subject
-                </Button>
               </div>
               <div className="space-y-2">
                 <p className="text-xs font-medium text-slate-500">JAMB institution choices</p>

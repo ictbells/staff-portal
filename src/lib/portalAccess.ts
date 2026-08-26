@@ -1,5 +1,6 @@
 import { ADMISSIONS_CHANNELS } from '../pages/admissions/constants';
 import { REGISTRATION_CHANNELS } from '../pages/registrations/constants';
+import { TRANSCRIPT_CHANNELS } from '../pages/transcripts/constants';
 import {
   ACADEMIC_RESOURCES,
   type AcademicResource,
@@ -159,6 +160,17 @@ export function findNavItemForPath(pathname: string): NavItem | null {
       to: registrationChannel.path,
       label: registrationChannel.label,
       perm: 'registrations.view',
+      icon: navSections[0].items[0].icon,
+    };
+  }
+
+  const transcriptChannel = TRANSCRIPT_CHANNELS.find((channel) => pathname.startsWith(channel.path));
+  if (transcriptChannel) {
+    return {
+      key: transcriptChannel.navKey,
+      to: transcriptChannel.path,
+      label: transcriptChannel.label,
+      perm: 'transcripts.view',
       icon: navSections[0].items[0].icon,
     };
   }

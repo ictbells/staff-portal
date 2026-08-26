@@ -21,6 +21,7 @@ import {
   LevelsPage, OlevelPage, ProgrammesPage, SessionsPage,
 } from './pages/academic/pages';
 import { GraduationPage } from './pages/academic/GraduationPage';
+import { ProgrammeCoursesPage } from './pages/academic/ProgrammeCoursesPage';
 import {
   CourseRegistrationPage, OfferingsPage, RegistrationExtensionsPage, UnitLimitsPage,
 } from './pages/academic/enrolment';
@@ -45,10 +46,10 @@ import ExamClearance from './pages/ExamClearance';
 import Resources from './pages/Resources';
 import ResourceView from './pages/ResourceView';
 import HostelManagement from './pages/HostelManagement';
-import TranscriptRequests from './pages/TranscriptRequests';
+import TranscriptChannelPage from './pages/transcripts/TranscriptChannelPage';
 import {
-  Documents, Finance, Institution,
-  GenerateInvoice, Integrations, Invoices, Medical, Notifications, ProgrammeFees, Rebates, Students, StudentFinance, FeeCategories,
+  Documents, Finance, FeeCategories, Institution,
+  GenerateInvoice, Integrations, Invoices, Medical, Notifications, ProgrammeFees, Rebates, Students, StudentFinance,
 } from './pages/Modules';
 import Announcements from './pages/Announcements';
 import Audit from './pages/Audit';
@@ -115,6 +116,7 @@ export default function App() {
           <Route path="programmes" element={<AcademicResourceGuard resourceKey="programmes"><ProgrammesPage /></AcademicResourceGuard>} />
           <Route path="levels" element={<AcademicResourceGuard resourceKey="levels"><LevelsPage /></AcademicResourceGuard>} />
           <Route path="courses" element={<AcademicResourceGuard resourceKey="courses"><CoursesPage /></AcademicResourceGuard>} />
+          <Route path="programme-courses" element={<AcademicResourceGuard resourceKey="programme-courses"><ProgrammeCoursesPage /></AcademicResourceGuard>} />
           <Route path="intakes" element={<AcademicResourceGuard resourceKey="intakes"><IntakesPage /></AcademicResourceGuard>} />
           <Route path="candidate-data" element={<AcademicResourceGuard resourceKey="candidate-data"><CandidateDataPage /></AcademicResourceGuard>} />
           <Route path="import-applicants" element={<AcademicResourceGuard resourceKey="import-applicants"><ImportApplicantsPage /></AcademicResourceGuard>} />
@@ -138,7 +140,7 @@ export default function App() {
         <Route path="academic-setup" element={<Navigate to="/academic/campuses" replace />} />
         <Route path="exam-clearance" element={<ExamClearance />} />
         <Route path="finance" element={<Finance />} />
-        <Route path="finance/sundry" element={<FeeCategories />} />
+        <Route path="finance/sundry" element={<Navigate to="/finance" replace />} />
         <Route path="finance/categories" element={<FeeCategories />} />
         <Route path="finance/rebates" element={<Rebates />} />
         <Route path="finance/programme-fees" element={<ProgrammeFees />} />
@@ -150,7 +152,8 @@ export default function App() {
         <Route path="medical" element={<Medical />} />
         <Route path="hostel" element={<HostelManagement />} />
         <Route path="documents" element={<Documents />} />
-        <Route path="transcript-requests" element={<TranscriptRequests />} />
+        <Route path="transcript-requests" element={<Navigate to="/transcript-requests/undergraduate" replace />} />
+        <Route path="transcript-requests/:channel" element={<TranscriptChannelPage />} />
         <Route path="users" element={<Users />} />
         <Route path="profile" element={<Profile />} />
         <Route path="roles" element={<Roles />} />

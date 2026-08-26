@@ -29,16 +29,17 @@ type Term = {
   extension_price_per_unit?: number | string | null;
 };
 type CourseRef = { id: number; code: string; title: string; units?: number; course_type?: string; status?: string };
-type Lecturer = { id: number; title?: string; staff_number?: string; user?: { name?: string } };
 type Offering = {
   id: number;
   section?: string;
-  capacity: number;
-  seats_left?: number;
+  capacity: number | null;
+  seats_left?: number | null;
+  unlimited?: boolean;
   enrolled_count?: number;
   course_id?: number;
   academic_term_id?: number;
-  faculty_staff_id?: number | null;
+  lecturer_name?: string | null;
+  lecturer_display_name?: string | null;
   course?: CourseRef;
   term?: Term;
   lecturer?: { user?: { name?: string } };
@@ -101,9 +102,14 @@ function ResourceShell({
   );
 }
 
-function lecturerLabel(row: Lecturer) {
-  const name = row.user?.name || `Staff #${row.id}`;
-  return row.title ? `${row.title} ${name}` : name;
+function offeringLecturerName(row: Offering) {
+  return row.lecturer_display_name || row.lecturer_name || row.lecturer?.user?.name || '—';
+}
+
+function offeringSeatsLabel(row: { capacity?: number | null; seats_left?: number | null; unlimited?: boolean; enrolled_count?: number }) {
+  if (row.unlimited || row.capacity == null) return 'Unlimited';
+  const left = row.seats_left ?? Math.max(0, Number(row.capacity) - (row.enrolled_count || 0));
+  return String(left);
 }
 
 function apiError(err: unknown, fallback: string) {
@@ -146,7 +152,6 @@ export function OfferingsPage() {
   const { rows, loading, reload } = useResourceList<Offering>(endpoint);
   const { rows: terms } = useResourceList<Term>('/api/academic/terms');
   const { rows: courses } = useResourceList<CourseRef>('/api/academic/courses');
-  const { rows: lecturers } = useResourceList<Lecturer>('/api/academic/lecturers');
   const crud = useCrudModal<Offering>();
 
   const columns: ColumnsType<Offering> = [
@@ -155,19 +160,19 @@ export function OfferingsPage() {
     { title: 'Status', key: 'status', width: 110, render: (_, row) => courseStatusLabel(row.course?.status) },
     { title: 'Section', dataIndex: 'section', key: 'section', width: 90, render: (value) => value || 'A' },
     { title: 'Semester', key: 'term', render: (_, row) => (row.term ? `${row.term.session_label || ''} ${row.term.name}`.trim() : '—') },
-    { title: 'Lecturer', key: 'lecturer', render: (_, row) => row.lecturer?.user?.name || '—' },
-    { title: 'Capacity', dataIndex: 'capacity', key: 'capacity', width: 90 },
+    { title: 'Lecturer', key: 'lecturer', render: (_, row) => offeringLecturerName(row) },
+    { title: 'Capacity', key: 'capacity', width: 110, render: (_, row) => (row.capacity == null ? 'Unlimited' : row.capacity) },
     {
       title: 'Seats left',
       key: 'seats',
-      width: 100,
-      render: (_, row) => row.seats_left ?? Math.max(0, (row.capacity || 0) - (row.enrolled_count || 0)),
+      width: 110,
+      render: (_, row) => offeringSeatsLabel(row),
     },
     actionColumn(
       (row) => crud.openEdit(row, {
         course_id: row.course_id ?? row.course?.id,
         academic_term_id: row.academic_term_id ?? row.term?.id,
-        faculty_staff_id: row.faculty_staff_id,
+        lecturer_name: row.lecturer_name || row.lecturer_display_name || row.lecturer?.user?.name || '',
         section: row.section || 'A',
         capacity: row.capacity,
       }),
@@ -177,7 +182,11 @@ export function OfferingsPage() {
 
   const submit = async () => {
     const values = await crud.form.validateFields();
-    await crud.save('/api/academic/offerings', (id) => `/api/academic/offerings/${id}`, values, reload);
+    await crud.save('/api/academic/offerings', (id) => `/api/academic/offerings/${id}`, {
+      ...values,
+      lecturer_name: values.lecturer_name || null,
+      capacity: values.capacity ?? null,
+    }, reload);
   };
 
   return (
@@ -186,7 +195,7 @@ export function OfferingsPage() {
       description="Publish semester sections, capacity, and lecturers. Students can only register from offerings in the current term."
       loading={loading}
       onRefresh={reload}
-      onAdd={() => crud.openCreate({ section: 'A', capacity: 50 })}
+      onAdd={() => crud.openCreate({ section: 'A' })}
       canAdd={courses.length > 0 && terms.length > 0}
       count={rows.length}
       countLabel="Offerings"
@@ -213,12 +222,28 @@ export function OfferingsPage() {
           <Form.Item name="academic_term_id" label="Semester" rules={[{ required: true }]}>
             <Select options={terms.map((term) => ({ value: term.id, label: `${term.session_label || ''} ${term.name}`.trim() }))} />
           </Form.Item>
-          <Form.Item name="faculty_staff_id" label="Lecturer">
-            <Select allowClear showSearch optionFilterProp="label" options={lecturers.map((row) => ({ value: row.id, label: lecturerLabel(row) }))} />
+          <Form.Item
+            name="lecturer_name"
+            label="Lecturer"
+            extra="Type the lecturer’s name. They do not need a portal account."
+          >
+            <Input placeholder="e.g. Dr. Ada Okonkwo" allowClear />
           </Form.Item>
           <div className="grid grid-cols-2 gap-3">
-            <Form.Item name="section" label="Section"><Input placeholder="A" /></Form.Item>
-            <Form.Item name="capacity" label="Capacity" rules={[{ required: true }]}><InputNumber min={1} max={1000} className="w-full" /></Form.Item>
+            <Form.Item
+              name="section"
+              label="Section"
+              extra="A, B, C… when the same course has more than one group this semester. Leave A if there is only one group."
+            >
+              <Input placeholder="A" />
+            </Form.Item>
+            <Form.Item
+              name="capacity"
+              label="Capacity"
+              extra="Leave blank for unlimited seats. Set a number to stop registration when this group is full."
+            >
+              <InputNumber min={1} max={1000} className="w-full" placeholder="Unlimited" />
+            </Form.Item>
           </div>
         </Form>
       </Modal>
@@ -451,7 +476,7 @@ export function CourseRegistrationPage() {
                 { title: 'Units', width: 70, render: (_, row: any) => row.course?.units ?? '—' },
                 { title: 'Bucket', width: 130, render: (_, row: any) => bucketLabel(row.bucket || row.course?.course_type) },
                 { title: 'Status', width: 110, render: (_, row: any) => courseStatusLabel(row.course?.status) },
-                { title: 'Seats', width: 80, dataIndex: 'seats_left' },
+                { title: 'Seats', width: 100, render: (_, row: any) => offeringSeatsLabel(row) },
                 {
                   title: '',
                   width: 110,
