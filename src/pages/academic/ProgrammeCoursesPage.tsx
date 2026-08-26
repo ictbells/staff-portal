@@ -6,7 +6,7 @@ import { RefreshButton } from '../../components/RefreshButton';
 import {
   Btn, Card, StatCard, WorkspaceHero, fieldLabelClass, inputClass,
 } from '../../components/ui';
-import { ENTRY_MODES } from './constants';
+import { ENTRY_MODES, curriculumStudyLevel, studyLevelLabel } from './constants';
 import { useResourceList } from './useResourceList';
 
 type Faculty = { id: number; name: string };

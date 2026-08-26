@@ -8,8 +8,28 @@ export const ENTRY_MODES = [
 
 export const STUDY_LEVELS = [
   { value: 'undergraduate', label: 'Undergraduate' },
+  { value: 'jupeb', label: 'JUPEB' },
   { value: 'postgraduate', label: 'Postgraduate' },
 ];
+
+export const UG_ENTRY_MODES = ['utme', 'de', 'transfer'];
+
+export function curriculumStudyLevel(program?: { study_level?: string | null; entry_modes?: string[] } | null): string {
+  if (program?.study_level === 'jupeb' || program?.study_level === 'postgraduate') {
+    return program.study_level;
+  }
+  const modes = program?.entry_modes ?? [];
+  const hasJupeb = modes.includes('jupeb');
+  const hasPg = modes.includes('pg');
+  const hasUg = modes.some((mode) => UG_ENTRY_MODES.includes(mode));
+  if (hasJupeb && !hasUg && !hasPg) return 'jupeb';
+  if (hasPg && !hasUg && !hasJupeb) return 'postgraduate';
+  return program?.study_level || 'undergraduate';
+}
+
+export function studyLevelLabel(value?: string | null): string {
+  return STUDY_LEVELS.find((item) => item.value === value)?.label ?? (value || '—');
+}
 
 export type AcademicResource = {
   key: string;

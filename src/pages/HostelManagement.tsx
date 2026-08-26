@@ -305,7 +305,7 @@ export default function HostelManagement() {
       if (category === 'undergraduate') setUgWindows(data);
       else if (category === 'jupeb') setJupebWindows(data);
       else setPgWindows(data);
-      message.success(`${categoryLabels[category]} level settings saved.`);
+      message.success(`${categoryLabels[category]} level settings saved. Students in this category can request beds when their level shows Open now.`);
       await loadQueue(queueCategory);
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to save level settings.');
@@ -315,17 +315,29 @@ export default function HostelManagement() {
   };
 
   const toggleLevel = (category: HostelCategory, levelId: number, active: boolean) => {
-    const setter = category === 'undergraduate'
-      ? setUgWindows
-      : category === 'jupeb'
-        ? setJupebWindows
-        : setPgWindows;
     const current = category === 'undergraduate'
       ? ugWindows
       : category === 'jupeb'
         ? jupebWindows
         : pgWindows;
-    setter(current.map((row) => (row.academic_level_id === levelId ? { ...row, is_active: active, is_open: active } : row)));
+    const next = current.map((row) => (row.academic_level_id === levelId ? { ...row, is_active: active, is_open: active } : row));
+    if (category === 'undergraduate') setUgWindows(next);
+    else if (category === 'jupeb') setJupebWindows(next);
+    else setPgWindows(next);
+    void saveWindows(category, next);
+  };
+
+  const siblingClosedLevels = (category: HostelCategory, rows: LevelWindow[]): string[] => {
+    if (category === 'postgraduate') return [];
+    const other = category === 'undergraduate' ? jupebWindows : ugWindows;
+    const otherLabel = category === 'undergraduate' ? 'JUPEB' : 'Undergraduate';
+    return rows
+      .filter((row) => row.is_open)
+      .filter((row) => {
+        const match = other.find((item) => item.academic_level_id === row.academic_level_id);
+        return Boolean(match && !match.is_open);
+      })
+      .map((row) => `${otherLabel} ${row.level_name}`);
   };
 
   const allocateBed = async (studentId: number, bedId: number) => {
@@ -890,15 +902,24 @@ export default function HostelManagement() {
     },
   ];
 
-  const levelTable = (category: HostelCategory, rows: LevelWindow[]) => (
+  const levelTable = (category: HostelCategory, rows: LevelWindow[]) => {
+    const closedSiblings = siblingClosedLevels(category, rows);
+    return (
     <div className="space-y-3">
       <Alert
         type="info"
         showIcon
         message={category === 'postgraduate'
-          ? 'Year 1 postgraduate students are served first from the allocation queue. Activate only the levels that may apply for beds in this category.'
-          : '100 Level students are served first from the allocation queue. Activate only the levels that may apply for beds in this category.'}
+          ? 'Year 1 postgraduate students are served first from the allocation queue. Activate only the levels that may apply for beds in this category. The switch saves immediately.'
+          : '100 Level students are served first from the allocation queue. Activate only the levels that may apply for beds in this category. The switch saves immediately — Open now means students in this category can see an open window.'}
       />
+      {closedSiblings.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          message={`${closedSiblings.join(', ')} ${closedSiblings.length === 1 ? 'is' : 'are'} still closed. Those students will still see Closed on the student portal.`}
+        />
+      )}
       <Table
         rowKey="academic_level_id"
         size="small"
@@ -923,6 +944,7 @@ export default function HostelManagement() {
                 {canManage ? (
                   <Switch
                     checked={row.is_active}
+                    loading={savingWindows}
                     onChange={(checked) => toggleLevel(category, row.academic_level_id, checked)}
                   />
                 ) : null}
@@ -933,19 +955,20 @@ export default function HostelManagement() {
         ]}
       />
       {canManage && (
-        <Button type="primary" loading={savingWindows} onClick={() => saveWindows(category, rows)}>
-          Save {categoryLabels[category]} levels
-        </Button>
+        <p className="text-xs text-slate-500">
+          {savingWindows ? `Saving ${categoryLabels[category]} levels…` : `Toggles save immediately for ${categoryLabels[category]}. Students still need at least 25% tuition paid to request a bed.`}
+        </p>
       )}
     </div>
-  );
+    );
+  };
 
   return (
     <div className="space-y-5">
       <WorkspaceHero
         eyebrow="Campus services"
         title="Hostel management"
-        description="Undergraduate, JUPEB, and postgraduate hostels are managed separately. Student bed picks wait for staff approval. Open allocation by level (then Save) — students only see Open when that level is on for the current semester. A hostel marked Active is not the same as the selection window."
+        description="Undergraduate, JUPEB, and postgraduate hostels are managed separately. Toggling a level saves immediately. Students see Open only for their own category and level, and they must have paid at least 25% of current-session tuition before they can request a bed. A hostel marked Active is not the same as the selection window."
         icon={Building2}
       >
         <RefreshButton onClick={load} loading={loading || tabLoading} />
@@ -1117,6 +1140,12 @@ export default function HostelManagement() {
       )}
 
       {tab === 'levels' && (
+              <div className="space-y-4">
+              <Alert
+                type="info"
+                showIcon
+                message="Undergraduate, JUPEB, and postgraduate are separate windows. Opening Undergraduate 100 Level does not open JUPEB 100 Level. Students must also have paid at least 25% of current-session tuition before they can request a bed."
+              />
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="rounded-xl border border-slate-200 bg-white p-4">
                   <h3 className="font-semibold text-slate-800 mb-3">Undergraduate</h3>
@@ -1130,6 +1159,7 @@ export default function HostelManagement() {
                   <h3 className="font-semibold text-slate-800 mb-3">Postgraduate</h3>
                   {levelTable('postgraduate', pgWindows)}
                 </div>
+              </div>
               </div>
       )}
 

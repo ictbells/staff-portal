@@ -11,7 +11,7 @@ import { StatCard, WorkspaceHero } from '../../components/ui';
 import { RefreshButton } from '../../components/RefreshButton';
 import { SessionLevelFilters } from '../../components/SessionLevelFilters';
 import { formatNaira } from '../../lib/money';
-import { ENTRY_MODES, STUDY_LEVELS } from './constants';
+import { ENTRY_MODES, STUDY_LEVELS, UG_ENTRY_MODES, studyLevelLabel } from './constants';
 import { actionColumn, formatDisplayDate, fromDateTimeValue, fromDateValue, toDateValue, useCrudModal } from './crudHelpers';
 import { CatalogImportPanel } from './CatalogImportPanel';
 import { patchResource, useResourceList } from './useResourceList';
@@ -836,6 +836,7 @@ export function ProgrammesPage() {
   const crud = useCrudModal<Program>();
   const [modeFilter, setModeFilter] = useState<string | null>(null);
   const watchedModes = Form.useWatch('entry_modes', crud.form) || [];
+  const watchedStudyLevel = Form.useWatch('study_level', crud.form);
   const selectedCollegeId = Form.useWatch('faculty_id', crud.form);
   const showPgEligibility = Array.isArray(watchedModes) && watchedModes.includes('pg');
   const departmentsInCollege = departments.filter((d) => Number(d.faculty_id ?? d.faculty?.id) === Number(selectedCollegeId));
@@ -852,6 +853,7 @@ export function ProgrammesPage() {
     { title: 'Code', dataIndex: 'code', key: 'code', width: 90, render: (v) => v || '—' },
     { title: 'Award', dataIndex: 'award_type', key: 'award_type', width: 90 },
     { title: 'Years', dataIndex: 'duration_years', key: 'duration_years', width: 70 },
+    { title: 'Track', dataIndex: 'study_level', key: 'study_level', width: 120, render: (v) => <Tag>{studyLevelLabel(v)}</Tag> },
     {
       title: 'School fees total',
       dataIndex: 'tuition_amount',
@@ -990,12 +992,68 @@ export function ProgrammesPage() {
         <Form.Item name="name" label="Programme name" rules={[{ required: true }]}><Input /></Form.Item>
         <Form.Item name="code" label="Code"><Input /></Form.Item>
         <Form.Item name="award_type" label="Award type" rules={[{ required: true }]}><Input placeholder="B.Eng" /></Form.Item>
-        <Form.Item name="study_level" label="Degree type" rules={[{ required: true }]}><Select options={STUDY_LEVELS} /></Form.Item>
-        <Form.Item name="duration_years" label="Number of years" rules={[{ required: true, type: 'number', min: 1, max: 10 }]}>
+        <Form.Item
+          name="study_level"
+          label="Track"
+          rules={[{ required: true }]}
+          extra="JUPEB is a one-year foundation track. Do not mix it with undergraduate or postgraduate on the same programme."
+        >
+          <Select
+            options={STUDY_LEVELS}
+            onChange={(value) => {
+              if (value === 'jupeb') {
+                crud.form.setFieldsValue({
+                  entry_modes: ['jupeb'],
+                  duration_years: crud.form.getFieldValue('duration_years') > 2 ? 1 : crud.form.getFieldValue('duration_years') || 1,
+                });
+              } else if (value === 'postgraduate') {
+                crud.form.setFieldsValue({ entry_modes: ['pg'] });
+              } else {
+                const modes = (crud.form.getFieldValue('entry_modes') || []).filter((mode: string) => UG_ENTRY_MODES.includes(mode));
+                crud.form.setFieldsValue({ entry_modes: modes.length ? modes : ['utme'] });
+              }
+            }}
+          />
+        </Form.Item>
+        <Form.Item
+          name="duration_years"
+          label="Number of years"
+          rules={[{ required: true, type: 'number', min: 1, max: 10 }]}
+          extra={watchedStudyLevel === 'jupeb' ? 'JUPEB is typically one year.' : undefined}
+        >
           <InputNumber min={1} max={10} className="w-full" />
         </Form.Item>
-        <Form.Item name="entry_modes" label="Admission categories" rules={[{ required: true, type: 'array', min: 1 }]} extra="Which entry modes can select this programme on the application form.">
-          <Select mode="multiple" options={ENTRY_MODES} placeholder="Select UTME, DE, JUPEB, PG…" />
+        <Form.Item
+          name="entry_modes"
+          label="Admission categories"
+          rules={[{ required: true, type: 'array', min: 1 }]}
+          extra="JUPEB programmes must be created separately from UTME / Direct Entry / Transfer. They keep their own levels and courses."
+        >
+          <Select
+            mode="multiple"
+            options={ENTRY_MODES}
+            placeholder="Select UTME, DE, JUPEB, PG…"
+            onChange={(modes: string[]) => {
+              const prev: string[] = watchedModes || [];
+              const added = modes.filter((mode) => !prev.includes(mode));
+              if (added.includes('jupeb') || (modes.includes('jupeb') && modes.some((mode) => mode !== 'jupeb'))) {
+                crud.form.setFieldsValue({
+                  entry_modes: ['jupeb'],
+                  study_level: 'jupeb',
+                  duration_years: crud.isEdit ? crud.form.getFieldValue('duration_years') : 1,
+                });
+                return;
+              }
+              if (added.includes('pg') || (modes.includes('pg') && modes.some((mode) => mode !== 'pg'))) {
+                crud.form.setFieldsValue({ entry_modes: ['pg'], study_level: 'postgraduate' });
+                return;
+              }
+              crud.form.setFieldsValue({
+                entry_modes: modes.filter((mode) => UG_ENTRY_MODES.includes(mode)),
+                study_level: 'undergraduate',
+              });
+            }}
+          />
         </Form.Item>
         <Form.Item
           name="workflow_template_id"
@@ -1065,11 +1123,14 @@ export function ProgrammesPage() {
 export function LevelsPage() {
   const { rows, loading, reload } = useResourceList<Level>('/api/academic/levels');
   const crud = useCrudModal<Level>();
+  const [trackFilter, setTrackFilter] = useState<string | null>(null);
+  const watchedTrack = Form.useWatch('study_level', crud.form);
+  const visibleRows = trackFilter ? rows.filter((row) => row.study_level === trackFilter) : rows;
 
   const columns: ColumnsType<Level> = [
     { title: 'Name', dataIndex: 'name', key: 'name' },
     { title: 'Code', dataIndex: 'code', key: 'code', width: 90, render: (v) => v || '—' },
-    { title: 'Degree type', dataIndex: 'study_level', key: 'study_level', width: 130, render: (v) => <Tag>{v}</Tag> },
+    { title: 'Track', dataIndex: 'study_level', key: 'study_level', width: 130, render: (v) => <Tag>{studyLevelLabel(v)}</Tag> },
     { title: 'Order', dataIndex: 'sort_order', key: 'sort_order', width: 70 },
     { title: 'Status', dataIndex: 'is_active', key: 'is_active', width: 90, render: (v) => <Tag color={v ? 'success' : 'default'}>{v ? 'Active' : 'Inactive'}</Tag> },
     actionColumn(
@@ -1084,12 +1145,47 @@ export function LevelsPage() {
   };
 
   return (
-    <ResourceShell title="Levels" description="Study levels such as 100, 200, or Year 1." loading={loading} onRefresh={reload} onAdd={() => crud.openCreate({ sort_order: 1, is_active: true })} count={rows.length} countLabel="Levels">
-      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 700 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No levels yet.' }} />
+    <ResourceShell
+      title="Levels"
+      description="Undergraduate 100–500, JUPEB foundation (typically one year), and postgraduate years are separate tracks. Create JUPEB levels here — do not reuse undergraduate 100 Level for JUPEB students."
+      loading={loading}
+      onRefresh={reload}
+      onAdd={() => crud.openCreate({ sort_order: 1, is_active: true })}
+      count={visibleRows.length}
+      countLabel="Levels"
+      stats={(
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+          <StatCard label="Levels" value={rows.length} hint="All tracks" icon={GraduationCap} />
+          {STUDY_LEVELS.map((track) => (
+            <StatCard
+              key={track.value}
+              label={track.label}
+              value={rows.filter((row) => row.study_level === track.value).length}
+              hint={track.value === 'jupeb' ? 'One-year foundation levels' : `${track.label} levels`}
+              icon={GraduationCap}
+              active={trackFilter === track.value}
+              onClick={() => setTrackFilter((current) => (current === track.value ? null : track.value))}
+            />
+          ))}
+        </div>
+      )}
+    >
+      <Table rowKey="id" columns={columns} dataSource={visibleRows} loading={loading} scroll={{ x: 700 }} pagination={{ pageSize: 15 }} locale={{ emptyText: trackFilter ? `No ${studyLevelLabel(trackFilter)} levels yet.` : 'No levels yet.' }} />
       <CrudModal title="level" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
-        <Form.Item name="name" label="Level name" rules={[{ required: true }]}><Input placeholder="100 Level" /></Form.Item>
-        <Form.Item name="code" label="Code"><Input placeholder="100" /></Form.Item>
-        <Form.Item name="study_level" label="Degree type" rules={[{ required: true }]}><Select options={STUDY_LEVELS} /></Form.Item>
+        <Form.Item name="name" label="Level name" rules={[{ required: true }]}>
+          <Input placeholder={watchedTrack === 'jupeb' ? 'JUPEB Year 1' : '100 Level'} />
+        </Form.Item>
+        <Form.Item name="code" label="Code">
+          <Input placeholder={watchedTrack === 'jupeb' ? '100' : '100'} />
+        </Form.Item>
+        <Form.Item
+          name="study_level"
+          label="Track"
+          rules={[{ required: true }]}
+          extra="JUPEB students spend about a year. Their levels must be created as JUPEB, not undergraduate."
+        >
+          <Select options={STUDY_LEVELS} />
+        </Form.Item>
         <Form.Item name="sort_order" label="Sort order"><InputNumber min={0} className="w-full" /></Form.Item>
         <Form.Item name="is_active" label="Active" valuePropName="checked"><Switch /></Form.Item>
       </CrudModal>
