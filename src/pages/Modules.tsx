@@ -495,12 +495,13 @@ function LegacyFinance() {
     : [
         { value: 'tuition', label: 'Tuition' },
         { value: 'library', label: 'Library' },
-        { value: 'medical', label: 'Medical / clinic' },
+        { value: 'medical', label: 'Medical levy' },
         { value: 'sports', label: 'Sports' },
         { value: 'ict', label: 'ICT' },
         { value: 'laboratory', label: 'Laboratory' },
         { value: 'development', label: 'Development levy' },
         { value: 'hostel', label: 'Hostel' },
+        { value: 'clinic', label: 'Clinic services' },
         { value: 'sundry', label: 'Sundry' },
         { value: 'acceptance_fee', label: 'Acceptance fee' },
         { value: 'other', label: 'Other' },
@@ -514,7 +515,7 @@ function LegacyFinance() {
 
       <Card
         title="Fee catalog"
-        description="Define reusable fee items. School charges are paid from the campus wallet. Only application and acceptance fees are paid online. Schedule categories (tuition, library, medical, …) can be assigned per programme below. Operational items (hostel, sundry, acceptance) are invoiced directly."
+        description="Define reusable fee items. School charges are paid from the campus wallet. Only application and acceptance fees are paid online. Schedule categories (tuition, library, medical levy, …) can be assigned per programme below. Operational items (hostel, clinic services, sundry, acceptance) are invoiced directly."
       >
         <div className="mb-4">
           <Btn onClick={openCreateFee}>Add fee item</Btn>

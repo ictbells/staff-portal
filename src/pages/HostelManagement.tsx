@@ -76,6 +76,9 @@ type AllocationRow = {
 type RoomRow = {
   id: number;
   number: string;
+  room_type?: 'standard' | 'store' | 'common' | 'suite';
+  room_type_label?: string;
+  is_residential?: boolean;
   capacity: number;
   bedding_type?: 'single' | 'bunk';
   uses_bunks?: boolean;
@@ -96,6 +99,13 @@ type RoomRow = {
   gender_label?: string;
   beds?: { id: number; label: string; display_label?: string; bunk_position?: string | null; status: string }[];
 };
+
+const ROOM_TYPE_OPTIONS = [
+  { value: 'standard', label: 'Standard' },
+  { value: 'store', label: 'Store' },
+  { value: 'common', label: 'Common room' },
+  { value: 'suite', label: 'Suite' },
+];
 
 const categoryLabels: Record<string, string> = {
   undergraduate: 'Undergraduate',
@@ -543,7 +553,14 @@ export default function HostelManagement() {
     }
   };
 
-  const createRoom = async (values: { number: string; capacity: number; bedding_type?: string; gender?: string; hostel_block_id?: number }) => {
+  const createRoom = async (values: {
+    number: string;
+    capacity: number;
+    room_type?: string;
+    bedding_type?: string;
+    gender?: string;
+    hostel_block_id?: number;
+  }) => {
     const blockId = values.hostel_block_id || selectedBlockId;
     if (!blockId) return;
     setSavingRoom(true);
@@ -551,6 +568,7 @@ export default function HostelManagement() {
       await api.post(`/api/hostel-blocks/${blockId}/rooms`, {
         number: values.number,
         capacity: values.capacity,
+        room_type: values.room_type || 'standard',
         bedding_type: values.bedding_type || 'single',
         gender: values.gender,
       });
@@ -570,18 +588,26 @@ export default function HostelManagement() {
     editRoomForm.setFieldsValue({
       number: room.number,
       capacity: room.capacity,
+      room_type: room.room_type || 'standard',
       bedding_type: room.bedding_type || 'single',
       gender: room.gender || undefined,
     });
     setEditRoomOpen(true);
   };
 
-  const saveRoomEdit = async (values: { number: string; capacity: number; bedding_type?: string; gender?: string }) => {
+  const saveRoomEdit = async (values: {
+    number: string;
+    capacity: number;
+    room_type?: string;
+    bedding_type?: string;
+    gender?: string;
+  }) => {
     if (!editingRoom) return;
     setSavingRoom(true);
     try {
       await api.patch(`/api/hostel-rooms/${editingRoom.id}`, {
         ...values,
+        room_type: values.room_type || 'standard',
         bedding_type: values.bedding_type || 'single',
         gender: values.gender || null,
       });
@@ -671,7 +697,7 @@ export default function HostelManagement() {
                   setSelectedHostelId(row.id);
                   setSelectedBlockId(row.blocks![0].id);
                   roomForm.resetFields();
-                  roomForm.setFieldsValue({ capacity: 4, bedding_type: 'single', hostel_block_id: row.blocks![0].id });
+                  roomForm.setFieldsValue({ capacity: 4, room_type: 'standard', bedding_type: 'single', hostel_block_id: row.blocks![0].id });
                   setRoomOpen(true);
                 }}
               >
@@ -693,6 +719,16 @@ export default function HostelManagement() {
     { title: 'Hostel', dataIndex: 'hostel_name', key: 'hostel_name' },
     { title: 'Block', dataIndex: 'block_name', key: 'block_name', render: (v?: string) => v || '—' },
     { title: 'Room', dataIndex: 'number', key: 'number', render: (n: string) => <span className="font-medium">{n}</span> },
+    {
+      title: 'Type',
+      key: 'room_type',
+      width: 110,
+      render: (_, row) => (
+        <Tag color={row.room_type === 'store' ? 'gold' : 'default'}>
+          {row.room_type_label || ROOM_TYPE_OPTIONS.find((o) => o.value === row.room_type)?.label || 'Standard'}
+        </Tag>
+      ),
+    },
     {
       title: 'Bedding',
       key: 'bedding',
@@ -1012,7 +1048,7 @@ export default function HostelManagement() {
                                     setSelectedHostelId(hostel.id);
                                     setSelectedBlockId(block.id);
                                     roomForm.resetFields();
-                                    roomForm.setFieldsValue({ capacity: 4, bedding_type: 'single', hostel_block_id: block.id });
+                                    roomForm.setFieldsValue({ capacity: 4, room_type: 'standard', bedding_type: 'single', hostel_block_id: block.id });
                                     setRoomOpen(true);
                                   }}
                                 >
@@ -1281,11 +1317,20 @@ export default function HostelManagement() {
             <Input placeholder="e.g. 101" />
           </Form.Item>
           <Form.Item
+            name="room_type"
+            label="Room type"
+            initialValue="standard"
+            rules={[{ required: true }]}
+            extra="Shown to students when they pick a room. Active rooms of every type can be selected."
+          >
+            <Select options={ROOM_TYPE_OPTIONS} />
+          </Form.Item>
+          <Form.Item
             name="capacity"
             label="Spaces (bed capacity)"
             initialValue={4}
             rules={[{ required: true, message: 'Capacity is required' }]}
-            extra="Each space becomes one bed. For bunk rooms, beds are paired as Lower / Upper."
+            extra="Each space becomes one bed. For bunk rooms, use an even number so every bunk has Lower and Upper."
           >
             <InputNumber min={1} max={20} className="w-full" />
           </Form.Item>
@@ -1331,10 +1376,18 @@ export default function HostelManagement() {
             <Input />
           </Form.Item>
           <Form.Item
+            name="room_type"
+            label="Room type"
+            rules={[{ required: true }]}
+            extra="Shown to students when they pick a room. Active rooms of every type can be selected."
+          >
+            <Select options={ROOM_TYPE_OPTIONS} />
+          </Form.Item>
+          <Form.Item
             name="capacity"
             label="Spaces (bed capacity)"
             rules={[{ required: true }]}
-            extra="Cannot be set below the number of occupied beds."
+            extra="Cannot be set below the number of occupied beds. For bunk rooms, prefer an even capacity."
           >
             <InputNumber min={1} max={20} className="w-full" />
           </Form.Item>

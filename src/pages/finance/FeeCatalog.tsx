@@ -114,12 +114,13 @@ export function FeeCatalog() {
     : [
         { value: 'tuition', label: 'Tuition' },
         { value: 'library', label: 'Library' },
-        { value: 'medical', label: 'Medical / clinic' },
+        { value: 'medical', label: 'Medical levy' },
         { value: 'sports', label: 'Sports' },
         { value: 'ict', label: 'ICT' },
         { value: 'laboratory', label: 'Laboratory' },
         { value: 'development', label: 'Development levy' },
         { value: 'hostel', label: 'Hostel' },
+        { value: 'clinic', label: 'Clinic services' },
         { value: 'sundry', label: 'Sundry' },
         { value: 'acceptance_fee', label: 'Acceptance fee' },
         { value: 'application_fee', label: 'Application fee' },
@@ -147,7 +148,7 @@ export function FeeCatalog() {
 
       <Card
         title="Fee items"
-        description="Pick a category from Fee category when creating a line. Tag schedule lines with an installment share so students are billed those amounts (not a percentage of a single total). Application fees are per entry mode. Schedule categories are assigned per programme on Programme fees."
+        description="Pick a category from Fee category when creating a line. Tag schedule lines with an installment share so students are billed those amounts (not a percentage of a single total). Application fees are per entry mode. Schedule categories are assigned per programme on Programme fees. Clinic visit charges use operational Clinic services lines; the Medical levy is the programme schedule charge."
       >
         <div className="mb-4">
           <Btn className="!text-white" onClick={openCreateFee}>Add fee item</Btn>

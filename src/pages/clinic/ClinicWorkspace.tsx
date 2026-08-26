@@ -9,6 +9,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Radio,
   Select,
   Switch,
   Table,
@@ -79,6 +80,42 @@ function initials(student?: any) {
 
 function medicalProfile(student?: any) {
   return student?.medical_profile || student?.medicalProfile;
+}
+
+function coverageFieldsFromProfile(profile?: any) {
+  const amount = profile?.nhis_coverage_amount;
+  const hasAmount = amount !== null && amount !== undefined && amount !== '';
+  return {
+    coverage_mode: hasAmount ? 'amount' : 'percent',
+    nhis_coverage_percent: hasAmount ? undefined : (profile?.nhis_coverage_percent ?? undefined),
+    nhis_coverage_amount: hasAmount ? Number(amount) : undefined,
+  };
+}
+
+function coveragePayload(values: any) {
+  if (values.coverage_mode === 'amount') {
+    return {
+      nhis_coverage_percent: null,
+      nhis_coverage_amount: values.nhis_coverage_amount === '' || values.nhis_coverage_amount === undefined
+        ? null
+        : values.nhis_coverage_amount,
+    };
+  }
+  return {
+    nhis_coverage_percent: values.nhis_coverage_percent === '' || values.nhis_coverage_percent === undefined
+      ? null
+      : values.nhis_coverage_percent,
+    nhis_coverage_amount: null,
+  };
+}
+
+function coverageLabel(row: any, profile?: any) {
+  const p = profile || medicalProfile(row);
+  if (!p?.nhis_enrolled) return '—';
+  if (row?.coverage_mode === 'amount' || (p.nhis_coverage_amount !== null && p.nhis_coverage_amount !== undefined && p.nhis_coverage_amount !== '')) {
+    return formatNaira(row?.effective_coverage_amount ?? p.nhis_coverage_amount);
+  }
+  return `${Number(row?.effective_coverage_percent ?? 0)}%`;
 }
 
 function statusBadge(status?: string) {
@@ -162,11 +199,14 @@ export default function ClinicWorkspace() {
   const [nhisForm] = Form.useForm();
   const [immForm] = Form.useForm();
   const [itemForm] = Form.useForm();
+  const [clinicFees, setClinicFees] = useState<any[]>([]);
   const [rxForm] = Form.useForm();
   const [sickForm] = Form.useForm();
   const [settingsForm] = Form.useForm();
   const [coverageOverride, setCoverageOverride] = useState<number | null>(null);
   const [printHtml, setPrintHtml] = useState<string | null>(null);
+  const nhisCoverageMode = Form.useWatch('coverage_mode', nhisForm) || 'percent';
+  const profileCoverageMode = Form.useWatch('coverage_mode', profileForm) || 'percent';
 
   const printSickNote = async (id: number) => {
     try {
@@ -247,6 +287,12 @@ export default function ClinicWorkspace() {
       .catch(() => {});
   }, [settingsForm]);
 
+  const loadClinicFees = useCallback(() => {
+    api.get('/api/fees', { params: { category: 'clinic', active: 1 } })
+      .then((r) => setClinicFees(Array.isArray(r.data) ? r.data : r.data?.data || []))
+      .catch(() => setClinicFees([]));
+  }, []);
+
   const loadChart = useCallback(() => {
     if (!chartStudentId) {
       setChart(null);
@@ -259,24 +305,30 @@ export default function ClinicWorkspace() {
         profileForm.setFieldsValue({
           ...r.data.profile,
           nhis_valid_until: r.data.profile?.nhis_valid_until ? dayjs(r.data.profile.nhis_valid_until) : null,
+          ...coverageFieldsFromProfile(r.data.profile),
         });
       })
       .catch(() => setChart(null))
       .finally(() => setLoading(false));
   }, [chartStudentId, profileForm]);
 
-  const openVisit = async (id: number) => {
-    setVisitId(id);
-    setEncounterTab('clinical');
+  const loadVisitData = async (id: number) => {
     const { data } = await api.get(`/api/clinic/visits/${id}`);
     setVisit(data);
     const preview = await api.get(`/api/clinic/visits/${id}/preview-split`);
     setSplit(preview.data);
   };
 
+  const openVisit = async (id: number) => {
+    setVisitId(id);
+    setEncounterTab('clinical');
+    loadClinicFees();
+    await loadVisitData(id);
+  };
+
   const refreshVisit = async () => {
     if (!visitId) return;
-    await openVisit(visitId);
+    await loadVisitData(visitId);
   };
 
   useEffect(() => {
@@ -284,7 +336,8 @@ export default function ClinicWorkspace() {
     loadStudents();
     loadQueue();
     loadSettings();
-  }, [canView, loadStudents, loadQueue, loadSettings]);
+    loadClinicFees();
+  }, [canView, loadStudents, loadQueue, loadSettings, loadClinicFees]);
 
   useEffect(() => {
     if (tab === 'queue') loadQueue();
@@ -384,12 +437,11 @@ export default function ClinicWorkspace() {
   const saveProfile = async () => {
     if (!chartStudentId) return;
     const values = await profileForm.validateFields();
+    const { coverage_mode: _coverageMode, ...rest } = values;
     await api.put(`/api/medical/${chartStudentId}`, {
-      ...values,
+      ...rest,
       nhis_valid_until: values.nhis_valid_until ? values.nhis_valid_until.format('YYYY-MM-DD') : null,
-      nhis_coverage_percent: values.nhis_coverage_percent === '' || values.nhis_coverage_percent === undefined
-        ? null
-        : values.nhis_coverage_percent,
+      ...coveragePayload(values),
     });
     message.success('Profile saved');
     loadChart();
@@ -399,12 +451,12 @@ export default function ClinicWorkspace() {
     setNhisEditStudent(student || null);
     const profile = medicalProfile(student);
     nhisForm.setFieldsValue({
-      student_id: student?.id,
+      matric_number: student?.matric_number || student?.student_number || undefined,
       nhis_enrolled: profile?.nhis_enrolled ?? true,
       nhis_number: profile?.nhis_number || undefined,
       nhis_provider: profile?.nhis_provider || undefined,
-      nhis_coverage_percent: profile?.nhis_coverage_percent ?? undefined,
       nhis_valid_until: profile?.nhis_valid_until ? dayjs(profile.nhis_valid_until) : null,
+      ...coverageFieldsFromProfile(profile),
     });
     setNhisEditOpen(true);
   };
@@ -412,26 +464,27 @@ export default function ClinicWorkspace() {
   const saveNhisEnrolment = async () => {
     try {
       const values = await nhisForm.validateFields();
-      const studentId = nhisEditStudent?.id || values.student_id;
-      if (!studentId) {
-        message.error('Select a student');
-        return;
-      }
-      await api.put(`/api/medical/${studentId}`, {
+      const payload = {
         nhis_enrolled: !!values.nhis_enrolled,
         nhis_number: values.nhis_number || null,
         nhis_provider: values.nhis_provider || null,
-        nhis_coverage_percent: values.nhis_coverage_percent === '' || values.nhis_coverage_percent === undefined
-          ? null
-          : values.nhis_coverage_percent,
         nhis_valid_until: values.nhis_valid_until ? values.nhis_valid_until.format('YYYY-MM-DD') : null,
-      });
+        ...coveragePayload(values),
+      };
+      if (nhisEditStudent?.id) {
+        await api.put(`/api/medical/${nhisEditStudent.id}`, payload);
+      } else {
+        await api.put('/api/medical/nhis', {
+          matric_number: String(values.matric_number || '').trim(),
+          ...payload,
+        });
+      }
       message.success(values.nhis_enrolled ? 'NHIS enrolment saved' : 'NHIS enrolment cleared');
       setNhisEditOpen(false);
       setNhisEditStudent(null);
       nhisForm.resetFields();
       loadNhis();
-      if (chartStudentId === studentId) loadChart();
+      if (nhisEditStudent?.id && chartStudentId === nhisEditStudent.id) loadChart();
     } catch (err: any) {
       if (err?.errorFields) return;
       message.error(err.response?.data?.message || 'Could not save NHIS enrolment');
@@ -453,7 +506,10 @@ export default function ClinicWorkspace() {
   const addItem = async () => {
     if (!visitId) return;
     const values = await itemForm.validateFields();
-    await api.post(`/api/clinic/visits/${visitId}/items`, values);
+    await api.post(`/api/clinic/visits/${visitId}/items`, {
+      fee_item_id: values.fee_item_id,
+      quantity: values.quantity ?? 1,
+    });
     itemForm.resetFields();
     await refreshVisit();
   };
@@ -826,12 +882,8 @@ export default function ClinicWorkspace() {
                 },
                 {
                   title: 'Cover',
-                  render: (_: any, row: any) => (
-                    medicalProfile(row)?.nhis_enrolled
-                      ? `${Number(row.effective_coverage_percent ?? 0)}%`
-                      : '—'
-                  ),
-                  width: 80,
+                  render: (_: any, row: any) => coverageLabel(row),
+                  width: 120,
                 },
                 {
                   title: 'Valid until',
@@ -903,7 +955,7 @@ export default function ClinicWorkspace() {
                     <p className="text-sm text-slate-500">{studentMatric(chart.student)}</p>
                   </div>
                   <div className="text-sm text-slate-600">
-                    Effective NHIS cover <span className="font-semibold text-slate-900">{chart.effective_coverage_percent ?? 0}%</span>
+                    Effective NHIS cover <span className="font-semibold text-slate-900">{coverageLabel(chart, chart.profile)}</span>
                   </div>
                 </div>
                 <dl className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-100">
@@ -926,12 +978,28 @@ export default function ClinicWorkspace() {
                     <Form.Item name="nhis_enrolled" label="NHIS enrolled" valuePropName="checked"><Switch /></Form.Item>
                     <Form.Item name="nhis_number" label="NHIS number"><Input /></Form.Item>
                     <Form.Item name="nhis_provider" label="Provider / HMO"><Input /></Form.Item>
-                    <Form.Item
-                      name="nhis_coverage_percent"
-                      label={`Coverage % override (blank = campus default ${settings?.nhis_default_coverage_percent ?? 90}%)`}
-                    >
-                      <InputNumber min={0} max={100} className="w-full" />
+                    <Form.Item name="coverage_mode" label="Coverage" initialValue="percent">
+                      <Radio.Group>
+                        <Radio.Button value="percent">Percent</Radio.Button>
+                        <Radio.Button value="amount">Fixed amount</Radio.Button>
+                      </Radio.Group>
                     </Form.Item>
+                    {profileCoverageMode === 'amount' ? (
+                      <Form.Item
+                        name="nhis_coverage_amount"
+                        label="Fixed NHIS cover (₦)"
+                        rules={[{ required: true, message: 'Enter the covered amount' }]}
+                      >
+                        <InputNumber min={0} className="w-full" />
+                      </Form.Item>
+                    ) : (
+                      <Form.Item
+                        name="nhis_coverage_percent"
+                        label={`Coverage % override (blank = campus default ${settings?.nhis_default_coverage_percent ?? 90}%)`}
+                      >
+                        <InputNumber min={0} max={100} className="w-full" />
+                      </Form.Item>
+                    )}
                     <Form.Item name="nhis_valid_until" label="NHIS valid until">
                       <DatePicker className="w-full" format={DATE_PICKER_FORMAT} />
                     </Form.Item>
@@ -1074,8 +1142,8 @@ export default function ClinicWorkspace() {
       >
         <Form form={nhisForm} layout="vertical" className="mt-2">
           {!nhisEditStudent && (
-            <Form.Item name="student_id" label="Student" rules={[{ required: true, message: 'Select a student' }]}>
-              <Select showSearch options={studentOptions} optionFilterProp="label" placeholder="Search student" />
+            <Form.Item name="matric_number" label="Matric number" rules={[{ required: true, message: 'Enter the student’s matric number' }]}>
+              <Input placeholder="e.g. BUT/2024/M/0123" autoComplete="off" />
             </Form.Item>
           )}
           <Form.Item name="nhis_enrolled" label="NHIS enrolled" valuePropName="checked">
@@ -1087,12 +1155,28 @@ export default function ClinicWorkspace() {
           <Form.Item name="nhis_provider" label="Provider / HMO">
             <Input />
           </Form.Item>
-          <Form.Item
-            name="nhis_coverage_percent"
-            label={`Coverage % override (blank = campus default ${settings?.nhis_default_coverage_percent ?? 90}%)`}
-          >
-            <InputNumber min={0} max={100} className="w-full" />
+          <Form.Item name="coverage_mode" label="Coverage" initialValue="percent">
+            <Radio.Group>
+              <Radio.Button value="percent">Percent</Radio.Button>
+              <Radio.Button value="amount">Fixed amount</Radio.Button>
+            </Radio.Group>
           </Form.Item>
+          {nhisCoverageMode === 'amount' ? (
+            <Form.Item
+              name="nhis_coverage_amount"
+              label="Fixed NHIS cover (₦)"
+              rules={[{ required: true, message: 'Enter the covered amount' }]}
+            >
+              <InputNumber min={0} className="w-full" placeholder="Amount NHIS pays" />
+            </Form.Item>
+          ) : (
+            <Form.Item
+              name="nhis_coverage_percent"
+              label={`Coverage % override (blank = campus default ${settings?.nhis_default_coverage_percent ?? 90}%)`}
+            >
+              <InputNumber min={0} max={100} className="w-full" />
+            </Form.Item>
+          )}
           <Form.Item name="nhis_valid_until" label="NHIS valid until">
             <DatePicker className="w-full" format={DATE_PICKER_FORMAT} />
           </Form.Item>
@@ -1234,6 +1318,9 @@ export default function ClinicWorkspace() {
 
             {encounterTab === 'charges' && (
               <div>
+                <p className="text-sm text-slate-600 mb-3">
+                  Pick priced services from the fee catalog. Amounts are set by Finance and cannot be typed here.
+                </p>
                 <Table
                   size="small"
                   rowKey="id"
@@ -1271,12 +1358,27 @@ export default function ClinicWorkspace() {
                   ]}
                 />
                 {!visit.bill && (canBill || canManage) && (
-                  <Form form={itemForm} layout="inline" className="mt-3 gap-2" onFinish={addItem}>
-                    <Form.Item name="description" rules={[{ required: true }]}><Input placeholder="Description" /></Form.Item>
-                    <Form.Item name="quantity" initialValue={1}><InputNumber min={0.01} /></Form.Item>
-                    <Form.Item name="unit_amount" rules={[{ required: true }]}><InputNumber min={0} placeholder="Amount" /></Form.Item>
-                    <Button htmlType="submit">Add line</Button>
-                  </Form>
+                  clinicFees.length === 0 ? (
+                    <p className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                      No clinic service lines in the fee catalog. Create them under Fees &amp; payments → Fee catalog (category Clinic services).
+                    </p>
+                  ) : (
+                    <Form form={itemForm} layout="inline" className="mt-3 gap-2" onFinish={addItem}>
+                      <Form.Item name="fee_item_id" rules={[{ required: true, message: 'Select a service' }]} className="min-w-[16rem] flex-1">
+                        <Select
+                          showSearch
+                          optionFilterProp="label"
+                          placeholder="Clinic service"
+                          options={clinicFees.map((f) => ({
+                            value: f.id,
+                            label: `${f.name} — ${formatNaira(f.amount)}`,
+                          }))}
+                        />
+                      </Form.Item>
+                      <Form.Item name="quantity" initialValue={1}><InputNumber min={0.01} /></Form.Item>
+                      <Button htmlType="submit">Add line</Button>
+                    </Form>
+                  )
                 )}
                 {split && (
                   <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
@@ -1287,7 +1389,12 @@ export default function ClinicWorkspace() {
                     <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-3">
                       <div className="text-xs uppercase tracking-wide text-sky-700">NHIS covered</div>
                       <div className="mt-1 font-semibold text-sky-950">
-                        {formatNaira(split.covered)} <span className="text-xs font-normal">({split.coverage_percent}%)</span>
+                        {formatNaira(split.covered)}{' '}
+                        <span className="text-xs font-normal">
+                          {split.coverage_mode === 'amount'
+                            ? '(fixed cover)'
+                            : `(${split.coverage_percent}%)`}
+                        </span>
                       </div>
                     </div>
                     <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3">
