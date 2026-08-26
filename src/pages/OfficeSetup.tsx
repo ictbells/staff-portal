@@ -443,12 +443,10 @@ export default function OfficeSetup() {
 
   const toggleNavKey = (key: string, checked: boolean) => {
     if (checked) {
-      const item = catalogItem(key);
       setSelectedNavKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
       setNavLinkConfigs((prev) => ({
         ...prev,
-        // Gated modules start without approval; use the gear to turn gates on.
-        [key]: prev[key] || (item?.has_approval_actions ? ungatedLinkConfig(key) : defaultLinkConfig(key)),
+        [key]: prev[key] || ungatedLinkConfig(key),
       }));
       return;
     }
@@ -745,7 +743,7 @@ export default function OfficeSetup() {
         <p className="text-slate-500 text-sm mb-4">
           Choose which staff-portal sidebar links appear for people who <strong>work in</strong> this {linksRow?.level.toLowerCase()}.
           Units and subunits automatically inherit links assigned on the parent department (and subunits inherit unit links). Role permissions still control what they can do.
-          Modules with gated actions start as <strong>no approval</strong> — tick the gear to require Create/Update/Delete approval when needed.
+          Assigned links start as <strong>no approval</strong> — tick the gear to require Create/Update/Delete approval when needed.
           {' '}<strong>Super Admin accounts ignore office link limits</strong> and only need the matching role permission.
         </p>
         {error && linksRow && (
@@ -754,7 +752,7 @@ export default function OfficeSetup() {
         <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
           {Object.entries(navBySection).map(([section, items]) => (
             <div key={section}>
-              <Divider orientation="left" className="!my-2 !text-xs !text-slate-500">
+              <Divider titlePlacement="start" className="!my-2 !text-xs !text-slate-500">
                 {section}
               </Divider>
               <div className="grid sm:grid-cols-2 gap-2">
@@ -779,12 +777,12 @@ export default function OfficeSetup() {
                               </Typography.Text>
                             )}
                           </span>
-                          {checked && !inherited && item.has_approval_actions && cfg && (
+                          {checked && !inherited && cfg && (
                             <span className="text-[11px] text-slate-500 font-normal">{methodHint(cfg)}</span>
                           )}
                         </span>
                       </Checkbox>
-                      {checked && !inherited && item.has_approval_actions && (
+                      {checked && !inherited && (
                         <Button
                           type="text"
                           size="small"

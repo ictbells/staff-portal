@@ -45,6 +45,58 @@ function installmentTrancheLabel(tranche: number | null | undefined) {
   return TRANCHE_LABELS[Number(tranche)] || '';
 }
 
+type DetailLine = {
+  id: number;
+  fee_item_id?: number;
+  amount?: number | null;
+  effective_amount?: number | null;
+  level_code?: string;
+  semester?: string;
+  is_active?: boolean;
+  fee_item?: {
+    name?: string;
+    category?: string;
+    amount?: number;
+    installment_tranche?: number | null;
+    installment_tranche_label?: string | null;
+  } | null;
+};
+
+type SliceGroup = {
+  key: string;
+  tranche: number | null;
+  label: string;
+  lines: DetailLine[];
+  subtotal: number;
+};
+
+function groupDetailLines(lines: DetailLine[]): SliceGroup[] {
+  const order: Array<number | null> = [1, 2, 3, 4, 100, null];
+  const buckets = new Map<string, DetailLine[]>();
+  for (const line of lines) {
+    const tranche = line.fee_item?.installment_tranche;
+    const key = tranche == null ? 'none' : String(tranche);
+    const group = buckets.get(key) || [];
+    group.push(line);
+    buckets.set(key, group);
+  }
+  return order
+    .filter((tranche) => buckets.has(tranche == null ? 'none' : String(tranche)))
+    .map((tranche) => {
+      const key = tranche == null ? 'none' : String(tranche);
+      const groupLines = buckets.get(key) || [];
+      return {
+        key,
+        tranche,
+        label: tranche == null
+          ? 'Untagged (bills with 1st 25% or full package)'
+          : (TRANCHE_LABELS[tranche] || `Slice ${tranche}`),
+        lines: groupLines,
+        subtotal: groupLines.reduce((sum, line) => sum + Number(line.effective_amount || 0), 0),
+      };
+    });
+}
+
 type ProgrammeSummary = {
   id: number;
   name: string;
@@ -85,10 +137,17 @@ export function ProgrammeFees() {
     program_id: undefined as number | undefined,
     fee_item_ids: [] as number[],
     amount: '',
+    itemAmounts: {} as Record<number, string>,
     level_code: 'all',
     semester: 'both',
     is_active: true,
   });
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copyTargets, setCopyTargets] = useState<number[]>([]);
+  const [copyReplace, setCopyReplace] = useState(false);
+  const [copyCandidates, setCopyCandidates] = useState<ProgrammeSummary[]>([]);
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [copySaving, setCopySaving] = useState(false);
 
   const scheduleFeeItems = useMemo(() => fees.filter(
     (f) => f.is_active !== false && (
@@ -97,6 +156,12 @@ export function ProgrammeFees() {
       || categories.find((c) => c.value === f.category)?.schedule
     ),
   ), [fees, scheduleCategories, categories]);
+
+  const detailGroups = useMemo(() => groupDetailLines(detailLines), [detailLines]);
+  const copySameDepartment = useMemo(
+    () => copyCandidates.filter((p) => p.department?.id && p.department.id === detail?.department?.id),
+    [copyCandidates, detail],
+  );
 
   const assignProgramOptions = useMemo(() => {
     const map = new Map<number, { id: number; name: string; code?: string | null }>();
@@ -173,6 +238,9 @@ export function ProgrammeFees() {
       program_id: program?.id ?? detail?.id,
       fee_item_ids: line?.fee_item_id ? [line.fee_item_id] : [],
       amount: line?.amount != null ? String(line.amount) : '',
+      itemAmounts: line?.fee_item_id
+        ? { [line.fee_item_id]: line?.amount != null ? String(line.amount) : '' }
+        : {},
       level_code: line?.level_code || 'all',
       semester: line?.semester || 'both',
       is_active: line ? line.is_active !== false : true,
@@ -198,11 +266,14 @@ export function ProgrammeFees() {
           program_id: assignForm.program_id,
           level_code: assignForm.level_code || 'all',
           semester: assignForm.semester || 'both',
-          items: assignForm.fee_item_ids.map((id) => ({
-            fee_item_id: id,
-            amount: assignForm.amount === '' ? null : Number(assignForm.amount),
-            is_active: assignForm.is_active,
-          })),
+          items: assignForm.fee_item_ids.map((id) => {
+            const raw = assignForm.itemAmounts[id];
+            return {
+              fee_item_id: id,
+              amount: raw === '' || raw == null ? null : Number(raw),
+              is_active: assignForm.is_active,
+            };
+          }),
         });
       }
       message.success(editingLine ? 'Fee line updated.' : 'Fees assigned to programme.');
@@ -216,6 +287,44 @@ export function ProgrammeFees() {
       message.error(apiMessage(err, 'Could not save programme fees.'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openCopy = async () => {
+    if (!detail) return;
+    setCopyOpen(true);
+    setCopyTargets([]);
+    setCopyReplace(false);
+    setCopyLoading(true);
+    try {
+      const r = await api.get('/api/programme-fees/summaries', {
+        params: detail.faculty?.id ? { faculty_id: detail.faculty.id } : {},
+      });
+      setCopyCandidates((r.data.data || []).filter((p: ProgrammeSummary) => p.id !== detail.id));
+    } catch (err) {
+      setCopyCandidates([]);
+      message.error(apiMessage(err, 'Could not load programmes to copy to.'));
+    } finally {
+      setCopyLoading(false);
+    }
+  };
+
+  const saveCopy = async () => {
+    if (!detail || copyTargets.length === 0) return;
+    setCopySaving(true);
+    try {
+      await api.post('/api/programme-fees/copy', {
+        from_program_id: detail.id,
+        to_program_ids: copyTargets,
+        replace: copyReplace,
+      });
+      message.success(`Schedule copied to ${copyTargets.length} programme${copyTargets.length === 1 ? '' : 's'}.`);
+      setCopyOpen(false);
+      loadSummaries();
+    } catch (err) {
+      message.error(apiMessage(err, 'Could not copy this fee schedule.'));
+    } finally {
+      setCopySaving(false);
     }
   };
 
@@ -235,7 +344,7 @@ export function ProgrammeFees() {
     <div className="space-y-6">
       <WorkspaceHero
         title="Programme fees"
-        description="Assign catalog school fees to programmes. View a programme to see the full breakdown."
+        description="Assign catalog school fees to programmes, with a naira override per line. View a programme to see slices 1st–4th 25%, then copy that schedule to the rest of the college or department group."
       >
         <RefreshButton onClick={() => { loadCatalog(); loadSummaries(); if (detail) loadDetail(detail); }} loading={loading} />
         <Btn className="!text-white" onClick={() => openAssign()}>Assign fees</Btn>
@@ -382,58 +491,64 @@ export function ProgrammeFees() {
               </div>
               <div className="flex gap-2 shrink-0">
                 <Btn className="!text-white" onClick={() => openAssign(detail)}>Assign fees</Btn>
+                <Btn variant="secondary" onClick={openCopy} disabled={!detailLines.length}>Copy schedule</Btn>
                 <Btn variant="secondary" onClick={() => setDetail(null)}>Close</Btn>
               </div>
             </div>
-            <div className="px-5 py-4 overflow-y-auto">
+            <div className="px-5 py-4 overflow-y-auto space-y-4">
               {detailTotal != null && (
-                <p className="text-sm font-medium text-slate-800 mb-3">Schedule total: {formatNaira(detailTotal)}</p>
+                <p className="text-sm font-medium text-slate-800">
+                  Grand total (1st–4th 25%): {formatNaira(detailTotal)}
+                </p>
               )}
-              <DataTable
-                empty={!detailLines.length}
-                emptyMessage="No fee lines on this programme yet."
-                colSpan={6}
-                loading={detailLoading}
-                loadingLabel="Loading breakdown…"
-              >
-                <thead>
-                  <tr>
-                    <th className={thClass}>Fee item</th>
-                    <th className={thClass}>Level</th>
-                    <th className={thClass}>Semester</th>
-                    <th className={thClass}>Override</th>
-                    <th className={thClass}>Effective</th>
-                    <th className={thClass}>Actions</th>
-                  </tr>
-                </thead>
-                {!detailLines.length ? null : (
-                  <tbody>
-                    {detailLines.map((line) => (
-                      <tr key={line.id} className={trClass}>
-                        <td className={`${tdClass} font-medium`}>
-                          <div>{line.fee_item?.name || '—'}</div>
-                          <div className="text-xs text-slate-500">
-                            {(line.fee_item?.category || '').replaceAll('_', ' ')}
-                            {line.fee_item?.installment_tranche_label
-                              ? ` · ${line.fee_item.installment_tranche_label}`
-                              : ''}
-                          </div>
-                        </td>
-                        <td className={tdClass}>{line.level_code || 'all'}</td>
-                        <td className={tdClass}>{line.semester || 'both'}</td>
-                        <td className={tdClass}>{formatNaira(line.amount, 'Catalog default')}</td>
-                        <td className={`${tdClass} font-medium`}>{formatNaira(line.effective_amount)}</td>
-                        <td className={tdClass}>
-                          <div className="flex flex-wrap gap-2">
-                            <button type="button" className="text-sm text-sky-700 hover:underline" onClick={() => openAssign(detail, line)}>Edit</button>
-                            <button type="button" className="text-sm text-rose-600 hover:underline" onClick={() => removeLine(line)}>Remove</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                )}
-              </DataTable>
+              {detailLoading ? (
+                <p className="text-sm text-slate-500 py-8 text-center">Loading breakdown…</p>
+              ) : !detailLines.length ? (
+                <p className="text-sm text-slate-500 py-8 text-center">No fee lines on this programme yet.</p>
+              ) : (
+                detailGroups.map((group) => (
+                  <div key={group.key} className="rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="flex items-center justify-between gap-3 bg-slate-50 px-4 py-2.5">
+                      <p className="text-sm font-semibold text-slate-800">{group.label}</p>
+                      <p className="text-sm font-medium text-slate-700 tabular-nums">{formatNaira(group.subtotal)}</p>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr>
+                          <th className={thClass}>Fee item</th>
+                          <th className={thClass}>Level</th>
+                          <th className={thClass}>Semester</th>
+                          <th className={thClass}>Override</th>
+                          <th className={thClass}>Effective</th>
+                          <th className={thClass}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.lines.map((line) => (
+                          <tr key={line.id} className={trClass}>
+                            <td className={`${tdClass} font-medium`}>
+                              <div>{line.fee_item?.name || '—'}</div>
+                              <div className="text-xs text-slate-500">
+                                {(line.fee_item?.category || '').replaceAll('_', ' ')}
+                              </div>
+                            </td>
+                            <td className={tdClass}>{line.level_code || 'all'}</td>
+                            <td className={tdClass}>{line.semester || 'both'}</td>
+                            <td className={tdClass}>{formatNaira(line.amount, 'Catalog default')}</td>
+                            <td className={`${tdClass} font-medium`}>{formatNaira(line.effective_amount)}</td>
+                            <td className={tdClass}>
+                              <div className="flex flex-wrap gap-2">
+                                <button type="button" className="text-sm text-sky-700 hover:underline" onClick={() => openAssign(detail, line)}>Edit</button>
+                                <button type="button" className="text-sm text-rose-600 hover:underline" onClick={() => removeLine(line)}>Remove</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -441,7 +556,7 @@ export function ProgrammeFees() {
 
       {assignOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl space-y-4">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-xl space-y-4">
             <h3 className="text-lg font-semibold text-slate-900">{editingLine ? 'Edit programme fee' : 'Assign fees to programme'}</h3>
             <label className="block">
               <span className={fieldLabelClass}>Programme</span>
@@ -469,27 +584,65 @@ export function ProgrammeFees() {
                 placeholder={editingLine ? 'Select catalog item' : 'Select one or more catalog items'}
                 value={editingLine ? assignForm.fee_item_ids[0] : assignForm.fee_item_ids}
                 disabled={!!editingLine}
-                onChange={(v) => setAssignForm((s) => ({
-                  ...s,
-                  fee_item_ids: editingLine ? [v as number] : (v as number[]),
-                }))}
+                onChange={(v) => setAssignForm((s) => {
+                  const ids = editingLine ? [v as number] : (v as number[]);
+                  const itemAmounts = { ...s.itemAmounts };
+                  for (const id of ids) {
+                    if (itemAmounts[id] === undefined) itemAmounts[id] = '';
+                  }
+                  return { ...s, fee_item_ids: ids, itemAmounts };
+                })}
                 options={scheduleFeeItems.map((f) => ({
                   value: f.id,
                   label: `${f.name}${f.installment_tranche != null ? ` · ${installmentTrancheLabel(f.installment_tranche)}` : ''} (${formatNaira(f.amount)})`,
                 }))}
               />
             </label>
-            <label className="block">
-              <span className={fieldLabelClass}>Amount override (₦)</span>
-              <input
-                className={inputClass}
-                type="number"
-                min={0}
-                placeholder="Leave blank for catalog default"
-                value={assignForm.amount}
-                onChange={(e) => setAssignForm((s) => ({ ...s, amount: e.target.value }))}
-              />
-            </label>
+            {editingLine ? (
+              <label className="block">
+                <span className={fieldLabelClass}>Amount override (₦)</span>
+                <input
+                  className={inputClass}
+                  type="number"
+                  min={0}
+                  placeholder="Leave blank for catalog default"
+                  value={assignForm.amount}
+                  onChange={(e) => setAssignForm((s) => ({ ...s, amount: e.target.value }))}
+                />
+              </label>
+            ) : assignForm.fee_item_ids.length > 0 ? (
+              <div className="space-y-2">
+                <span className={fieldLabelClass}>Amount override per item (₦)</span>
+                <p className="text-xs text-slate-500">Leave blank to use the catalog default. Spreadsheet cells map to these overrides.</p>
+                <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100">
+                  {assignForm.fee_item_ids.map((id) => {
+                    const item = scheduleFeeItems.find((f) => f.id === id);
+                    return (
+                      <label key={id} className="flex items-center gap-3 px-3 py-2">
+                        <span className="min-w-0 flex-1 text-sm text-slate-800">
+                          <span className="font-medium">{item?.name || `Fee ${id}`}</span>
+                          {item?.installment_tranche != null && (
+                            <span className="text-slate-500"> · {installmentTrancheLabel(item.installment_tranche)}</span>
+                          )}
+                          <span className="block text-xs text-slate-500">Catalog {formatNaira(item?.amount)}</span>
+                        </span>
+                        <input
+                          className={`${inputClass} !w-32 shrink-0`}
+                          type="number"
+                          min={0}
+                          placeholder="Default"
+                          value={assignForm.itemAmounts[id] ?? ''}
+                          onChange={(e) => setAssignForm((s) => ({
+                            ...s,
+                            itemAmounts: { ...s.itemAmounts, [id]: e.target.value },
+                          }))}
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
             <label className="block">
               <span className={fieldLabelClass}>Level</span>
               <Select
@@ -519,6 +672,60 @@ export function ProgrammeFees() {
                 disabled={saving || !assignForm.program_id || assignForm.fee_item_ids.length === 0}
               >
                 {saving ? 'Saving…' : 'Save'}
+              </Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {copyOpen && detail && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-xl space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Copy fee schedule</h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Copy every fee line from {detail.name} (amount override, level, and semester) onto other programmes in the same college.
+              </p>
+            </div>
+            <label className="block">
+              <span className={fieldLabelClass}>Destination programmes</span>
+              <Select
+                className="w-full"
+                mode="multiple"
+                showSearch
+                optionFilterProp="label"
+                placeholder={copyLoading ? 'Loading programmes…' : 'Select programmes in this college'}
+                value={copyTargets}
+                loading={copyLoading}
+                onChange={setCopyTargets}
+                options={copyCandidates.map((p) => ({
+                  value: p.id,
+                  label: `${p.code ? `${p.name} (${p.code})` : p.name}${p.department?.name ? ` · ${p.department.name}` : ''}`,
+                }))}
+              />
+            </label>
+            {copySameDepartment.length > 0 && (
+              <button
+                type="button"
+                className="text-sm text-sky-700 hover:underline"
+                onClick={() => setCopyTargets(copySameDepartment.map((p) => p.id))}
+              >
+                Select all in {detail.department?.name || 'this department'} ({copySameDepartment.length})
+              </button>
+            )}
+            <label className="flex items-start gap-2 text-sm text-slate-700">
+              <input
+                className="mt-0.5"
+                type="checkbox"
+                checked={copyReplace}
+                onChange={(e) => setCopyReplace(e.target.checked)}
+              />
+              <span>Replace existing lines on the destination programmes. Leave unchecked to merge (matching catalog items are overwritten).</span>
+            </label>
+            <div className="flex justify-end gap-2 pt-2">
+              <Btn variant="secondary" onClick={() => setCopyOpen(false)}>Cancel</Btn>
+              <Btn onClick={saveCopy} disabled={copySaving || copyTargets.length === 0 || copyLoading}>
+                {copySaving ? 'Copying…' : 'Copy schedule'}
               </Btn>
             </div>
           </div>

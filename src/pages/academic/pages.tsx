@@ -17,10 +17,15 @@ import { CatalogImportPanel } from './CatalogImportPanel';
 import { patchResource, useResourceList } from './useResourceList';
 
 const COURSE_TYPES = [
-  { value: 'general', label: 'General' },
-  { value: 'faculty', label: 'Faculty' },
-  { value: 'departmental', label: 'Departmental' },
+  { value: 'general', label: 'General', hint: 'University-wide courses such as GST', tone: 'sky' as const, color: 'blue' },
+  { value: 'faculty', label: 'Faculty', hint: 'Shared across a faculty', tone: 'amber' as const, color: 'purple' },
+  { value: 'departmental', label: 'Departmental', hint: 'Department or programme courses', tone: 'emerald' as const, color: 'green' },
 ];
+
+function courseTypeOf(row: { course_type?: string }) {
+  const value = row.course_type || 'departmental';
+  return COURSE_TYPES.some((item) => item.value === value) ? value : 'departmental';
+}
 
 const COURSE_STATUSES = [
   { value: 'core', label: 'Core' },
@@ -978,7 +983,7 @@ export function ProgrammesPage() {
         <Form.Item name="is_research_degree" label="Research degree" valuePropName="checked" extra="Requires a proposed area and supervisor preference on the applicant form.">
           <Switch />
         </Form.Item>
-        <Form.Item name="course_ids" label="Courses in curriculum" extra="Map catalogue courses that belong to this programme.">
+        <Form.Item name="course_ids" label="Courses in curriculum" extra="Optional. Saving maps these courses on Academic → Programme courses. You can also assign them there or from Course catalog.">
           <Select
             mode="multiple"
             placeholder="Select courses"
@@ -1070,6 +1075,7 @@ export function LevelsPage() {
 
 export function CoursesPage() {
   const [level, setLevel] = useState<string | undefined>();
+  const [typeFilter, setTypeFilter] = useState<string | undefined>();
   const endpoint = useMemo(() => (
     level ? `/api/academic/courses?level=${encodeURIComponent(level)}` : '/api/academic/courses'
   ), [level]);
@@ -1077,13 +1083,28 @@ export function CoursesPage() {
   const { rows: departments } = useResourceList<Department>('/api/academic/departments');
   const { rows: programs } = useResourceList<Program>('/api/academic/programs');
   const crud = useCrudModal<Course>();
-  const courseType = Form.useWatch('course_type', crud.form);
+
+  const typeCounts = useMemo(() => {
+    const counts: Record<string, number> = { general: 0, faculty: 0, departmental: 0 };
+    for (const row of rows) counts[courseTypeOf(row)] += 1;
+    return counts;
+  }, [rows]);
+
+  const groupedRows = useMemo(() => (
+    COURSE_TYPES.map((type) => ({
+      ...type,
+      courses: rows.filter((row) => courseTypeOf(row) === type.value),
+    }))
+  ), [rows]);
+
+  const visibleGroups = typeFilter
+    ? groupedRows.filter((group) => group.value === typeFilter)
+    : groupedRows;
 
   const columns: ColumnsType<Course> = [
     { title: 'Code', dataIndex: 'code', key: 'code', width: 110 },
     { title: 'Title', dataIndex: 'title', key: 'title' },
     { title: 'Units', dataIndex: 'units', key: 'units', width: 70 },
-    { title: 'Type', dataIndex: 'course_type', key: 'course_type', width: 130, render: (value) => COURSE_TYPES.find((item) => item.value === value)?.label || value || 'Departmental' },
     { title: 'Status', dataIndex: 'status', key: 'status', width: 110, render: (value) => COURSE_STATUSES.find((item) => item.value === value)?.label || value || 'Core' },
     { title: 'Programmes', key: 'programs', width: 180, render: (_, r) => programTags(r.programs) },
     { title: 'Department', key: 'department', render: (_, r) => r.department?.name || '—' },
@@ -1109,24 +1130,67 @@ export function CoursesPage() {
   return (
     <ResourceShell
       title="Course catalog"
-      description="Course catalogue — assign a course to programmes on Programme courses. Students register from current-term offerings of those mapped courses."
+      description="Courses are grouped by catalogue type — General, Faculty, or Departmental. Assign a course to programmes on Programme courses. Students register from current-term offerings of those mapped courses."
       loading={loading}
       onRefresh={reload}
-      onAdd={() => crud.openCreate({ units: 3, course_type: 'departmental', status: 'core', program_ids: [] })}
+      onAdd={() => crud.openCreate({ units: 3, status: 'core', program_ids: [] })}
       canAdd={departments.length > 0}
-      count={rows.length}
-      countLabel="Courses"
       eyebrow="Courses"
       extra={<SessionLevelFilters showSession={false} level={level} onLevelChange={setLevel} />}
+      stats={(
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+          <StatCard
+            label="All courses"
+            value={rows.length}
+            hint="Every catalogue type"
+            icon={BookOpen}
+            active={!typeFilter}
+            onClick={() => setTypeFilter(undefined)}
+          />
+          {COURSE_TYPES.map((type) => (
+            <StatCard
+              key={type.value}
+              label={type.label}
+              value={typeCounts[type.value]}
+              hint={type.hint}
+              icon={type.value === 'faculty' ? Building2 : type.value === 'general' ? GraduationCap : Award}
+              tone={type.tone}
+              active={typeFilter === type.value}
+              onClick={() => setTypeFilter(type.value)}
+            />
+          ))}
+        </div>
+      )}
     >
       <CatalogImportPanel
         templateUrl="/api/academic/courses/import-template"
         templateFilename="course-catalogue-template.xlsx"
         importUrl="/api/academic/courses/import"
-        description="Upload Excel with columns: code, title, department_id, plus optional units, course_type, status, programme_id, and level_id. Matching course codes are skipped. Copy ids from the Departments, Programmes, and Levels lookup sheets. Import programmes first."
+        description="Upload Excel with columns: code, title, department_id, course_type (general, faculty, or departmental), plus optional units, status, programme_id, and level_id. Matching course codes are skipped. A programme_id maps the course on Programme courses. Copy ids from the Departments, Programmes, and Levels lookup sheets. Import programmes first."
         onImported={reload}
       />
-      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1000 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No courses yet.' }} />
+      {visibleGroups.map((group, index) => (
+        <div key={group.value} className={index === 0 ? '' : 'border-t border-slate-100'}>
+          <div className="flex items-center justify-between gap-3 px-4 py-3 bg-slate-50/80">
+            <div>
+              <div className="text-sm font-semibold text-slate-800">
+                <Tag color={group.color}>{group.label}</Tag>
+                <span className="ml-1">{group.courses.length} course{group.courses.length === 1 ? '' : 's'}</span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">{group.hint}</p>
+            </div>
+          </div>
+          <Table
+            rowKey="id"
+            columns={columns}
+            dataSource={group.courses}
+            loading={loading}
+            scroll={{ x: 1000 }}
+            pagination={group.courses.length > 10 ? { pageSize: 10 } : false}
+            locale={{ emptyText: `No ${group.label.toLowerCase()} courses yet.` }}
+          />
+        </div>
+      ))}
       <CrudModal title="course" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="department_id" label="Department" rules={[{ required: true }]}>
           <Select options={departments.map((d) => ({ value: d.id, label: d.name }))} showSearch optionFilterProp="label" />
@@ -1134,8 +1198,8 @@ export function CoursesPage() {
         <Form.Item name="code" label="Course code" rules={[{ required: true }]}><Input placeholder="CPE 201" /></Form.Item>
         <Form.Item name="title" label="Title" rules={[{ required: true }]}><Input /></Form.Item>
         <Form.Item name="units" label="Credit units" rules={[{ required: true }]}><InputNumber min={1} max={12} className="w-full" /></Form.Item>
-        <Form.Item name="course_type" label="Catalogue type" rules={[{ required: true }]} extra="General, faculty, or departmental. Programme courses controls which students can register.">
-          <Select options={COURSE_TYPES} />
+        <Form.Item name="course_type" label="Catalogue type" rules={[{ required: true, message: 'Select General, Faculty, or Departmental' }]} extra="Required. General, faculty, or departmental.">
+          <Select placeholder="Select General, Faculty, or Departmental" options={COURSE_TYPES.map(({ value, label }) => ({ value, label }))} />
         </Form.Item>
         <Form.Item name="status" label="Status" rules={[{ required: true }]} extra="Core, elective, or required for registration.">
           <Select options={COURSE_STATUSES} />
@@ -1143,8 +1207,7 @@ export function CoursesPage() {
         <Form.Item
           name="program_ids"
           label="Programmes"
-          rules={courseType === 'general' ? [] : [{ required: true, type: 'array', min: 1 }]}
-          extra={courseType === 'general' ? 'Optional here. Prefer Academic → Programme courses to map curriculum to students.' : 'Which programmes include this course. You can also assign from Academic → Programme courses.'}
+          extra="Optional. Saving here maps the course on Academic → Programme courses, and assignments made there appear here."
         >
           <Select
             mode="multiple"

@@ -18,6 +18,10 @@ function isOnlineOnlyFee(category?: string) {
   return ONLINE_ONLY_FEE_CATEGORIES.includes(String(category || ''));
 }
 
+const FALLBACK_SCHEDULE_CATEGORIES = [
+  'tuition', 'library', 'medical', 'sports', 'ict', 'laboratory', 'development', 'other',
+];
+
 function apiMessage(err: unknown, fallback: string) {
   const data = (err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } })?.response?.data;
   const firstError = data?.errors && Object.values(data.errors).flat().find(Boolean);
@@ -71,11 +75,17 @@ export function FeeCatalog() {
 
   useEffect(() => { load(); }, []);
 
-  const isTuitionFee = (category?: string) => String(category || '') === 'tuition';
-
-  const isScheduleFee = (category?: string) =>
-    scheduleCategories.includes(String(category || ''))
-    || !!categories.find((c) => c.value === category)?.schedule;
+  const isScheduleFee = (category?: string) => {
+    const code = String(category || '');
+    if (isOnlineOnlyFee(code)) return false;
+    if (scheduleCategories.includes(code) || !!categories.find((c) => c.value === code)?.schedule) {
+      return true;
+    }
+    if (categories.length === 0 && scheduleCategories.length === 0) {
+      return FALLBACK_SCHEDULE_CATEGORIES.includes(code);
+    }
+    return false;
+  };
 
   const openCreateFee = () => {
     setEditingFee(null);
@@ -121,7 +131,7 @@ export function FeeCatalog() {
         entry_mode: feeForm.category === 'application_fee' ? (feeForm.entry_mode || null) : null,
         transcript_type: feeForm.category === 'transcript' ? (feeForm.transcript_type || null) : null,
         program_id: feeForm.category === 'transcript' ? Number(feeForm.program_id) : null,
-        installment_tranche: isTuitionFee(feeForm.category) && feeForm.installment_tranche !== ''
+        installment_tranche: isScheduleFee(feeForm.category) && feeForm.installment_tranche !== ''
           ? Number(feeForm.installment_tranche)
           : null,
         amount: Number(feeForm.amount),
@@ -181,7 +191,7 @@ export function FeeCatalog() {
       <WorkspaceHero
         eyebrow="Fees & payments"
         title="Fee items"
-        description="Priced lines with amounts. Add a category on Fee categories when a new school charge has no matching type. Programme-schedule lines are assigned per programme under Programme fees. Tuition uses installment shares; application, acceptance, and transcript fees are online-only."
+        description="Priced lines with amounts. Add a category on Fee categories when a new school charge has no matching type. Programme-schedule lines are assigned per programme under Programme fees. School-fee lines use installment shares (1st–4th 25%); application, acceptance, and transcript fees are online-only."
         icon={Wallet}
       >
         <Link
@@ -200,7 +210,7 @@ export function FeeCatalog() {
 
       <Card
         title="Fee items"
-        description="Only tuition can use installment shares. Application fees need an entry mode; transcript fees need type and programme. Assign schedule lines on Programme fees."
+        description="School-fee lines can use installment shares (1st–4th 25% or Full 100%). Application fees need an entry mode; transcript fees need type and programme. Assign schedule lines on Programme fees."
         actions={<Btn className="!text-white" onClick={openCreateFee}>Add fee item</Btn>}
       >
         <DataTable empty={!fees.length} emptyMessage="No fees configured." colSpan={10} loading={loading}>
@@ -291,7 +301,7 @@ export function FeeCatalog() {
                 onChange={(e) => setFeeForm((s) => ({
                   ...s,
                   category: e.target.value,
-                  installment_tranche: isTuitionFee(e.target.value) ? s.installment_tranche : '',
+                  installment_tranche: isScheduleFee(e.target.value) ? s.installment_tranche : '',
                 }))}
               >
                 {categoryOptions.map((c) => (
@@ -306,7 +316,7 @@ export function FeeCatalog() {
                     : 'This charge is paid from the campus wallet after the student funds it.'}
               </p>
             </label>
-            {isTuitionFee(feeForm.category) && (
+            {isScheduleFee(feeForm.category) && (
               <label className="block">
                 <span className={fieldLabelClass}>Installment share</span>
                 <select
@@ -320,7 +330,7 @@ export function FeeCatalog() {
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-slate-500">
-                  Create separate tuition catalog lines for each 25% share, plus an optional Full 100% line for students who pay at once. Assign those lines on Programme fees.
+                  Create a separate catalog line for each 25% slice when amounts differ (for example Tuition · 1st 25% and Tuition · 2nd 25%). Optional Full 100% is only for a discounted pay-at-once package. Assign those lines on Programme fees.
                 </p>
               </label>
             )}

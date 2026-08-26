@@ -409,29 +409,31 @@ function UserFormFields({
 
       <FormSection icon={Shield} title="Roles" description="What they can do. Super Admin bypasses office menu limits.">
         {availableRoles.length ? (
-          <div className="flex flex-wrap gap-2">
-            {availableRoles.map((role) => {
-              const selected = form.role_ids.includes(role.id);
-              return (
-                <button
-                  key={role.id}
-                  type="button"
-                  onClick={() => patch({
-                    role_ids: selected
-                      ? form.role_ids.filter((id) => id !== role.id)
-                      : [...form.role_ids, role.id],
-                  })}
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
-                    selected
-                      ? 'bg-sky-600 text-white shadow-sm'
-                      : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  {role.name}
-                </button>
-              );
-            })}
-          </div>
+          <label className="block">
+            <FieldLabel required={mode === 'create'}>{mode === 'create' ? 'Role' : 'Roles'}</FieldLabel>
+            {mode === 'create' ? (
+              <Select
+                className="w-full"
+                showSearch
+                optionFilterProp="label"
+                placeholder="Select role"
+                value={form.role_ids[0]}
+                onChange={(value) => patch({ role_ids: value != null ? [value] : [] })}
+                options={availableRoles.map((role) => ({ value: role.id, label: role.name }))}
+              />
+            ) : (
+              <Select
+                className="w-full"
+                mode="multiple"
+                showSearch
+                optionFilterProp="label"
+                placeholder="Select roles"
+                value={form.role_ids}
+                onChange={(value) => patch({ role_ids: value })}
+                options={availableRoles.map((role) => ({ value: role.id, label: role.name }))}
+              />
+            )}
+          </label>
         ) : (
           <p className="text-sm text-slate-500">No roles are available yet. Create roles first, then assign them here.</p>
         )}

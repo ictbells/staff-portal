@@ -169,7 +169,7 @@ export function ProgrammeCoursesPage() {
       <WorkspaceHero
         eyebrow="Courses"
         title="Programme courses"
-        description="Assign catalog courses to a programme by college, department, and admission category. Students on that programme can register only from current-term offerings of these courses."
+        description="Assign catalog courses to a programme by college, department, and admission category. Saving here also shows on Course catalog, and programmes selected on a course are saved here. Students on that programme can register only from current-term offerings of these courses."
         icon={GraduationCap}
       >
         <RefreshButton onClick={reload} loading={loading} />
