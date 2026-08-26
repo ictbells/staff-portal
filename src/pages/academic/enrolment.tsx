@@ -10,6 +10,7 @@ import { useAuth } from '../../auth';
 import { RefreshButton } from '../../components/RefreshButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 import { formatNaira } from '../../lib/money';
+import { ConfirmDeleteButton } from '../../components/ConfirmDeleteButton';
 import { SessionLevelFilters } from '../../components/SessionLevelFilters';
 import { actionColumn, useCrudModal } from './crudHelpers';
 import { useResourceList } from './useResourceList';
@@ -26,6 +27,7 @@ type Term = {
   name: string;
   session_label?: string;
   is_current?: boolean;
+  academic_session_id?: number | null;
   extension_price_per_unit?: number | string | null;
 };
 type CourseRef = {
@@ -62,8 +64,20 @@ type UnitLimit = {
   min_units: number;
   max_units: number;
   program?: { id: number; name: string; code?: string };
-  level?: { id: number; name: string; code?: string } | null;
-  term?: Term | null;
+  level?: { id: number; name: string; code?: string; study_level?: string } | null;
+  term?: (Term & { academic_session_id?: number | null }) | null;
+};
+type UnitLimitGroup = {
+  key: string;
+  program_id: number;
+  academic_level_id: number | null;
+  session_label: string;
+  academic_session_id: number | null;
+  program?: UnitLimit['program'];
+  level?: UnitLimit['level'];
+  terms: Array<Term & { academic_session_id?: number | null }>;
+  cell: (termId: number, bucket: string) => UnitLimit | undefined;
+  rows: UnitLimit[];
 };
 type Extension = {
   id: number;
@@ -645,6 +659,10 @@ export function CourseRegistrationPage() {
 export function UnitLimitsPage() {
   const [sessionId, setSessionId] = useState<number | undefined>();
   const [level, setLevel] = useState<string | undefined>();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [form] = Form.useForm();
   const endpoint = useMemo(() => {
     const qs = new URLSearchParams();
     if (sessionId) qs.set('academic_session_id', String(sessionId));
@@ -653,79 +671,320 @@ export function UnitLimitsPage() {
     return query ? `/api/academic/unit-limits?${query}` : '/api/academic/unit-limits';
   }, [sessionId, level]);
   const { rows, loading, reload } = useResourceList<UnitLimit>(endpoint);
-  const crud = useCrudModal<UnitLimit>();
-  const [meta, setMeta] = useState<{ programs: any[]; levels: any[]; terms: Term[] }>({ programs: [], levels: [], terms: [] });
+  const [meta, setMeta] = useState<{
+    programs: Array<{ id: number; name: string; code?: string; study_level?: string }>;
+    levels: Array<{ id: number; name: string; code?: string; study_level?: string }>;
+    sessions: Array<{ id: number; label: string }>;
+    terms: Array<Term & { academic_session_id?: number | null }>;
+  }>({ programs: [], levels: [], sessions: [], terms: [] });
 
   useEffect(() => {
     api.get('/api/academic/unit-limits/meta').then(({ data }) => setMeta({
       programs: data.programs || [],
       levels: data.levels || [],
+      sessions: data.sessions || [],
       terms: data.terms || [],
     })).catch(() => {});
   }, []);
 
-  const columns: ColumnsType<UnitLimit> = [
-    { title: 'Programme', render: (_, row) => row.program?.code || row.program?.name || '—' },
-    { title: 'Level', render: (_, row) => row.level?.name || 'Any' },
-    { title: 'Semester', render: (_, row) => (row.term ? `${row.term.session_label || ''} ${row.term.name}`.trim() : 'Any') },
-    { title: 'Bucket', dataIndex: 'bucket', width: 130, render: (value) => bucketLabel(value) },
-    { title: 'Min', dataIndex: 'min_units', width: 70 },
-    { title: 'Max', dataIndex: 'max_units', width: 70 },
-    actionColumn(
-      (row) => crud.openEdit(row, {
-        program_id: row.program_id,
-        academic_level_id: row.academic_level_id,
-        academic_term_id: row.academic_term_id,
-        bucket: row.bucket,
-        min_units: row.min_units,
-        max_units: row.max_units,
-      }),
-      (row) => crud.remove(`/api/academic/unit-limits/${row.id}`, reload),
-    ),
-  ];
+  const selectedProgramId = Form.useWatch('program_id', form);
+  const selectedSessionId = Form.useWatch('academic_session_id', form);
+  const programLevels = useMemo(() => {
+    const studyLevel = meta.programs.find((program) => program.id === selectedProgramId)?.study_level;
+    if (!studyLevel) return meta.levels;
+    const matched = meta.levels.filter((item) => item.study_level === studyLevel);
+    return matched.length ? matched : meta.levels;
+  }, [meta.levels, meta.programs, selectedProgramId]);
+  const formTerms = useMemo(
+    () => meta.terms.filter((term) => Number(term.academic_session_id) === Number(selectedSessionId)),
+    [meta.terms, selectedSessionId],
+  );
+
+  const groups = useMemo(() => {
+    const map = new Map<string, UnitLimitGroup>();
+    for (const row of rows) {
+      const sessionLabel = row.term?.session_label || 'Any session';
+      const sessionKey = row.term?.academic_session_id ?? sessionLabel;
+      const key = `${row.program_id}:${row.academic_level_id ?? 'any'}:${sessionKey}`;
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, {
+          key,
+          program_id: row.program_id,
+          academic_level_id: row.academic_level_id ?? null,
+          session_label: sessionLabel,
+          academic_session_id: row.term?.academic_session_id ?? null,
+          program: row.program,
+          level: row.level,
+          terms: row.term ? [row.term] : [],
+          rows: [row],
+          cell: () => undefined,
+        });
+        continue;
+      }
+      existing.rows.push(row);
+      if (row.term && !existing.terms.some((term) => term.id === row.term?.id)) {
+        existing.terms.push(row.term);
+      }
+    }
+    return [...map.values()].map((group) => {
+      const cells = new Map(group.rows.map((row) => [`${row.academic_term_id}:${row.bucket}`, row]));
+      group.terms.sort((a, b) => a.id - b.id);
+      group.cell = (termId, bucket) => cells.get(`${termId}:${bucket}`);
+      return group;
+    });
+  }, [rows]);
+
+  const openCreate = () => {
+    const current = meta.terms.find((term) => term.is_current);
+    setEditingKey(null);
+    form.resetFields();
+    form.setFieldsValue({
+      academic_session_id: sessionId || current?.academic_session_id,
+      cells: {},
+    });
+    setOpen(true);
+  };
+
+  const openEdit = (group: UnitLimitGroup) => {
+    const cells: Record<string, Record<string, { min?: number; max?: number }>> = {};
+    for (const row of group.rows) {
+      if (!row.academic_term_id) continue;
+      cells[String(row.academic_term_id)] ??= {};
+      cells[String(row.academic_term_id)][row.bucket] = { min: row.min_units, max: row.max_units };
+    }
+    setEditingKey(group.key);
+    form.resetFields();
+    form.setFieldsValue({
+      program_id: group.program_id,
+      academic_level_id: group.academic_level_id || undefined,
+      academic_session_id: group.academic_session_id || undefined,
+      cells,
+    });
+    setOpen(true);
+  };
 
   const submit = async () => {
-    const values = await crud.form.validateFields();
-    await crud.save('/api/academic/unit-limits', (id) => `/api/academic/unit-limits/${id}`, {
-      ...values,
-      academic_level_id: values.academic_level_id || null,
-      academic_term_id: values.academic_term_id || null,
-    }, reload);
+    const values = await form.validateFields();
+    const terms = meta.terms.filter((term) => Number(term.academic_session_id) === Number(values.academic_session_id));
+    if (!terms.length) {
+      message.error('This session has no semesters yet.');
+      return;
+    }
+    const limits = terms.flatMap((term) => BUCKETS.map((bucket) => {
+      const cell = values.cells?.[String(term.id)]?.[bucket.value] || {};
+      const min = cell.min;
+      const max = cell.max;
+      if (min == null && max == null) {
+        return {
+          academic_term_id: term.id,
+          bucket: bucket.value,
+          min_units: null,
+          max_units: null,
+        };
+      }
+      return {
+        academic_term_id: term.id,
+        bucket: bucket.value,
+        min_units: min,
+        max_units: max,
+      };
+    }));
+    if (!limits.some((row) => row.min_units != null && row.max_units != null)) {
+      message.error('Enter at least one min/max pair.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await api.put('/api/academic/unit-limits/sync', {
+        program_id: values.program_id,
+        academic_level_id: values.academic_level_id || null,
+        academic_term_ids: terms.map((term) => term.id),
+        limits,
+      });
+      if (!isPendingApproval(res)) {
+        message.success('Unit limits saved for this programme and level.');
+        setOpen(false);
+        reload();
+      }
+    } catch (err) {
+      message.error(apiError(err, 'Could not save unit limits.'));
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const removeGroup = async (group: UnitLimitGroup) => {
+    const termIds = group.terms.map((term) => term.id);
+    if (!termIds.length) return;
+    try {
+      const res = await api.post('/api/academic/unit-limits/destroy-group', {
+        program_id: group.program_id,
+        academic_level_id: group.academic_level_id,
+        academic_term_ids: termIds,
+      });
+      if (!isPendingApproval(res)) {
+        message.success('Unit limit schedule deleted.');
+        reload();
+      }
+    } catch (err) {
+      message.error(apiError(err, 'Could not delete this schedule.'));
+    }
+  };
+
+  const columns: ColumnsType<UnitLimitGroup> = [
+    {
+      title: 'Programme',
+      render: (_, group) => (
+        <div>
+          <div className="font-medium text-slate-900">{group.program?.name || '—'}</div>
+          {group.program?.code && <div className="text-xs font-mono text-slate-500">{group.program.code}</div>}
+        </div>
+      ),
+    },
+    { title: 'Level', width: 140, render: (_, group) => group.level?.name || 'Any level' },
+    { title: 'Session', width: 130, render: (_, group) => group.session_label },
+    {
+      title: 'Min / max by semester',
+      render: (_, group) => (
+        <table className="text-xs min-w-[18rem]">
+          <thead>
+            <tr className="text-slate-500">
+              <th className="text-left font-medium pr-3 py-0.5">Bucket</th>
+              {group.terms.map((term) => (
+                <th key={term.id} className="text-left font-medium pr-3 py-0.5 whitespace-nowrap">{term.name}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {BUCKETS.filter((bucket) => group.terms.some((term) => group.cell(term.id, bucket.value))).map((bucket) => (
+              <tr key={bucket.value}>
+                <td className="pr-3 py-0.5 text-slate-600">{bucket.label}</td>
+                {group.terms.map((term) => {
+                  const cell = group.cell(term.id, bucket.value);
+                  return (
+                    <td key={term.id} className="pr-3 py-0.5 font-medium text-slate-800 whitespace-nowrap">
+                      {cell ? `${cell.min_units}–${cell.max_units}` : '—'}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ),
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 130,
+      render: (_, group) => (
+        <Space size={4}>
+          <Button type="link" size="small" onClick={() => openEdit(group)}>Edit</Button>
+          <ConfirmDeleteButton onConfirm={() => removeGroup(group)} />
+        </Space>
+      ),
+    },
+  ];
 
   return (
     <ResourceShell
       title="Unit limits"
-      description="Set minimum and maximum units by programme, level, and bucket. Overall min and max are required for roster Registered status."
+      description="One row per programme, level, and session. Set First and Second semester min/max for each bucket in a single form. Overall min and max are required for roster Registered status."
       loading={loading}
       onRefresh={reload}
-      onAdd={() => crud.openCreate({ bucket: 'overall', min_units: 15, max_units: 24 })}
-      count={rows.length}
-      countLabel="Limits"
+      onAdd={openCreate}
+      count={groups.length}
+      countLabel="Schedules"
       extra={<SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />}
     >
-      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 900 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No unit limits yet.' }} />
-      <Modal title={crud.isEdit ? 'Edit unit limit' : 'Add unit limit'} open={crud.open} onCancel={crud.close} onOk={submit} confirmLoading={crud.saving} destroyOnHidden>
-        <Form form={crud.form} layout="vertical" className="mt-4">
+      <Table
+        rowKey="key"
+        columns={columns}
+        dataSource={groups}
+        loading={loading}
+        scroll={{ x: 900 }}
+        pagination={{ pageSize: 15 }}
+        locale={{ emptyText: 'No unit limits yet. Add a programme schedule instead of one row per bucket.' }}
+      />
+      <Modal
+        title={editingKey ? 'Edit unit limits' : 'Add unit limits'}
+        open={open}
+        onCancel={() => setOpen(false)}
+        onOk={submit}
+        okText="Save schedule"
+        confirmLoading={saving}
+        width={720}
+        destroyOnHidden
+      >
+        <Form form={form} layout="vertical" className="mt-4">
           <Form.Item name="program_id" label="Programme" rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="label" options={meta.programs.map((program) => ({ value: program.id, label: program.code ? `${program.code} — ${program.name}` : program.name }))} />
+            <Select
+              showSearch
+              optionFilterProp="label"
+              disabled={!!editingKey}
+              onChange={() => form.setFieldValue('academic_level_id', undefined)}
+              options={meta.programs.map((program) => ({
+                value: program.id,
+                label: program.code ? `${program.code} — ${program.name}` : program.name,
+              }))}
+            />
           </Form.Item>
           <Form.Item name="academic_level_id" label="Level">
-            <Select allowClear options={meta.levels.map((level) => ({
-              value: level.id,
-              label: level.study_level ? `${level.name} · ${level.study_level}` : level.name,
-            }))} />
+            <Select
+              allowClear
+              disabled={!!editingKey}
+              options={programLevels.map((item) => ({
+                value: item.id,
+                label: item.study_level ? `${item.name} · ${item.study_level}` : item.name,
+              }))}
+            />
           </Form.Item>
-          <Form.Item name="academic_term_id" label="Semester">
-            <Select allowClear options={meta.terms.map((term) => ({ value: term.id, label: `${term.session_label || ''} ${term.name}`.trim() }))} />
+          <Form.Item name="academic_session_id" label="Session" rules={[{ required: true, message: 'Choose the session whose semesters you are setting.' }]}>
+            <Select
+              disabled={!!editingKey}
+              options={meta.sessions.map((session) => ({ value: session.id, label: session.label }))}
+            />
           </Form.Item>
-          <Form.Item name="bucket" label="Bucket" rules={[{ required: true }]}>
-            <Select options={BUCKETS} />
-          </Form.Item>
-          <div className="grid grid-cols-2 gap-3">
-            <Form.Item name="min_units" label="Minimum" rules={[{ required: true }]}><InputNumber min={0} max={50} className="w-full" /></Form.Item>
-            <Form.Item name="max_units" label="Maximum" rules={[{ required: true }]}><InputNumber min={0} max={50} className="w-full" /></Form.Item>
-          </div>
+          {formTerms.length === 0 ? (
+            <p className="text-sm text-slate-500">Select a session to set First and Second semester limits together.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Bucket</th>
+                    {formTerms.map((term) => (
+                      <th key={term.id} className="px-3 py-2 font-medium">{term.name} · min / max</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {BUCKETS.map((bucket) => (
+                    <tr key={bucket.value} className="border-t border-slate-100">
+                      <td className="px-3 py-2 font-medium text-slate-800">
+                        {bucket.label}
+                        {bucket.value === 'overall' && <div className="text-xs font-normal text-slate-500">Used for Registered status</div>}
+                      </td>
+                      {formTerms.map((term) => (
+                        <td key={`${term.id}-${bucket.value}`} className="px-2 py-2">
+                          <div className="flex gap-2">
+                            <Form.Item name={['cells', String(term.id), bucket.value, 'min']} className="!mb-0">
+                              <InputNumber min={0} max={50} placeholder="Min" className="w-full" />
+                            </Form.Item>
+                            <Form.Item name={['cells', String(term.id), bucket.value, 'max']} className="!mb-0">
+                              <InputNumber min={0} max={50} placeholder="Max" className="w-full" />
+                            </Form.Item>
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="text-xs text-slate-500 mt-3">Leave a cell blank to skip that bucket. First and Second stay on this one schedule instead of separate rows.</p>
         </Form>
       </Modal>
     </ResourceShell>
