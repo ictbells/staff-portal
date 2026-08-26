@@ -93,8 +93,7 @@ function ResourceShell({
   return (
     <div className="space-y-4">
       <WorkspaceHero eyebrow="Courses" title={title} description={description} icon={BookOpen}>
-        <div className="flex gap-2">
-          {extra}
+        <div className="flex flex-wrap gap-2">
           <RefreshButton onClick={onRefresh} loading={loading} />
           {canAdd && onAdd && (
             <Button type="primary" icon={<Plus size={14} />} onClick={onAdd}>Add</Button>
@@ -106,6 +105,11 @@ function ResourceShell({
           <StatCard label={countLabel} value={count} hint="Records in this list" icon={BookOpen} />
         </div>
       )}
+      {extra ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          {extra}
+        </div>
+      ) : null}
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">{children}</div>
     </div>
   );
@@ -140,20 +144,33 @@ function courseStatusLabel(value?: string) {
   return 'Core';
 }
 
-function courseProgrammePrefix(course?: CourseRef | null) {
+function courseProgrammeNames(course?: CourseRef | null) {
   const labels = (course?.programs || [])
     .map((program) => program.name || program.code)
     .filter((value): value is string => Boolean(value));
   if (labels.length === 0) return '';
   const shown = labels.slice(0, 3);
   const extra = labels.length - shown.length;
-  const text = extra > 0 ? `${shown.join(', ')} +${extra}` : shown.join(', ');
-  return `(${text}) `;
+  return extra > 0 ? `${shown.join(', ')} +${extra}` : shown.join(', ');
 }
 
 function courseOfferingLabel(course?: CourseRef | null) {
   if (!course) return '—';
-  return `${course.code} — ${courseProgrammePrefix(course)}${course.title}`;
+  const programs = courseProgrammeNames(course);
+  return programs ? `${course.code} — (${programs}) ${course.title}` : `${course.code} — ${course.title}`;
+}
+
+function CourseOfferingCell({ course }: { course?: CourseRef | null }) {
+  if (!course) return <span>—</span>;
+  const programs = courseProgrammeNames(course);
+  return (
+    <div className="min-w-0 max-w-[28rem]">
+      <div className="font-medium text-slate-800 truncate">{course.code} — {course.title}</div>
+      {programs ? (
+        <div className="text-xs text-slate-500 truncate" title={programs}>{programs}</div>
+      ) : null}
+    </div>
+  );
 }
 
 function rosterLabel(status?: string) {
@@ -219,18 +236,17 @@ export function OfferingsPage() {
   };
 
   const columns: ColumnsType<Offering> = [
-    { title: 'Course', key: 'course', render: (_, row) => courseOfferingLabel(row.course) },
-    { title: 'Type', key: 'type', width: 130, render: (_, row) => bucketLabel(row.course?.course_type) },
-    { title: 'Status', key: 'status', width: 110, render: (_, row) => courseStatusLabel(row.course?.status) },
-    { title: 'Section', dataIndex: 'section', key: 'section', width: 90, render: (value) => value || 'A' },
-    { title: 'Semester', key: 'term', render: (_, row) => (row.term ? `${row.term.session_label || ''} ${row.term.name}`.trim() : '—') },
-    { title: 'Lecturer', key: 'lecturer', render: (_, row) => offeringLecturerName(row) },
-    { title: 'Capacity', key: 'capacity', width: 110, render: (_, row) => (row.capacity == null ? 'Unlimited' : row.capacity) },
+    { title: 'Course', key: 'course', width: 320, render: (_, row) => <CourseOfferingCell course={row.course} /> },
+    { title: 'Type', key: 'type', width: 120, render: (_, row) => bucketLabel(row.course?.course_type) },
+    { title: 'Status', key: 'status', width: 100, render: (_, row) => courseStatusLabel(row.course?.status) },
+    { title: 'Section', dataIndex: 'section', key: 'section', width: 80, render: (value) => value || 'A' },
+    { title: 'Semester', key: 'term', width: 150, ellipsis: true, render: (_, row) => (row.term ? `${row.term.session_label || ''} ${row.term.name}`.trim() : '—') },
+    { title: 'Lecturer', key: 'lecturer', width: 160, ellipsis: true, render: (_, row) => offeringLecturerName(row) },
     {
-      title: 'Seats left',
+      title: 'Seats',
       key: 'seats',
-      width: 110,
-      render: (_, row) => offeringSeatsLabel(row),
+      width: 120,
+      render: (_, row) => (row.unlimited || row.capacity == null ? 'Unlimited' : `${offeringSeatsLabel(row)} / ${row.capacity}`),
     },
     actionColumn(
       (row) => crud.openEdit(row, {
@@ -256,7 +272,7 @@ export function OfferingsPage() {
   return (
     <ResourceShell
       title="Course offerings"
-      description="Each semester, publish mapped programme courses as section A with unlimited seats, then set lecturers and capacity. Students register from offerings in the current term."
+      description="Publish programme courses as section A, then set lecturers and capacity. Students register from the current semester."
       loading={loading}
       onRefresh={reload}
       onAdd={() => crud.openCreate({ section: 'A', academic_term_id: currentTermId })}
@@ -264,7 +280,7 @@ export function OfferingsPage() {
       count={rows.length}
       countLabel="Offerings"
       extra={(
-        <div className="flex flex-wrap gap-2">
+        <>
           <SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />
           <Select
             allowClear
@@ -277,10 +293,10 @@ export function OfferingsPage() {
           <Button onClick={openPublish} disabled={terms.length === 0}>
             Publish programme courses
           </Button>
-        </div>
+        </>
       )}
     >
-      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1100 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No offerings yet. Publish programme courses for this semester, or add one course.' }} />
+      <Table rowKey="id" size="middle" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1080 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No offerings yet. Publish programme courses for this semester, or add one course.' }} />
       <Modal
         title="Publish programme courses"
         open={publishOpen}
