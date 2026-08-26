@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Modal, Select, Space, Table, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Building2, Eye, EyeOff, KeyRound, Pencil, Search, Shield, UserCheck, UserPlus, UserRound, UserX, Users as UsersIcon, X, type LucideIcon } from 'lucide-react';
-import api from '../api';
+import api, { isPendingApproval } from '../api';
 import { RefreshButton } from '../components/RefreshButton';
 import { ConfirmDeleteButton } from '../components/ConfirmDeleteButton';
 import { fieldHelpClass, fieldLabelClass, inputClass, StatCard, WorkspaceHero } from '../components/ui';
@@ -612,8 +612,10 @@ export default function Users() {
 
     setCreating(true);
     try {
-      await api.post('/api/users', buildPayload(createForm));
-      message.success('User created.');
+      const res = await api.post('/api/users', buildPayload(createForm));
+      if (!isPendingApproval(res)) {
+        message.success('User created.');
+      }
       closeCreate();
       load(pagination.current, filters);
     } catch (err: any) {
@@ -660,8 +662,10 @@ export default function Users() {
         payload.status = editForm.status;
         if (editForm.status === 'disabled') payload.reason = editForm.reason.trim();
       }
-      await api.patch(`/api/users/${editing.id}`, payload);
-      message.success('User updated.');
+      const res = await api.patch(`/api/users/${editing.id}`, payload);
+      if (!isPendingApproval(res)) {
+        message.success('User updated.');
+      }
       closeEdit();
       load(pagination.current, filters);
     } catch (err: any) {
@@ -675,8 +679,10 @@ export default function Users() {
 
   const clearPlacement = async (user: UserRow) => {
     try {
-      await api.patch(`/api/users/${user.id}`, { clear_office_placement: true });
-      message.success('Office placement cleared.');
+      const res = await api.patch(`/api/users/${user.id}`, { clear_office_placement: true });
+      if (!isPendingApproval(res)) {
+        message.success('Office placement cleared.');
+      }
       load(pagination.current, filters);
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to clear office placement.');
@@ -685,8 +691,10 @@ export default function Users() {
 
   const removeUser = async (user: UserRow) => {
     try {
-      await api.delete(`/api/users/${user.id}`, { data: { reason: 'Removed via users screen' } });
-      message.success('User deleted.');
+      const res = await api.delete(`/api/users/${user.id}`, { data: { reason: 'Removed via users screen' } });
+      if (!isPendingApproval(res)) {
+        message.success('User deleted.');
+      }
       load(pagination.current, filters);
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to delete user.');

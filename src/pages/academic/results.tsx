@@ -7,7 +7,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { ClipboardList } from 'lucide-react';
 import { RefreshButton } from '../../components/RefreshButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
-import api from '../../api';
+import api, { isPendingApproval } from '../../api';
 import { useAuth } from '../../auth';
 import { SessionLevelFilters } from '../../components/SessionLevelFilters';
 
@@ -154,8 +154,10 @@ export function ResultsStudentDetailPage() {
   const save = async () => {
     try {
       const values = await form.validateFields();
-      await api.post('/api/academic/results/grades', values);
-      message.success('Grade saved as draft');
+      const res = await api.post('/api/academic/results/grades', values);
+      if (!isPendingApproval(res)) {
+        message.success('Grade saved as draft');
+      }
       form.resetFields();
       load();
     } catch (e: any) {
@@ -166,7 +168,9 @@ export function ResultsStudentDetailPage() {
   const submitIds = async (ids: number[]) => {
     try {
       const res = await api.post('/api/academic/results/submit', { ids });
-      message.success(`Submitted ${res.data?.updated ?? 0}`);
+      if (!isPendingApproval(res)) {
+        message.success(`Submitted ${res.data?.updated ?? 0}`);
+      }
       load();
     } catch (e: any) {
       message.error(e.response?.data?.message || 'Submit failed');
@@ -229,6 +233,9 @@ export function ResultsImportPage() {
     try {
       const values = await form.validateFields();
       const res = await api.post('/api/academic/results/import', values);
+      if (isPendingApproval(res)) {
+        return;
+      }
       setResult(res.data);
       message.success(`Import done: ${res.data.created} created, ${res.data.updated} updated`);
     } catch (e: any) {
@@ -292,7 +299,9 @@ export function ResultsDepartmentUploadsPage() {
   const act = async (path: string, body: any) => {
     try {
       const res = await api.post(path, body);
-      message.success(`Updated ${res.data?.updated ?? 0}`);
+      if (!isPendingApproval(res)) {
+        message.success(`Updated ${res.data?.updated ?? 0}`);
+      }
       if (res.data?.errors?.length) message.warning(res.data.errors.join('; '));
       setSelected([]);
       load();
@@ -406,7 +415,9 @@ export function ResultsApprovalsPage() {
   const act = async (path: string, body: any) => {
     try {
       const res = await api.post(path, body);
-      message.success(`Updated ${res.data?.updated ?? 0}`);
+      if (!isPendingApproval(res)) {
+        message.success(`Updated ${res.data?.updated ?? 0}`);
+      }
       if (res.data?.errors?.length) message.warning(res.data.errors.join('; '));
       setSelected([]);
       load();
@@ -540,7 +551,9 @@ export function ResultsBoardPage() {
     try {
       const values = await form.validateFields();
       const res = await api.post(path, { ...values, level });
-      message.success(`Updated ${res.data?.updated ?? 0}`);
+      if (!isPendingApproval(res)) {
+        message.success(`Updated ${res.data?.updated ?? 0}`);
+      }
       await load();
     } catch (e: any) {
       message.error(e.response?.data?.message || 'Board action failed');
@@ -689,8 +702,10 @@ export function ResultsGradingScalePage() {
     if (!scale) return;
     try {
       const values = await form.validateFields();
-      await api.put(`/api/academic/results/grading-scales/${scale.id}`, values);
-      message.success('Grading scale updated');
+      const res = await api.put(`/api/academic/results/grading-scales/${scale.id}`, values);
+      if (!isPendingApproval(res)) {
+        message.success('Grading scale updated');
+      }
       load();
     } catch (e: any) {
       message.error(e.response?.data?.message || 'Save failed');

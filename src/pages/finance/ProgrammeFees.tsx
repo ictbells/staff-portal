@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Select, message } from 'antd';
 import { BookOpen, Search, Wallet } from 'lucide-react';
-import api from '../../api';
+import api, { isPendingApproval } from '../../api';
 import { RefreshButton } from '../../components/RefreshButton';
 import {
   Badge, Btn, Card, DataTable, fieldLabelClass, inputClass,
@@ -50,6 +50,9 @@ type DetailLine = {
   fee_item_id?: number;
   amount?: number | null;
   effective_amount?: number | null;
+  installment_tranche?: number | null;
+  effective_installment_tranche?: number | null;
+  effective_installment_tranche_label?: string | null;
   level_code?: string;
   semester?: string;
   is_active?: boolean;
@@ -61,6 +64,10 @@ type DetailLine = {
     installment_tranche_label?: string | null;
   } | null;
 };
+
+function lineTranche(line: DetailLine) {
+  return line.effective_installment_tranche ?? line.fee_item?.installment_tranche ?? null;
+}
 
 type SliceGroup = {
   key: string;
@@ -74,7 +81,7 @@ function groupDetailLines(lines: DetailLine[]): SliceGroup[] {
   const order: Array<number | null> = [1, 2, 3, 4, 100, null];
   const buckets = new Map<string, DetailLine[]>();
   for (const line of lines) {
-    const tranche = line.fee_item?.installment_tranche;
+    const tranche = lineTranche(line);
     const key = tranche == null ? 'none' : String(tranche);
     const group = buckets.get(key) || [];
     group.push(line);
@@ -138,6 +145,7 @@ export function ProgrammeFees() {
     fee_item_ids: [] as number[],
     amount: '',
     itemAmounts: {} as Record<number, string>,
+    itemSlices: {} as Record<number, number[]>,
     level_code: 'all',
     semester: 'both',
     is_active: true,
@@ -148,6 +156,7 @@ export function ProgrammeFees() {
   const [copyCandidates, setCopyCandidates] = useState<ProgrammeSummary[]>([]);
   const [copyLoading, setCopyLoading] = useState(false);
   const [copySaving, setCopySaving] = useState(false);
+  const [installmentTranches, setInstallmentTranches] = useState<{ value: number; label: string }[]>([]);
 
   const scheduleFeeItems = useMemo(() => fees.filter(
     (f) => f.is_active !== false && (
@@ -174,12 +183,13 @@ export function ProgrammeFees() {
   const loadCatalog = () => {
     Promise.all([
       api.get('/api/fees'),
-      api.get('/api/fees/meta').catch(() => ({ data: { categories: [], schedule_categories: [] } })),
+      api.get('/api/fees/meta').catch(() => ({ data: { categories: [], schedule_categories: [], installment_tranches: [] } })),
       api.get('/api/programs').catch(() => ({ data: [] })),
     ]).then(([feesRes, metaRes, programsRes]) => {
       setFees(Array.isArray(feesRes.data) ? feesRes.data : feesRes.data?.data || []);
       setCategories(metaRes.data.categories || []);
       setScheduleCategories(metaRes.data.schedule_categories || []);
+      setInstallmentTranches(metaRes.data.installment_tranches || []);
       const progList = programsRes.data?.data || programsRes.data || [];
       setProgramOptions(Array.isArray(progList) ? progList : []);
     }).catch(() => {
@@ -241,6 +251,9 @@ export function ProgrammeFees() {
       itemAmounts: line?.fee_item_id
         ? { [line.fee_item_id]: line?.amount != null ? String(line.amount) : '' }
         : {},
+      itemSlices: line?.fee_item_id
+        ? { [line.fee_item_id]: line?.installment_tranche != null ? [Number(line.installment_tranche)] : [] }
+        : {},
       level_code: line?.level_code || 'all',
       semester: line?.semester || 'both',
       is_active: line ? line.is_active !== false : true,
@@ -252,31 +265,34 @@ export function ProgrammeFees() {
     if (!assignForm.program_id || assignForm.fee_item_ids.length === 0) return;
     setSaving(true);
     try {
-      if (editingLine) {
-        await api.patch(`/api/programme-fees/${editingLine.id}`, {
+      const res = editingLine
+        ? await api.patch(`/api/programme-fees/${editingLine.id}`, {
           program_id: assignForm.program_id,
           fee_item_id: assignForm.fee_item_ids[0],
           amount: assignForm.amount === '' ? null : Number(assignForm.amount),
+          installment_tranche: (assignForm.itemSlices[assignForm.fee_item_ids[0]] || [])[0] ?? null,
           level_code: assignForm.level_code || 'all',
           semester: assignForm.semester || 'both',
           is_active: assignForm.is_active,
-        });
-      } else {
-        await api.post('/api/programme-fees/bulk', {
+        })
+        : await api.post('/api/programme-fees/bulk', {
           program_id: assignForm.program_id,
           level_code: assignForm.level_code || 'all',
           semester: assignForm.semester || 'both',
-          items: assignForm.fee_item_ids.map((id) => {
+          items: assignForm.fee_item_ids.flatMap((id) => {
             const raw = assignForm.itemAmounts[id];
-            return {
-              fee_item_id: id,
-              amount: raw === '' || raw == null ? null : Number(raw),
-              is_active: assignForm.is_active,
-            };
+            const amount = raw === '' || raw == null ? null : Number(raw);
+            const slices = assignForm.itemSlices[id] || [];
+            const base = { fee_item_id: id, amount, is_active: assignForm.is_active };
+            if (slices.length === 0) {
+              return [{ ...base, installment_tranche: null as number | null }];
+            }
+            return slices.map((tranche) => ({ ...base, installment_tranche: tranche as number | null }));
           }),
         });
+      if (!isPendingApproval(res)) {
+        message.success(editingLine ? 'Fee line updated.' : 'Fees assigned to programme.');
       }
-      message.success(editingLine ? 'Fee line updated.' : 'Fees assigned to programme.');
       setAssignOpen(false);
       loadSummaries();
       loadCatalog();
@@ -313,12 +329,14 @@ export function ProgrammeFees() {
     if (!detail || copyTargets.length === 0) return;
     setCopySaving(true);
     try {
-      await api.post('/api/programme-fees/copy', {
+      const res = await api.post('/api/programme-fees/copy', {
         from_program_id: detail.id,
         to_program_ids: copyTargets,
         replace: copyReplace,
       });
-      message.success(`Schedule copied to ${copyTargets.length} programme${copyTargets.length === 1 ? '' : 's'}.`);
+      if (!isPendingApproval(res)) {
+        message.success(`Schedule copied to ${copyTargets.length} programme${copyTargets.length === 1 ? '' : 's'}.`);
+      }
       setCopyOpen(false);
       loadSummaries();
     } catch (err) {
@@ -344,7 +362,7 @@ export function ProgrammeFees() {
     <div className="space-y-6">
       <WorkspaceHero
         title="Programme fees"
-        description="Assign catalog school fees to programmes, with a naira override per line. View a programme to see slices 1st–4th 25%, then copy that schedule to the rest of the college or department group."
+        description="Assign catalog school fees to programmes, with a naira override and installment slice (1st–4th 25%) per line. Reuse one catalog item across every slice instead of creating four copies."
       >
         <RefreshButton onClick={() => { loadCatalog(); loadSummaries(); if (detail) loadDetail(detail); }} loading={loading} />
         <Btn className="!text-white" onClick={() => openAssign()}>Assign fees</Btn>
@@ -587,10 +605,12 @@ export function ProgrammeFees() {
                 onChange={(v) => setAssignForm((s) => {
                   const ids = editingLine ? [v as number] : (v as number[]);
                   const itemAmounts = { ...s.itemAmounts };
+                  const itemSlices = { ...s.itemSlices };
                   for (const id of ids) {
                     if (itemAmounts[id] === undefined) itemAmounts[id] = '';
+                    if (itemSlices[id] === undefined) itemSlices[id] = [];
                   }
-                  return { ...s, fee_item_ids: ids, itemAmounts };
+                  return { ...s, fee_item_ids: ids, itemAmounts, itemSlices };
                 })}
                 options={scheduleFeeItems.map((f) => ({
                   value: f.id,
@@ -599,35 +619,75 @@ export function ProgrammeFees() {
               />
             </label>
             {editingLine ? (
-              <label className="block">
-                <span className={fieldLabelClass}>Amount override (₦)</span>
-                <input
-                  className={inputClass}
-                  type="number"
-                  min={0}
-                  placeholder="Leave blank for catalog default"
-                  value={assignForm.amount}
-                  onChange={(e) => setAssignForm((s) => ({ ...s, amount: e.target.value }))}
-                />
-              </label>
+              <>
+                <label className="block">
+                  <span className={fieldLabelClass}>Installment slice</span>
+                  <Select
+                    className="w-full"
+                    allowClear
+                    placeholder={
+                      editingLine.fee_item?.installment_tranche != null
+                        ? `Catalog · ${installmentTrancheLabel(editingLine.fee_item.installment_tranche)}`
+                        : 'Catalog default'
+                    }
+                    value={(assignForm.itemSlices[assignForm.fee_item_ids[0]] || [])[0]}
+                    onChange={(v) => setAssignForm((s) => ({
+                      ...s,
+                      itemSlices: { ...s.itemSlices, [s.fee_item_ids[0]]: v != null ? [Number(v)] : [] },
+                    }))}
+                    options={(installmentTranches.length
+                      ? installmentTranches
+                      : Object.entries(TRANCHE_LABELS).map(([value, label]) => ({ value: Number(value), label }))
+                    )}
+                  />
+                </label>
+                <label className="block">
+                  <span className={fieldLabelClass}>Amount override (₦)</span>
+                  <input
+                    className={inputClass}
+                    type="number"
+                    min={0}
+                    placeholder="Leave blank for catalog default"
+                    value={assignForm.amount}
+                    onChange={(e) => setAssignForm((s) => ({ ...s, amount: e.target.value }))}
+                  />
+                </label>
+              </>
             ) : assignForm.fee_item_ids.length > 0 ? (
               <div className="space-y-2">
-                <span className={fieldLabelClass}>Amount override per item (₦)</span>
-                <p className="text-xs text-slate-500">Leave blank to use the catalog default. Spreadsheet cells map to these overrides.</p>
-                <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100">
+                <span className={fieldLabelClass}>Slice and amount override per item</span>
+                <p className="text-xs text-slate-500">
+                  Leave slice empty to keep the catalog default (for example 1st 25%). Select 1st–4th 25% on the same catalog item to reuse it across every installment without creating four fee items.
+                </p>
+                <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100">
                   {assignForm.fee_item_ids.map((id) => {
                     const item = scheduleFeeItems.find((f) => f.id === id);
                     return (
-                      <label key={id} className="flex items-center gap-3 px-3 py-2">
+                      <div key={id} className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center">
                         <span className="min-w-0 flex-1 text-sm text-slate-800">
                           <span className="font-medium">{item?.name || `Fee ${id}`}</span>
                           {item?.installment_tranche != null && (
-                            <span className="text-slate-500"> · {installmentTrancheLabel(item.installment_tranche)}</span>
+                            <span className="text-slate-500"> · catalog {installmentTrancheLabel(item.installment_tranche)}</span>
                           )}
                           <span className="block text-xs text-slate-500">Catalog {formatNaira(item?.amount)}</span>
                         </span>
+                        <Select
+                          className="w-full sm:!w-56 shrink-0"
+                          mode="multiple"
+                          allowClear
+                          placeholder="Catalog default"
+                          value={assignForm.itemSlices[id] || []}
+                          onChange={(v) => setAssignForm((s) => ({
+                            ...s,
+                            itemSlices: { ...s.itemSlices, [id]: v as number[] },
+                          }))}
+                          options={(installmentTranches.length
+                            ? installmentTranches
+                            : Object.entries(TRANCHE_LABELS).map(([value, label]) => ({ value: Number(value), label }))
+                          )}
+                        />
                         <input
-                          className={`${inputClass} !w-32 shrink-0`}
+                          className={`${inputClass} sm:!w-32 shrink-0`}
                           type="number"
                           min={0}
                           placeholder="Default"
@@ -637,7 +697,7 @@ export function ProgrammeFees() {
                             itemAmounts: { ...s.itemAmounts, [id]: e.target.value },
                           }))}
                         />
-                      </label>
+                      </div>
                     );
                   })}
                 </div>
@@ -684,7 +744,7 @@ export function ProgrammeFees() {
             <div>
               <h3 className="text-lg font-semibold text-slate-900">Copy fee schedule</h3>
               <p className="text-sm text-slate-500 mt-1">
-                Copy every fee line from {detail.name} (amount override, level, and semester) onto other programmes in the same college.
+                Copy every fee line from {detail.name} (amount override, installment slice, level, and semester) onto other programmes in the same college.
               </p>
             </div>
             <label className="block">
@@ -720,7 +780,7 @@ export function ProgrammeFees() {
                 checked={copyReplace}
                 onChange={(e) => setCopyReplace(e.target.checked)}
               />
-              <span>Replace existing lines on the destination programmes. Leave unchecked to merge (matching catalog items are overwritten).</span>
+              <span>Replace existing lines on the destination programmes. Leave unchecked to merge (matching catalog item, level, semester, and slice are overwritten).</span>
             </label>
             <div className="flex justify-end gap-2 pt-2">
               <Btn variant="secondary" onClick={() => setCopyOpen(false)}>Cancel</Btn>

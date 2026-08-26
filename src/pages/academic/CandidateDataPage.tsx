@@ -3,7 +3,7 @@ import { Alert, Button, Form, Input, Select, Table, Upload, message } from 'antd
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload';
 import { BookOpen, ClipboardList, Download, GraduationCap, Upload as UploadIcon } from 'lucide-react';
-import api from '../../api';
+import api, { isPendingApproval } from '../../api';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 import { RefreshButton } from '../../components/RefreshButton';
 
@@ -162,10 +162,14 @@ export function CandidateDataPage() {
     setUploading(true);
     setUploadResult(null);
     try {
-      const { data } = await api.post('/api/candidate-data/upload', formData, {
+      const res = await api.post('/api/candidate-data/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      setUploadResult(data.message);
+      if (isPendingApproval(res)) {
+        setFileList([]);
+        return;
+      }
+      setUploadResult(res.data.message);
       setFileList([]);
       load(1, pagination.pageSize);
       message.success('Candidate data uploaded.');

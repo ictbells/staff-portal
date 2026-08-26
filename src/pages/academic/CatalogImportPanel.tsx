@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Alert, Button, Upload, message } from 'antd';
 import type { UploadFile } from 'antd/es/upload';
 import { Download, Upload as UploadIcon } from 'lucide-react';
-import api from '../../api';
+import api, { isPendingApproval } from '../../api';
 
 type ImportResult = {
   created?: number;
@@ -54,9 +54,14 @@ export function CatalogImportPanel({
     formData.append('file', file);
     setUploading(true);
     try {
-      const { data } = await api.post(importUrl, formData, {
+      const res = await api.post(importUrl, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+      if (isPendingApproval(res)) {
+        setFileList([]);
+        return;
+      }
+      const data = res.data;
       setResult(data);
       setFileList([]);
       const created = Number(data.created || 0);

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Checkbox, Select, Upload, message } from 'antd';
 import type { UploadFile } from 'antd/es/upload';
 import { Download, FileSpreadsheet, GraduationCap, Upload as UploadIcon } from 'lucide-react';
-import api from '../../api';
+import api, { isPendingApproval } from '../../api';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 import { RefreshButton } from '../../components/RefreshButton';
 import { ENTRY_MODES } from './constants';
@@ -127,9 +127,14 @@ export function ImportStudentsPage() {
     setUploading(true);
     setResult(null);
     try {
-      const { data } = await api.post('/api/students/import', formData, {
+      const res = await api.post('/api/students/import', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+      const data = res.data;
+      if (isPendingApproval(res)) {
+        setFileList([]);
+        return;
+      }
       if (data.queued && data.import_id) {
         setResult({ queued: true, status: 'queued', import_id: data.import_id });
         message.info('Import queued. This page will refresh when it finishes.');

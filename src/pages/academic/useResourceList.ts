@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { message } from 'antd';
-import api from '../../api';
+import api, { isPendingApproval } from '../../api';
 import { accessDeniedDescription } from '../../lib/portalAccess';
 
 export function useResourceList<T>(endpoint: string, enabled = true) {
@@ -44,8 +44,10 @@ function apiError(err: unknown, fallback: string) {
 
 export async function postResource(url: string, body: Record<string, unknown>) {
   try {
-    await api.post(url, body);
-    message.success('Saved successfully.');
+    const res = await api.post(url, body);
+    if (!isPendingApproval(res)) {
+      message.success('Saved successfully.');
+    }
   } catch (err: unknown) {
     message.error(apiError(err, 'Unable to save.'));
     throw err;
@@ -54,8 +56,10 @@ export async function postResource(url: string, body: Record<string, unknown>) {
 
 export async function patchResource(url: string, body: Record<string, unknown>) {
   try {
-    await api.patch(url, body);
-    message.success('Updated successfully.');
+    const res = await api.patch(url, body);
+    if (!isPendingApproval(res)) {
+      message.success('Updated successfully.');
+    }
   } catch (err: unknown) {
     message.error(apiError(err, 'Unable to update.'));
     throw err;
@@ -64,8 +68,10 @@ export async function patchResource(url: string, body: Record<string, unknown>) 
 
 export async function deleteResource(url: string) {
   try {
-    await api.delete(url);
-    message.success('Deleted successfully.');
+    const res = await api.delete(url);
+    if (!isPendingApproval(res)) {
+      message.success('Deleted successfully.');
+    }
   } catch (err: unknown) {
     message.error(apiError(err, 'Unable to delete.'));
     throw err;

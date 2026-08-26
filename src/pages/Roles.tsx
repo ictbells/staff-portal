@@ -205,7 +205,7 @@ export default function Roles() {
     setCreateForm(emptyForm());
   };
 
-  const submitCreate = async () => {
+    const submitCreate = async () => {
     if (!createForm.name.trim()) {
       message.error('Role name is required.');
       return;
@@ -213,12 +213,14 @@ export default function Roles() {
 
     setCreating(true);
     try {
-      await api.post('/api/roles', {
+      const res = await api.post('/api/roles', {
         name: createForm.name.trim(),
         description: createForm.description.trim() || null,
         permission_ids: createForm.permission_ids,
       });
-      message.success('Role created.');
+      if (res.status !== 202 && res.data?.status !== 'pending_approval') {
+        message.success('Role created.');
+      }
       closeCreate();
       loadRoles(1, search);
     } catch (err: any) {
@@ -255,12 +257,19 @@ export default function Roles() {
       if (!editing.is_system) {
         patchPayload.name = editForm.name.trim();
       }
-      await api.patch(`/api/roles/${editing.id}`, patchPayload);
-      await api.put(`/api/roles/${editing.id}/permissions`, {
+      const patchRes = await api.patch(`/api/roles/${editing.id}`, patchPayload);
+      if (patchRes.status === 202 || patchRes.data?.status === 'pending_approval') {
+        closeEdit();
+        loadRoles(pagination.current, search);
+        return;
+      }
+      const permRes = await api.put(`/api/roles/${editing.id}/permissions`, {
         permission_ids: editForm.permission_ids,
         reason: 'Updated via roles screen',
       });
-      message.success('Role updated.');
+      if (permRes.status !== 202 && permRes.data?.status !== 'pending_approval') {
+        message.success('Role updated.');
+      }
       closeEdit();
       loadRoles(pagination.current, search);
     } catch (err: any) {
@@ -273,8 +282,10 @@ export default function Roles() {
 
   const remove = async (role: RoleRow) => {
     try {
-      await api.delete(`/api/roles/${role.id}`, { data: { reason: 'Removed via roles screen' } });
-      message.success('Role deleted.');
+      const res = await api.delete(`/api/roles/${role.id}`, { data: { reason: 'Removed via roles screen' } });
+      if (res.status !== 202 && res.data?.status !== 'pending_approval') {
+        message.success('Role deleted.');
+      }
       loadRoles(pagination.current, search);
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to delete role.');

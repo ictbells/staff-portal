@@ -5,7 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { Award, BookOpen, Building2, GraduationCap, Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import api from '../../api';
+import api, { isPendingApproval } from '../../api';
 import { ConfirmDeleteButton } from '../../components/ConfirmDeleteButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 import { RefreshButton } from '../../components/RefreshButton';
@@ -374,7 +374,14 @@ export function SessionsPage() {
     if (!closeSession) return;
     setCloseSubmitting(true);
     try {
-      const { data } = await api.post(`/api/academic/sessions/${closeSession.id}/close`);
+      const res = await api.post(`/api/academic/sessions/${closeSession.id}/close`);
+      if (isPendingApproval(res)) {
+        setCloseSession(null);
+        setClosePreview(null);
+        reload();
+        return;
+      }
+      const data = res.data;
       message.success(
         `Session closed. Promoted ${data.promoted_count ?? 0} student(s); `
         + `${data.skipped_final_count ?? 0} unchanged at final year.`,

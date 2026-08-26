@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Button, Dropdown, Modal, message } from 'antd';
 import { Download, Pencil, Trash2 } from 'lucide-react';
-import api from '../../api';
+import api, { isPendingApproval } from '../../api';
 import { useAuth } from '../../auth';
 import { AccessDeniedPanel } from '../../components/AccessDeniedPanel';
 import { getNavItemAccess } from '../../lib/portalAccess';
@@ -104,8 +104,10 @@ export default function ReportRun() {
       content: 'This cannot be undone.',
       okButtonProps: { danger: true },
       onOk: async () => {
-        await api.delete(`/api/reports/saved/${id}`);
-        message.success('Report deleted.');
+        const res = await api.delete(`/api/reports/saved/${id}`);
+        if (!isPendingApproval(res)) {
+          message.success('Report deleted.');
+        }
         navigate('/reports');
       },
     });

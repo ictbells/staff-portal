@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { message } from 'antd';
 import { Percent, Wallet } from 'lucide-react';
-import api from '../../api';
+import api, { isPendingApproval } from '../../api';
 import { RefreshButton } from '../../components/RefreshButton';
 import {
   Badge, Btn, Card, DataTable, fieldLabelClass, inputClass,
@@ -79,12 +79,11 @@ export function Rebates() {
         default_value: value,
         is_active: form.is_active,
       };
-      if (editing) {
-        await api.patch(`/api/rebate-types/${editing.id}`, payload);
-        message.success('Rebate type updated.');
-      } else {
-        await api.post('/api/rebate-types', payload);
-        message.success('Rebate type created.');
+      const res = editing
+        ? await api.patch(`/api/rebate-types/${editing.id}`, payload)
+        : await api.post('/api/rebate-types', payload);
+      if (!isPendingApproval(res)) {
+        message.success(editing ? 'Rebate type updated.' : 'Rebate type created.');
       }
       setModalOpen(false);
       load();
@@ -98,8 +97,10 @@ export function Rebates() {
   const remove = async (row: any) => {
     if (!window.confirm(`Remove rebate type “${row.name}”?`)) return;
     try {
-      await api.delete(`/api/rebate-types/${row.id}`);
-      message.success('Rebate type removed.');
+      const res = await api.delete(`/api/rebate-types/${row.id}`);
+      if (!isPendingApproval(res)) {
+        message.success('Rebate type removed.');
+      }
       load();
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Could not remove rebate type.');

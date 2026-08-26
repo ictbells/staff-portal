@@ -3,7 +3,7 @@ import { DatePicker, Input, Select, Tag, message } from 'antd';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import { FileText, Search } from 'lucide-react';
-import api from '../api';
+import api, { isPendingApproval } from '../api';
 import { useAuth } from '../auth';
 import { AccessDeniedPanel } from '../components/AccessDeniedPanel';
 import { RefreshButton } from '../components/RefreshButton';
@@ -188,8 +188,12 @@ export default function TranscriptRequests({ channel }: { channel: TranscriptCha
     if (!detail) return;
     setBusy(true);
     try {
-      const { data } = await api.post(`/api/staff/transcript-requests/${detail.id}/start`);
-      setDetail(data);
+      const res = await api.post(`/api/staff/transcript-requests/${detail.id}/start`);
+      if (isPendingApproval(res)) {
+        load();
+        return;
+      }
+      setDetail(res.data);
       message.success('Marked as processing.');
       load();
     } catch (err: any) {
@@ -208,10 +212,14 @@ export default function TranscriptRequests({ channel }: { channel: TranscriptCha
       if (deliveryMode === 'uploaded_pdf' && uploadFile) {
         form.append('file', uploadFile);
       }
-      const { data } = await api.post(`/api/staff/transcript-requests/${detail.id}/ready`, form, {
+      const res = await api.post(`/api/staff/transcript-requests/${detail.id}/ready`, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      setDetail(data);
+      if (isPendingApproval(res)) {
+        load();
+        return;
+      }
+      setDetail(res.data);
       message.success('Request marked ready. Requester notified by email.');
       load();
     } catch (err: any) {
@@ -228,10 +236,14 @@ export default function TranscriptRequests({ channel }: { channel: TranscriptCha
     }
     setBusy(true);
     try {
-      const { data } = await api.post(`/api/staff/transcript-requests/${detail.id}/reject`, {
+      const res = await api.post(`/api/staff/transcript-requests/${detail.id}/reject`, {
         reason: rejectReason.trim(),
       });
-      setDetail(data);
+      if (isPendingApproval(res)) {
+        load();
+        return;
+      }
+      setDetail(res.data);
       message.success('Request rejected. Requester notified.');
       load();
     } catch (err: any) {

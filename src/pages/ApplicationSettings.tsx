@@ -13,7 +13,7 @@ import {
   ShieldCheck,
   Users,
 } from 'lucide-react';
-import api from '../api';
+import api, { isPendingApproval } from '../api';
 import { useAuth } from '../auth';
 import { AccessDeniedPanel } from '../components/AccessDeniedPanel';
 import {
@@ -250,8 +250,11 @@ export default function ApplicationSettings() {
     e?.preventDefault();
     setSaving(true);
     try {
-      const { data } = await api.put('/api/security-settings', settings);
-      applyPayload(data);
+      const res = await api.put('/api/security-settings', settings);
+      if (isPendingApproval(res)) {
+        return;
+      }
+      applyPayload(res.data);
       message.success('Settings saved. Contact details are shown on the student and staff login pages.');
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to save settings.');

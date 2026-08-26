@@ -33,7 +33,7 @@ import {
   UserRound,
   Users,
 } from 'lucide-react';
-import api from '../../api';
+import api, { isPendingApproval } from '../../api';
 import { useAuth } from '../../auth';
 import { RefreshButton } from '../../components/RefreshButton';
 import { Badge, Card, StatCard, WorkspaceHero, fieldLabelClass } from '../../components/ui';
@@ -414,13 +414,20 @@ export default function ClinicWorkspace() {
   const checkIn = async () => {
     try {
       const values = await checkInForm.validateFields();
-      const { data } = await api.post('/api/clinic/queue', {
+      const { data, status } = await api.post('/api/clinic/queue', {
         student_id: values.student_id,
         visit_type: values.visit_type || 'walk_in',
         complaint: values.complaint,
         triage_priority: values.triage_priority,
         visited_on: queueDate.format('YYYY-MM-DD'),
       });
+      if (isPendingApproval({ status, data })) {
+        setCheckInOpen(false);
+        checkInForm.resetFields();
+        loadQueue();
+        loadAppointments();
+        return;
+      }
       message.success(data?.reused_appointment
         ? 'Checked in against today’s appointment.'
         : 'Student checked in');
@@ -438,12 +445,14 @@ export default function ClinicWorkspace() {
     if (!chartStudentId) return;
     const values = await profileForm.validateFields();
     const { coverage_mode: _coverageMode, ...rest } = values;
-    await api.put(`/api/medical/${chartStudentId}`, {
+    const res = await api.put(`/api/medical/${chartStudentId}`, {
       ...rest,
       nhis_valid_until: values.nhis_valid_until ? values.nhis_valid_until.format('YYYY-MM-DD') : null,
       ...coveragePayload(values),
     });
-    message.success('Profile saved');
+    if (!isPendingApproval(res)) {
+      message.success('Profile saved');
+    }
     loadChart();
   };
 

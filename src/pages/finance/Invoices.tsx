@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Dropdown, Form, Input, Modal, Select, message } from 'antd';
 import type { MenuProps } from 'antd';
 import { CircleDollarSign, Download, FileSpreadsheet, FileText, Receipt, Search, X } from 'lucide-react';
-import api from '../../api';
+import api, { isPendingApproval } from '../../api';
 import { RefreshButton } from '../../components/RefreshButton';
 import {
   Badge, Card, DataTable, fieldLabelClass, inputClass,
@@ -458,6 +458,10 @@ export function Invoices() {
         value: Number(values.value),
         reason: String(values.reason || '').trim(),
       });
+      if (isPendingApproval(res)) {
+        loadInvoices();
+        return;
+      }
       message.success(`Rebate applied to ${invoice.number}.`);
       setRebateTarget(res.data?.invoice || null);
       rebateForm.resetFields();
@@ -515,6 +519,10 @@ export function Invoices() {
         setReverseSavingId(rebate.id);
         try {
           const res = await api.post(`/api/invoices/${invoice.id}/rebates/${rebate.id}/reverse`, { reason: text });
+          if (isPendingApproval(res)) {
+            loadInvoices();
+            return;
+          }
           message.success('Rebate reversed.');
           setRebateTarget(res.data?.invoice || invoice);
           loadInvoices();

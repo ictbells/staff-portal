@@ -63,4 +63,8 @@ api.interceptors.response.use(
   },
 );
 
+export function isPendingApproval(res: { status?: number; data?: { status?: string } } | undefined): boolean {
+  return Boolean(res && (res.status === 202 || res.data?.status === 'pending_approval'));
+}
+
 export default api;

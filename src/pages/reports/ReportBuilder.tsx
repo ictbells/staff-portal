@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button, Checkbox, Dropdown, Form, Input, Modal, Select, message } from 'antd';
 import { Download, Play, Save } from 'lucide-react';
-import api from '../../api';
+import api, { isPendingApproval } from '../../api';
 import { useAuth } from '../../auth';
 import { AccessDeniedPanel } from '../../components/AccessDeniedPanel';
 import { getNavItemAccess } from '../../lib/portalAccess';
@@ -138,13 +138,19 @@ export default function ReportBuilder() {
         visibility,
       };
       if (id) {
-        await api.patch(`/api/reports/saved/${id}`, payload);
-        message.success('Report updated.');
+        const res = await api.patch(`/api/reports/saved/${id}`, payload);
+        if (!isPendingApproval(res)) {
+          message.success('Report updated.');
+        }
         setSaveOpen(false);
       } else {
-        const { data } = await api.post('/api/reports/saved', payload);
+        const res = await api.post('/api/reports/saved', payload);
+        if (isPendingApproval(res)) {
+          setSaveOpen(false);
+          return;
+        }
         message.success('Report saved.');
-        navigate(`/reports/${data.id}/edit`, { replace: true });
+        navigate(`/reports/${res.data.id}/edit`, { replace: true });
         setSaveOpen(false);
       }
     } catch (err: any) {
