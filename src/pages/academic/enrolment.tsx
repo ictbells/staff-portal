@@ -156,8 +156,7 @@ function courseProgrammeNames(course?: CourseRef | null) {
 
 function courseOfferingLabel(course?: CourseRef | null) {
   if (!course) return '—';
-  const programs = courseProgrammeNames(course);
-  return programs ? `${course.code} — (${programs}) ${course.title}` : `${course.code} — ${course.title}`;
+  return `${course.code} — ${course.title}`;
 }
 
 function CourseOfferingCell({ course }: { course?: CourseRef | null }) {
@@ -262,11 +261,18 @@ export function OfferingsPage() {
 
   const submit = async () => {
     const values = await crud.form.validateFields();
-    await crud.save('/api/academic/offerings', (id) => `/api/academic/offerings/${id}`, {
-      ...values,
+    const payload: Record<string, unknown> = {
+      academic_term_id: values.academic_term_id,
       lecturer_name: values.lecturer_name || null,
+      section: values.section || 'A',
       capacity: values.capacity ?? null,
-    }, reload);
+    };
+    if (crud.isEdit) {
+      payload.course_id = values.course_id;
+    } else {
+      payload.course_ids = values.course_ids;
+    }
+    await crud.save('/api/academic/offerings', (id) => `/api/academic/offerings/${id}`, payload, reload);
   };
 
   return (
@@ -331,9 +337,22 @@ export function OfferingsPage() {
       </Modal>
       <Modal title={crud.isEdit ? 'Edit offering' : 'Add offering'} open={crud.open} onCancel={crud.close} onOk={submit} confirmLoading={crud.saving} destroyOnHidden width={520}>
         <Form form={crud.form} layout="vertical" className="mt-4">
-          <Form.Item name="course_id" label="Course" rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="label" options={courses.map((course) => ({ value: course.id, label: courseOfferingLabel(course) }))} />
-          </Form.Item>
+          {crud.isEdit ? (
+            <Form.Item name="course_id" label="Course" rules={[{ required: true }]}>
+              <Select showSearch optionFilterProp="label" options={courses.map((course) => ({ value: course.id, label: courseOfferingLabel(course) }))} />
+            </Form.Item>
+          ) : (
+            <Form.Item name="course_ids" label="Courses" rules={[{ required: true, type: 'array', min: 1, message: 'Select at least one course.' }]}>
+              <Select
+                mode="multiple"
+                showSearch
+                optionFilterProp="label"
+                maxTagCount="responsive"
+                placeholder="Select one or more courses"
+                options={courses.map((course) => ({ value: course.id, label: courseOfferingLabel(course) }))}
+              />
+            </Form.Item>
+          )}
           <Form.Item name="academic_term_id" label="Semester" rules={[{ required: true }]}>
             <Select options={terms.map((term) => ({ value: term.id, label: `${term.session_label || ''} ${term.name}`.trim() }))} />
           </Form.Item>
