@@ -261,6 +261,14 @@ export function OfferingsPage() {
 
   const submit = async () => {
     const values = await crud.form.validateFields();
+    const selected = values.course_ids ?? values.course_id;
+    const courseIds = (Array.isArray(selected) ? selected : [selected])
+      .map((id: unknown) => Number(id))
+      .filter((id: number) => Number.isInteger(id) && id > 0);
+    if (!crud.isEdit && courseIds.length === 0) {
+      message.error('Select at least one course.');
+      return;
+    }
     const payload: Record<string, unknown> = {
       academic_term_id: values.academic_term_id,
       lecturer_name: values.lecturer_name || null,
@@ -268,9 +276,10 @@ export function OfferingsPage() {
       capacity: values.capacity ?? null,
     };
     if (crud.isEdit) {
-      payload.course_id = values.course_id;
+      payload.course_id = values.course_id ?? courseIds[0];
     } else {
-      payload.course_ids = values.course_ids;
+      payload.course_ids = courseIds;
+      payload.course_id = courseIds[0];
     }
     await crud.save('/api/academic/offerings', (id) => `/api/academic/offerings/${id}`, payload, reload);
   };
@@ -281,7 +290,7 @@ export function OfferingsPage() {
       description="Publish programme courses as section A, then set lecturers and capacity. Students register from the current semester."
       loading={loading}
       onRefresh={reload}
-      onAdd={() => crud.openCreate({ section: 'A', academic_term_id: currentTermId })}
+      onAdd={() => crud.openCreate({ section: 'A', academic_term_id: currentTermId, course_id: [] })}
       canAdd={courses.length > 0 && terms.length > 0}
       count={rows.length}
       countLabel="Offerings"
@@ -342,7 +351,7 @@ export function OfferingsPage() {
               <Select showSearch optionFilterProp="label" options={courses.map((course) => ({ value: course.id, label: courseOfferingLabel(course) }))} />
             </Form.Item>
           ) : (
-            <Form.Item name="course_ids" label="Courses" rules={[{ required: true, type: 'array', min: 1, message: 'Select at least one course.' }]}>
+            <Form.Item name="course_id" label="Courses" rules={[{ required: true, type: 'array', min: 1, message: 'Select at least one course.' }]}>
               <Select
                 mode="multiple"
                 showSearch
