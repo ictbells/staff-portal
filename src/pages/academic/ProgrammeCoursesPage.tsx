@@ -6,6 +6,7 @@ import { RefreshButton } from '../../components/RefreshButton';
 import {
   Btn, Card, StatCard, WorkspaceHero, fieldLabelClass, inputClass,
 } from '../../components/ui';
+import { ENTRY_MODES } from './constants';
 import { useResourceList } from './useResourceList';
 
 type Faculty = { id: number; name: string };
@@ -33,25 +34,22 @@ type Program = {
   courses?: Course[];
 };
 
-const ADMISSION_CATEGORIES = [
-  { value: 'undergraduate', label: 'Undergraduate' },
-  { value: 'jupeb', label: 'JUPEB' },
-  { value: 'postgraduate', label: 'Postgraduate' },
-] as const;
+const ADMISSION_CATEGORIES = ENTRY_MODES;
 
 type AdmissionCategory = (typeof ADMISSION_CATEGORIES)[number]['value'];
 
 type AssignedRow = { course_id: number; academic_level_id: number | null };
 
-function admissionCategory(program: Program): AdmissionCategory {
-  const modes = program.entry_modes ?? [];
-  if (modes.includes('pg') || program.study_level === 'postgraduate') return 'postgraduate';
-  if (modes.includes('jupeb')) return 'jupeb';
-  return 'undergraduate';
+function hasEntryMode(program: Program, mode: string) {
+  return (program.entry_modes ?? []).includes(mode);
 }
 
-function categoryLabel(value: AdmissionCategory) {
-  return ADMISSION_CATEGORIES.find((item) => item.value === value)?.label || value;
+function entryModeLabels(program: Program) {
+  const modes = program.entry_modes ?? [];
+  const labels = ADMISSION_CATEGORIES
+    .filter((item) => modes.includes(item.value))
+    .map((item) => item.label);
+  return labels.length ? labels.join(' · ') : '—';
 }
 
 function programLabel(program: Program) {
@@ -111,7 +109,7 @@ export function ProgrammeCoursesPage() {
   const visiblePrograms = useMemo(() => {
     const q = search.trim().toLowerCase();
     return programs.filter((program) => {
-      if (category && admissionCategory(program) !== category) return false;
+      if (category && !hasEntryMode(program, category)) return false;
       const facultyId = program.department?.faculty_id ?? program.department?.faculty?.id;
       if (collegeId && Number(facultyId) !== Number(collegeId)) return false;
       const deptId = program.department_id ?? program.department?.id;
@@ -220,7 +218,7 @@ export function ProgrammeCoursesPage() {
             <Select
               allowClear
               className="w-full min-w-[180px]"
-              placeholder="Undergraduate, JUPEB, PG"
+              placeholder="UTME, Direct Entry, JUPEB…"
               value={category}
               onChange={setCategory}
               options={ADMISSION_CATEGORIES.map((item) => ({ value: item.value, label: item.label }))}
@@ -253,7 +251,7 @@ export function ProgrammeCoursesPage() {
                       {program.department?.faculty?.name || '—'} · {program.department?.name || '—'}
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
-                      {categoryLabel(admissionCategory(program))}
+                      {entryModeLabels(program)}
                       {' · '}
                       {program.courses?.length || 0} courses
                       {' · '}
@@ -274,7 +272,7 @@ export function ProgrammeCoursesPage() {
               <div>
                 <h3 className="text-base font-semibold text-slate-900">{programLabel(selected)}</h3>
                 <p className="text-sm text-slate-500 mt-1">
-                  {categoryLabel(admissionCategory(selected))}
+                  {entryModeLabels(selected)}
                   {selected.department?.name ? ` · ${selected.department.name}` : ''}
                   {selected.department?.faculty?.name ? ` · ${selected.department.faculty.name}` : ''}
                   {`. ${studentCount} student${studentCount === 1 ? '' : 's'} will see these courses at registration.`}

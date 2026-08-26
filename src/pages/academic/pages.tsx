@@ -49,9 +49,8 @@ function entryModeTags(modes?: string[]) {
 type ProgramRef = { id: number; name: string; code?: string };
 type CourseRef = { id: number; code: string; title: string };
 
-function programTags(programs?: ProgramRef[]) {
-  if (!programs?.length) return '—';
-  const labels = programs.map((p) => p.code || p.name);
+function compactTags(labels: string[]) {
+  if (!labels.length) return '—';
   const extra = labels.length - 1;
   const summary = extra > 0 ? (
     <span className="inline-flex items-center gap-1 min-w-0 max-w-full">
@@ -67,7 +66,7 @@ function programTags(programs?: ProgramRef[]) {
   return (
     <Tooltip
       title={(
-        <div className="space-y-0.5">
+        <div className="max-h-64 overflow-y-auto space-y-0.5">
           {labels.map((label) => <div key={label}>{label}</div>)}
         </div>
       )}
@@ -77,13 +76,12 @@ function programTags(programs?: ProgramRef[]) {
   );
 }
 
+function programTags(programs?: ProgramRef[]) {
+  return compactTags((programs ?? []).map((p) => p.code || p.name));
+}
+
 function courseTags(courses?: CourseRef[]) {
-  if (!courses?.length) return '—';
-  return (
-    <Space size={[4, 4]} wrap>
-      {courses.map((c) => <Tag key={c.id}>{c.code}</Tag>)}
-    </Space>
-  );
+  return compactTags((courses ?? []).map((c) => c.code));
 }
 
 type Campus = { id: number; name: string; code?: string; city?: string; address?: string; is_active?: boolean };
