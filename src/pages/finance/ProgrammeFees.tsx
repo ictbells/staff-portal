@@ -419,6 +419,7 @@ export function ProgrammeFees() {
               onChange={setStudyLevel}
               options={[
                 { value: 'undergraduate', label: 'Undergraduate' },
+                { value: 'jupeb', label: 'JUPEB' },
                 { value: 'postgraduate', label: 'Postgraduate' },
               ]}
             />
@@ -467,8 +468,8 @@ export function ProgrammeFees() {
                   <td className={tdClass}>{row.faculty?.name || '—'}</td>
                   <td className={tdClass}>{row.department?.name || '—'}</td>
                   <td className={tdClass}>
-                    <Badge variant={row.study_level === 'postgraduate' ? 'purple' : 'info'}>
-                      {row.study_level || '—'}
+                    <Badge variant={row.study_level === 'postgraduate' ? 'purple' : row.study_level === 'jupeb' ? 'warning' : 'info'}>
+                      {row.study_level === 'jupeb' ? 'JUPEB' : row.study_level || '—'}
                     </Badge>
                   </td>
                   <td className={tdClass}>

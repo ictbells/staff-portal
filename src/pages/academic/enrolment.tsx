@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { BookOpen, Plus, Search } from 'lucide-react';
-import api from '../../api';
+import api, { isPendingApproval } from '../../api';
 import { useAuth } from '../../auth';
 import { RefreshButton } from '../../components/RefreshButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
@@ -28,7 +28,16 @@ type Term = {
   is_current?: boolean;
   extension_price_per_unit?: number | string | null;
 };
-type CourseRef = { id: number; code: string; title: string; units?: number; course_type?: string; status?: string };
+type CourseRef = {
+  id: number;
+  code: string;
+  title: string;
+  units?: number;
+  course_type?: string;
+  status?: string;
+  programs?: { id: number; name: string; code?: string | null }[];
+};
+type ProgramRef = { id: number; name: string; code?: string | null; courses?: { id: number }[] };
 type Offering = {
   id: number;
   section?: string;
@@ -131,6 +140,22 @@ function courseStatusLabel(value?: string) {
   return 'Core';
 }
 
+function courseProgrammePrefix(course?: CourseRef | null) {
+  const labels = (course?.programs || [])
+    .map((program) => program.name || program.code)
+    .filter((value): value is string => Boolean(value));
+  if (labels.length === 0) return '';
+  const shown = labels.slice(0, 3);
+  const extra = labels.length - shown.length;
+  const text = extra > 0 ? `${shown.join(', ')} +${extra}` : shown.join(', ');
+  return `(${text}) `;
+}
+
+function courseOfferingLabel(course?: CourseRef | null) {
+  if (!course) return '—';
+  return `${course.code} — ${courseProgrammePrefix(course)}${course.title}`;
+}
+
 function rosterLabel(status?: string) {
   if (status === 'registered') return 'Registered';
   if (status === 'in_progress') return 'In progress';
@@ -141,6 +166,9 @@ export function OfferingsPage() {
   const [sessionId, setSessionId] = useState<number | undefined>();
   const [level, setLevel] = useState<string | undefined>();
   const [termId, setTermId] = useState<number | undefined>();
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishForm] = Form.useForm();
   const endpoint = useMemo(() => {
     const qs = new URLSearchParams();
     if (sessionId) qs.set('academic_session_id', String(sessionId));
@@ -152,10 +180,46 @@ export function OfferingsPage() {
   const { rows, loading, reload } = useResourceList<Offering>(endpoint);
   const { rows: terms } = useResourceList<Term>('/api/academic/terms');
   const { rows: courses } = useResourceList<CourseRef>('/api/academic/courses');
+  const { rows: programs } = useResourceList<ProgramRef>('/api/academic/programs');
   const crud = useCrudModal<Offering>();
+  const currentTermId = termId ?? terms.find((term) => term.is_current)?.id;
+
+  const openPublish = () => {
+    publishForm.setFieldsValue({
+      academic_term_id: currentTermId,
+      program_id: undefined,
+    });
+    setPublishOpen(true);
+  };
+
+  const publishFromCurriculum = async () => {
+    const values = await publishForm.validateFields();
+    setPublishing(true);
+    try {
+      const res = await api.post('/api/academic/offerings/from-curriculum', {
+        academic_term_id: values.academic_term_id,
+        program_id: values.program_id || null,
+      });
+      if (!isPendingApproval(res)) {
+        const created = Number(res.data?.created ?? 0);
+        const skipped = Number(res.data?.skipped ?? 0);
+        message.success(
+          created === 0
+            ? `No new offerings. ${skipped} mapped course${skipped === 1 ? '' : 's'} already offered this semester.`
+            : `Published ${created} offering${created === 1 ? '' : 's'}. ${skipped} already existed.`,
+        );
+        await reload();
+      }
+      setPublishOpen(false);
+    } catch (err) {
+      message.error(apiError(err, 'Unable to publish programme courses.'));
+    } finally {
+      setPublishing(false);
+    }
+  };
 
   const columns: ColumnsType<Offering> = [
-    { title: 'Course', key: 'course', render: (_, row) => (row.course ? `${row.course.code} — ${row.course.title}` : '—') },
+    { title: 'Course', key: 'course', render: (_, row) => courseOfferingLabel(row.course) },
     { title: 'Type', key: 'type', width: 130, render: (_, row) => bucketLabel(row.course?.course_type) },
     { title: 'Status', key: 'status', width: 110, render: (_, row) => courseStatusLabel(row.course?.status) },
     { title: 'Section', dataIndex: 'section', key: 'section', width: 90, render: (value) => value || 'A' },
@@ -192,10 +256,10 @@ export function OfferingsPage() {
   return (
     <ResourceShell
       title="Course offerings"
-      description="Publish semester sections, capacity, and lecturers. Students can only register from offerings in the current term."
+      description="Each semester, publish mapped programme courses as section A with unlimited seats, then set lecturers and capacity. Students register from offerings in the current term."
       loading={loading}
       onRefresh={reload}
-      onAdd={() => crud.openCreate({ section: 'A' })}
+      onAdd={() => crud.openCreate({ section: 'A', academic_term_id: currentTermId })}
       canAdd={courses.length > 0 && terms.length > 0}
       count={rows.length}
       countLabel="Offerings"
@@ -210,14 +274,49 @@ export function OfferingsPage() {
             onChange={setTermId}
             options={terms.map((term) => ({ value: term.id, label: `${term.session_label || ''} ${term.name}`.trim() }))}
           />
+          <Button onClick={openPublish} disabled={terms.length === 0}>
+            Publish programme courses
+          </Button>
         </div>
       )}
     >
-      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1100 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No offerings yet.' }} />
+      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1100 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No offerings yet. Publish programme courses for this semester, or add one course.' }} />
+      <Modal
+        title="Publish programme courses"
+        open={publishOpen}
+        onCancel={() => setPublishOpen(false)}
+        onOk={publishFromCurriculum}
+        confirmLoading={publishing}
+        okText="Publish"
+        destroyOnHidden
+        width={520}
+      >
+        <p className="text-sm text-slate-600 mb-4">
+          Creates a section A offering (unlimited seats, no lecturer) for every catalog course assigned on Programme courses.
+          Courses that already have an offering this semester are skipped. Add extra sections or lecturers afterwards.
+        </p>
+        <Form form={publishForm} layout="vertical">
+          <Form.Item name="academic_term_id" label="Semester" rules={[{ required: true, message: 'Choose the semester to publish into.' }]}>
+            <Select options={terms.map((term) => ({ value: term.id, label: `${term.session_label || ''} ${term.name}`.trim() }))} />
+          </Form.Item>
+          <Form.Item name="program_id" label="Programme" extra="Leave blank to publish mapped courses from every programme. Shared courses still create one offering.">
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="All programmes"
+              options={programs.map((program) => ({
+                value: program.id,
+                label: program.code ? `${program.name} (${program.code})` : program.name,
+              }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
       <Modal title={crud.isEdit ? 'Edit offering' : 'Add offering'} open={crud.open} onCancel={crud.close} onOk={submit} confirmLoading={crud.saving} destroyOnHidden width={520}>
         <Form form={crud.form} layout="vertical" className="mt-4">
           <Form.Item name="course_id" label="Course" rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="label" options={courses.map((course) => ({ value: course.id, label: `${course.code} — ${course.title}` }))} />
+            <Select showSearch optionFilterProp="label" options={courses.map((course) => ({ value: course.id, label: courseOfferingLabel(course) }))} />
           </Form.Item>
           <Form.Item name="academic_term_id" label="Semester" rules={[{ required: true }]}>
             <Select options={terms.map((term) => ({ value: term.id, label: `${term.session_label || ''} ${term.name}`.trim() }))} />
@@ -302,14 +401,16 @@ export function CourseRegistrationPage() {
   const enroll = async (courseOfferingId: number) => {
     if (!studentId) return;
     try {
-      await api.post('/api/academic/course-registration/enroll', {
+      const res = await api.post('/api/academic/course-registration/enroll', {
         student_id: studentId,
         course_offering_id: courseOfferingId,
         reason: reason || undefined,
       });
-      message.success('Course registered.');
-      setReason('');
-      await loadContext(studentId);
+      if (!isPendingApproval(res)) {
+        message.success('Course registered.');
+        setReason('');
+        await loadContext(studentId);
+      }
     } catch (err) {
       message.error(apiError(err, 'Unable to register this course.'));
     }
@@ -318,10 +419,12 @@ export function CourseRegistrationPage() {
   const drop = async (enrollmentId: number) => {
     if (!studentId) return;
     try {
-      await api.delete(`/api/academic/course-registration/enrollments/${enrollmentId}`, { data: { reason: reason || undefined } });
-      message.success('Course dropped.');
-      setReason('');
-      await loadContext(studentId);
+      const res = await api.delete(`/api/academic/course-registration/enrollments/${enrollmentId}`, { data: { reason: reason || undefined } });
+      if (!isPendingApproval(res)) {
+        message.success('Course dropped.');
+        setReason('');
+        await loadContext(studentId);
+      }
     } catch (err) {
       message.error(apiError(err, 'Unable to drop this course.'));
     }
@@ -334,16 +437,18 @@ export function CourseRegistrationPage() {
       return;
     }
     try {
-      await api.post('/api/academic/course-registration/grace', {
+      const res = await api.post('/api/academic/course-registration/grace', {
         student_id: studentId,
         academic_term_id: ctx?.term?.id,
         bucket: graceBucket,
         extra_units: graceUnits,
         reason: graceReason,
       });
-      message.success('Grace units granted.');
-      setGraceReason('');
-      await loadContext(studentId);
+      if (!isPendingApproval(res)) {
+        message.success('Grace units granted.');
+        setGraceReason('');
+        await loadContext(studentId);
+      }
     } catch (err) {
       message.error(apiError(err, 'Unable to grant grace units.'));
     }
@@ -562,7 +667,10 @@ export function UnitLimitsPage() {
             <Select showSearch optionFilterProp="label" options={meta.programs.map((program) => ({ value: program.id, label: program.code ? `${program.code} — ${program.name}` : program.name }))} />
           </Form.Item>
           <Form.Item name="academic_level_id" label="Level">
-            <Select allowClear options={meta.levels.map((level) => ({ value: level.id, label: level.name }))} />
+            <Select allowClear options={meta.levels.map((level) => ({
+              value: level.id,
+              label: level.study_level ? `${level.name} · ${level.study_level}` : level.name,
+            }))} />
           </Form.Item>
           <Form.Item name="academic_term_id" label="Semester">
             <Select allowClear options={meta.terms.map((term) => ({ value: term.id, label: `${term.session_label || ''} ${term.name}`.trim() }))} />
@@ -598,14 +706,16 @@ export function RegistrationExtensionsPage() {
 
   const review = async (row: Extension, decision: 'approve' | 'reject') => {
     try {
-      await api.post(`/api/academic/registration-extensions/${row.id}/review`, {
+      const res = await api.post(`/api/academic/registration-extensions/${row.id}/review`, {
         decision,
         approved_units: decision === 'approve' ? (unitsById[row.id] || row.requested_units) : undefined,
         staff_note: note || undefined,
       });
-      message.success(decision === 'approve' ? 'Extension approved. An invoice was created.' : 'Extension rejected.');
-      setNote('');
-      reload();
+      if (!isPendingApproval(res)) {
+        message.success(decision === 'approve' ? 'Extension approved. An invoice was created.' : 'Extension rejected.');
+        setNote('');
+        reload();
+      }
     } catch (err) {
       message.error(apiError(err, 'Unable to review this extension.'));
     }

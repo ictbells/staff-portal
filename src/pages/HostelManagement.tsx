@@ -6,7 +6,7 @@ import type { MenuProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { BedDouble, Building2, ClipboardList, Download, FileSpreadsheet, FileText, Layers, Plus, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import api from '../api';
+import api, { isPendingApproval } from '../api';
 import { useAuth } from '../auth';
 import { ConfirmDeleteButton } from '../components/ConfirmDeleteButton';
 import { RefreshButton } from '../components/RefreshButton';
@@ -295,13 +295,17 @@ export default function HostelManagement() {
   const saveWindows = async (category: HostelCategory, levels: LevelWindow[]) => {
     setSavingWindows(true);
     try {
-      const { data } = await api.put('/api/hostel-level-windows', {
+      const res = await api.put('/api/hostel-level-windows', {
         category,
         levels: levels.map((row) => ({
           academic_level_id: row.academic_level_id,
           is_active: row.is_active,
         })),
       });
+      if (isPendingApproval(res)) {
+        return;
+      }
+      const data = res.data;
       if (category === 'undergraduate') setUgWindows(data);
       else if (category === 'jupeb') setJupebWindows(data);
       else setPgWindows(data);
@@ -342,9 +346,11 @@ export default function HostelManagement() {
 
   const allocateBed = async (studentId: number, bedId: number) => {
     try {
-      await api.post('/api/hostel-allocations', { student_id: studentId, hostel_bed_id: bedId });
-      message.success('Bed allocated.');
-      await refreshAfterChange();
+      const res = await api.post('/api/hostel-allocations', { student_id: studentId, hostel_bed_id: bedId });
+      if (!isPendingApproval(res)) {
+        message.success('Bed allocated.');
+        await refreshAfterChange();
+      }
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Allocation failed.');
     }
@@ -352,9 +358,11 @@ export default function HostelManagement() {
 
   const autoAllocate = async (bedId: number, category: HostelCategory) => {
     try {
-      await api.post('/api/hostel-allocations/auto', { hostel_bed_id: bedId, category });
-      message.success('Next priority student allocated.');
-      await refreshAfterChange();
+      const res = await api.post('/api/hostel-allocations/auto', { hostel_bed_id: bedId, category });
+      if (!isPendingApproval(res)) {
+        message.success('Next priority student allocated.');
+        await refreshAfterChange();
+      }
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Auto allocation failed.');
     }
@@ -362,12 +370,14 @@ export default function HostelManagement() {
 
   const vacate = async (allocationId: number) => {
     try {
-      await api.post(`/api/hostel-allocations/${allocationId}/vacate`);
-      message.success('Bed vacated.');
-      setAllocations((prev) => prev.map((row) => (
-        row.id === allocationId ? { ...row, status: 'vacated' } : row
-      )));
-      void refreshAfterChange();
+      const res = await api.post(`/api/hostel-allocations/${allocationId}/vacate`);
+      if (!isPendingApproval(res)) {
+        message.success('Bed vacated.');
+        setAllocations((prev) => prev.map((row) => (
+          row.id === allocationId ? { ...row, status: 'vacated' } : row
+        )));
+        void refreshAfterChange();
+      }
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to vacate bed.');
     }
@@ -375,10 +385,12 @@ export default function HostelManagement() {
 
   const approveAllocation = async (allocationId: number) => {
     try {
-      const { data } = await api.post(`/api/hostel-allocations/${allocationId}/approve`);
-      message.success('Bed request approved.');
-      setAllocations((prev) => prev.map((row) => (row.id === allocationId ? { ...row, ...data } : row)));
-      void refreshAfterChange();
+      const res = await api.post(`/api/hostel-allocations/${allocationId}/approve`);
+      if (!isPendingApproval(res)) {
+        message.success('Bed request approved.');
+        setAllocations((prev) => prev.map((row) => (row.id === allocationId ? { ...row, ...res.data } : row)));
+        void refreshAfterChange();
+      }
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to approve request.');
     }
@@ -386,10 +398,12 @@ export default function HostelManagement() {
 
   const rejectAllocation = async (allocationId: number) => {
     try {
-      const { data } = await api.post(`/api/hostel-allocations/${allocationId}/reject`);
-      message.success('Bed request rejected.');
-      setAllocations((prev) => prev.map((row) => (row.id === allocationId ? { ...row, ...data } : row)));
-      void refreshAfterChange();
+      const res = await api.post(`/api/hostel-allocations/${allocationId}/reject`);
+      if (!isPendingApproval(res)) {
+        message.success('Bed request rejected.');
+        setAllocations((prev) => prev.map((row) => (row.id === allocationId ? { ...row, ...res.data } : row)));
+        void refreshAfterChange();
+      }
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to reject request.');
     }

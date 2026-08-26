@@ -918,7 +918,7 @@ export function ProgrammesPage() {
       description="Define programmes. Assign their curriculum under Academic → Programme courses. School fees are set under Fees & payments → Programme fees."
       loading={loading}
       onRefresh={reload}
-      onAdd={() => crud.openCreate({ duration_years: 4, is_active: true, entry_modes: ['utme'], course_ids: [], is_research_degree: false, eligibility: { min_referees: 2, nysc_required: false } })}
+      onAdd={() => crud.openCreate({ duration_years: 4, is_active: true, study_level: 'undergraduate', entry_modes: ['utme'], course_ids: [], is_research_degree: false, eligibility: { min_referees: 2, nysc_required: false } })}
       canAdd={faculties.length > 0 && departments.length > 0}
       stats={(
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
@@ -1155,7 +1155,7 @@ export function LevelsPage() {
       countLabel="Levels"
       stats={(
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-          <StatCard label="Levels" value={rows.length} hint="All tracks" icon={GraduationCap} />
+          <StatCard label="Levels" value={rows.length} hint="All tracks" icon={GraduationCap} active={!trackFilter} onClick={() => setTrackFilter(null)} />
           {STUDY_LEVELS.map((track) => (
             <StatCard
               key={track.value}
@@ -1250,7 +1250,7 @@ export function CoursesPage() {
   return (
     <ResourceShell
       title="Course catalog"
-      description="Courses are grouped by catalogue type — General, Faculty, or Departmental. Assign a course to programmes on Programme courses. Students register from current-term offerings of those mapped courses."
+      description="Courses are grouped by catalogue type — General, Faculty, or Departmental. Assign a course to programmes on Programme courses. Each semester, publish those mapped courses on Offerings so students can register."
       loading={loading}
       onRefresh={reload}
       onAdd={() => crud.openCreate({ units: 3, status: 'core', program_ids: [] })}

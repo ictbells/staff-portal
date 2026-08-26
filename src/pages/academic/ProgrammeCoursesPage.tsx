@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Select, message } from 'antd';
 import { BookOpen, GraduationCap } from 'lucide-react';
-import api from '../../api';
+import api, { isPendingApproval } from '../../api';
 import { RefreshButton } from '../../components/RefreshButton';
 import {
   Btn, Card, StatCard, WorkspaceHero, fieldLabelClass, inputClass,
@@ -33,6 +33,7 @@ type Program = {
   department?: Department;
   courses?: Course[];
 };
+type Term = { id: number; name: string; session_label?: string; is_current?: boolean };
 
 const ADMISSION_CATEGORIES = ENTRY_MODES;
 
@@ -125,6 +126,11 @@ export function ProgrammeCoursesPage() {
   const selected = programs.find((program) => program.id === selectedId) || null;
   const assignedIds = assigned.map((row) => row.course_id);
   const courseById = useMemo(() => new Map(courses.map((course) => [course.id, course])), [courses]);
+  const track = curriculumStudyLevel(selected);
+  const trackLevels = useMemo(
+    () => (selected ? levels.filter((level) => level.study_level === track) : []),
+    [levels, selected, track],
+  );
 
   const selectProgram = (program: Program) => {
     setSelectedId(program.id);
@@ -148,10 +154,12 @@ export function ProgrammeCoursesPage() {
     if (!selected) return;
     setSaving(true);
     try {
-      const { data } = await api.put(`/api/academic/programs/${selected.id}/courses`, { courses: assigned });
-      message.success(`Mapped ${assigned.length} course${assigned.length === 1 ? '' : 's'} to ${programLabel(selected)} students.`);
-      setAssigned(assignedFromProgram(data));
-      await reload();
+      const res = await api.put(`/api/academic/programs/${selected.id}/courses`, { courses: assigned });
+      if (!isPendingApproval(res)) {
+        message.success(`Mapped ${assigned.length} course${assigned.length === 1 ? '' : 's'} to ${programLabel(selected)} students.`);
+        setAssigned(assignedFromProgram(res.data));
+        await reload();
+      }
     } catch (err) {
       message.error(apiMessage(err, 'Could not assign courses to this programme.'));
     } finally {
@@ -167,7 +175,7 @@ export function ProgrammeCoursesPage() {
       <WorkspaceHero
         eyebrow="Courses"
         title="Programme courses"
-        description="Assign catalog courses to a programme by college, department, and admission category. Saving here also shows on Course catalog, and programmes selected on a course are saved here. Students on that programme can register only from current-term offerings of these courses."
+        description="Assign catalog courses to a programme. JUPEB programmes use JUPEB levels only — they do not share undergraduate 100–500. Saving here also shows on Course catalog. Students on that programme can register only from current-term offerings of these courses."
         icon={GraduationCap}
       >
         <RefreshButton onClick={reload} loading={loading} />
@@ -253,6 +261,8 @@ export function ProgrammeCoursesPage() {
                     <div className="text-xs text-slate-500 mt-0.5">
                       {entryModeLabels(program)}
                       {' · '}
+                      {studyLevelLabel(curriculumStudyLevel(program))}
+                      {' · '}
                       {program.courses?.length || 0} courses
                       {' · '}
                       {program.students_count || 0} students
@@ -273,10 +283,17 @@ export function ProgrammeCoursesPage() {
                 <h3 className="text-base font-semibold text-slate-900">{programLabel(selected)}</h3>
                 <p className="text-sm text-slate-500 mt-1">
                   {entryModeLabels(selected)}
+                  {' · '}
+                  {studyLevelLabel(track)}
                   {selected.department?.name ? ` · ${selected.department.name}` : ''}
                   {selected.department?.faculty?.name ? ` · ${selected.department.faculty.name}` : ''}
                   {`. ${studentCount} student${studentCount === 1 ? '' : 's'} will see these courses at registration.`}
                 </p>
+                {track === 'jupeb' && trackLevels.length === 0 && (
+                  <p className="text-sm text-amber-800 mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                    Create a JUPEB level under Academic → Levels before assigning a year to these courses. Undergraduate 100–500 cannot be used here.
+                  </p>
+                )}
               </div>
               <label className="block">
                 <span className={fieldLabelClass}>Courses</span>
@@ -316,10 +333,10 @@ export function ProgrammeCoursesPage() {
                               <Select
                                 className="w-full"
                                 allowClear
-                                placeholder="All levels"
+                                placeholder={track === 'jupeb' ? 'JUPEB level' : 'All levels'}
                                 value={row.academic_level_id || undefined}
                                 onChange={(value) => setLevel(row.course_id, value ?? null)}
-                                options={levels.map((level) => ({
+                                options={trackLevels.map((level) => ({
                                   value: level.id,
                                   label: level.code ? `${level.name} (${level.code})` : level.name,
                                 }))}
