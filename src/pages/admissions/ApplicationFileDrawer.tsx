@@ -224,7 +224,15 @@ const MAPPING_DECISION_OPTIONS = [
   { value: 'reject', label: 'Reject' },
 ];
 
-function StaffPassportPhoto({ applicationId }: { applicationId: number }) {
+export function StaffPassportPhoto({
+  applicationId,
+  className = 'h-28 w-24 rounded-lg object-cover border border-slate-200 shadow-sm',
+  placeholder = null,
+}: {
+  applicationId: number;
+  className?: string;
+  placeholder?: ReactNode;
+}) {
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -245,13 +253,13 @@ function StaffPassportPhoto({ applicationId }: { applicationId: number }) {
     };
   }, [applicationId]);
 
-  if (!url) return null;
+  if (!url) return <>{placeholder}</>;
 
   return (
     <img
       src={url}
       alt="Passport photograph"
-      className="h-28 w-24 rounded-lg object-cover border border-slate-200 shadow-sm"
+      className={className}
     />
   );
 }
@@ -278,7 +286,7 @@ function emptySitting(): Sitting {
 }
 
 function emptyUtmeChoices(): UtmeChoice[] {
-  return [1, 2, 3, 4].map((order) => ({ choice_order: order, institution_name: '', programme_name: '' }));
+  return [1, 2].map((order) => ({ choice_order: order, institution_name: '', programme_name: '' }));
 }
 
 function emptyUtme(): Utme {
@@ -315,13 +323,13 @@ function asUtme(raw: any, universityName = ''): Utme {
         programme_name: row.programme_name || '',
       }))
     : emptyUtmeChoices();
-  while (choices.length < 4) choices.push({ choice_order: choices.length + 1, institution_name: '', programme_name: '' });
+  while (choices.length < 2) choices.push({ choice_order: choices.length + 1, institution_name: '', programme_name: '' });
   return withDefaultFirstInstitution({
     aggregate: raw.aggregate != null ? String(raw.aggregate) : '',
     course_choice: raw.course_choice || '',
     exam_year: raw.exam_year != null ? String(raw.exam_year) : '',
     subjects,
-    institution_choices: choices.slice(0, 4),
+    institution_choices: choices.slice(0, 2),
   }, universityName);
 }
 

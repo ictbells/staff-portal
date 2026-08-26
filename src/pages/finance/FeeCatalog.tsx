@@ -18,6 +18,10 @@ function isOnlineOnlyFee(category?: string) {
   return ONLINE_ONLY_FEE_CATEGORIES.includes(String(category || ''));
 }
 
+function requiresEntryMode(category?: string) {
+  return category === 'application_fee' || category === 'acceptance_fee';
+}
+
 const FALLBACK_SCHEDULE_CATEGORIES = [
   'tuition', 'library', 'medical', 'sports', 'ict', 'laboratory', 'development', 'other',
 ];
@@ -114,8 +118,8 @@ export function FeeCatalog() {
       message.error('Enter a name and amount.');
       return;
     }
-    if (feeForm.category === 'application_fee' && !feeForm.entry_mode) {
-      message.error('Select an entry mode for application fees.');
+    if (requiresEntryMode(feeForm.category) && !feeForm.entry_mode) {
+      message.error('Select an entry mode for application and acceptance fees.');
       return;
     }
     if (feeForm.category === 'transcript' && (!feeForm.transcript_type || !feeForm.program_id)) {
@@ -128,7 +132,7 @@ export function FeeCatalog() {
         name: feeForm.name.trim(),
         description: feeForm.description.trim() || null,
         category: feeForm.category,
-        entry_mode: feeForm.category === 'application_fee' ? (feeForm.entry_mode || null) : null,
+        entry_mode: requiresEntryMode(feeForm.category) ? (feeForm.entry_mode || null) : null,
         transcript_type: feeForm.category === 'transcript' ? (feeForm.transcript_type || null) : null,
         program_id: feeForm.category === 'transcript' ? Number(feeForm.program_id) : null,
         installment_tranche: isScheduleFee(feeForm.category) && feeForm.installment_tranche !== ''
@@ -210,7 +214,7 @@ export function FeeCatalog() {
 
       <Card
         title="Fee items"
-        description="School-fee lines can use installment shares (1st–4th 25% or Full 100%). Application fees need an entry mode; transcript fees need type and programme. Assign schedule lines on Programme fees."
+        description="School-fee lines can use installment shares (1st–4th 25% or Full 100%). Application and acceptance fees need an entry mode; transcript fees need type and programme. Assign schedule lines on Programme fees."
         actions={<Btn className="!text-white" onClick={openCreateFee}>Add fee item</Btn>}
       >
         <DataTable empty={!fees.length} emptyMessage="No fees configured." colSpan={10} loading={loading}>
@@ -244,7 +248,7 @@ export function FeeCatalog() {
                       {trancheLabel ? <Badge variant="success">{trancheLabel}</Badge> : '—'}
                     </td>
                     <td className={tdClass}>
-                      {f.category === 'application_fee'
+                      {requiresEntryMode(f.category)
                         ? (ENTRY_MODES.find((mode) => mode.value === f.entry_mode)?.label || f.entry_mode || '—')
                         : f.category === 'transcript'
                           ? (transcriptTypes.find((t) => t.value === f.transcript_type)?.label || f.transcript_type || '—')
@@ -334,7 +338,7 @@ export function FeeCatalog() {
                 </p>
               </label>
             )}
-            {feeForm.category === 'application_fee' && (
+            {requiresEntryMode(feeForm.category) && (
               <label className="block">
                 <span className={fieldLabelClass}>Entry mode</span>
                 <select
@@ -347,7 +351,11 @@ export function FeeCatalog() {
                     <option key={mode.value} value={mode.value}>{mode.label}</option>
                   ))}
                 </select>
-                <p className="mt-1 text-xs text-slate-500">Applicants in this category pay this amount. Create a separate line for each entry mode.</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {feeForm.category === 'acceptance_fee'
+                    ? 'Admitted students in this category pay this amount. Create a separate line for each entry mode.'
+                    : 'Applicants in this category pay this amount. Create a separate line for each entry mode.'}
+                </p>
               </label>
             )}
             {feeForm.category === 'transcript' && (
@@ -398,7 +406,7 @@ export function FeeCatalog() {
             </label>
             <div className="flex justify-end gap-2 pt-2">
               <Btn variant="secondary" onClick={() => setFeeModalOpen(false)}>Cancel</Btn>
-              <Btn onClick={saveFee} disabled={saving || (feeForm.category === 'application_fee' && !feeForm.entry_mode) || (feeForm.category === 'transcript' && (!feeForm.transcript_type || !feeForm.program_id))}>{saving ? 'Saving…' : 'Save fee'}</Btn>
+              <Btn onClick={saveFee} disabled={saving || (requiresEntryMode(feeForm.category) && !feeForm.entry_mode) || (feeForm.category === 'transcript' && (!feeForm.transcript_type || !feeForm.program_id))}>{saving ? 'Saving…' : 'Save fee'}</Btn>
             </div>
           </div>
         </div>

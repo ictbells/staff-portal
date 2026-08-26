@@ -17,7 +17,7 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Building2, GitBranch, Layers, Link2, Pencil, Plus, Settings2 } from 'lucide-react';
-import api from '../api';
+import api, { isPendingApproval } from '../api';
 import { ConfirmDeleteButton } from '../components/ConfirmDeleteButton';
 import { RefreshButton } from '../components/RefreshButton';
 import OfficeStructureCards from '../components/OfficeStructureCards';
@@ -464,7 +464,12 @@ export default function OfficeSetup() {
     setError('');
     try {
       const nav_links = selectedNavKeys.map((key) => navLinkConfigs[key] || ungatedLinkConfig(key));
-      await api.put(linksRow.navLinksUrl, { nav_links });
+      const res = await api.put(linksRow.navLinksUrl, { nav_links });
+      if (isPendingApproval(res)) {
+        closeLinksModal();
+        await load();
+        return;
+      }
       closeLinksModal();
       await load();
     } catch (err: any) {
@@ -744,6 +749,7 @@ export default function OfficeSetup() {
           Choose which staff-portal sidebar links appear for people who <strong>work in</strong> this {linksRow?.level.toLowerCase()}.
           Units and subunits automatically inherit links assigned on the parent department (and subunits inherit unit links). Role permissions still control what they can do.
           Assigned links start as <strong>no approval</strong> — tick the gear to require Create/Update/Delete approval when needed.
+          Super Admin and the owning HOD still apply immediately. Saving these link settings takes effect at once.
           {' '}<strong>Super Admin accounts ignore office link limits</strong> and only need the matching role permission.
         </p>
         {error && linksRow && (
@@ -858,7 +864,7 @@ export default function OfficeSetup() {
                       checked={approvalDraft.require_create}
                       onChange={(e) => setApprovalDraft({ ...approvalDraft, require_create: e.target.checked })}
                     >
-                      Create (POST)
+                      Create (new rows, assign fees, imports, copy schedule)
                     </Checkbox>
                     <Checkbox
                       checked={approvalDraft.require_update}

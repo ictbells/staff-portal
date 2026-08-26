@@ -25,7 +25,7 @@ import { useAuth } from '../../auth';
 import { RefreshButton } from '../../components/RefreshButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 import { ApplicationDecisionModal } from './ApplicationDecisionModal';
-import { ApplicationFileDrawer } from './ApplicationFileDrawer';
+import { ApplicationFileDrawer, StaffPassportPhoto } from './ApplicationFileDrawer';
 import type { AdmissionsChannel, AdmissionsChannelKey, AdmissionsReferenceColumn } from './constants';
 import { ENTRY_MODES } from '../academic/constants';
 
@@ -589,15 +589,22 @@ export function AdmissionsPipeline({ channel }: Props) {
         width: 200,
         ellipsis: true,
         render: (_, row) => (
-          <div className="overflow-hidden">
-            <button
-              type="button"
-              className="font-medium text-sky-700 hover:underline truncate block max-w-full text-left"
-              onClick={() => setDecisionRow(row)}
-            >
-              {row.user?.name || '—'}
-            </button>
-            <div className="text-xs text-slate-500 truncate">{row.user?.email || '—'}</div>
+          <div className="flex items-center gap-2 overflow-hidden">
+            <StaffPassportPhoto
+              applicationId={row.id}
+              className="h-10 w-8 rounded object-cover border border-slate-200 bg-slate-100 shrink-0"
+              placeholder={<div className="h-10 w-8 rounded bg-slate-100 border border-slate-200 shrink-0" />}
+            />
+            <div className="overflow-hidden min-w-0">
+              <button
+                type="button"
+                className="font-medium text-sky-700 hover:underline truncate block max-w-full text-left"
+                onClick={() => setDecisionRow(row)}
+              >
+                {row.user?.name || '—'}
+              </button>
+              <div className="text-xs text-slate-500 truncate">{row.user?.email || '—'}</div>
+            </div>
           </div>
         ),
       },

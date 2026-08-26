@@ -51,10 +51,29 @@ type CourseRef = { id: number; code: string; title: string };
 
 function programTags(programs?: ProgramRef[]) {
   if (!programs?.length) return '—';
+  const labels = programs.map((p) => p.code || p.name);
+  const extra = labels.length - 1;
+  const summary = extra > 0 ? (
+    <span className="inline-flex items-center gap-1 min-w-0 max-w-full">
+      <Tag className="!m-0 max-w-[9rem] truncate">{labels[0]}</Tag>
+      <Tag className="!m-0 shrink-0">+{extra}</Tag>
+    </span>
+  ) : (
+    <Tag className="!m-0 max-w-[12rem] truncate">{labels[0]}</Tag>
+  );
+
+  if (extra < 1) return summary;
+
   return (
-    <Space size={[4, 4]} wrap>
-      {programs.map((p) => <Tag key={p.id}>{p.code || p.name}</Tag>)}
-    </Space>
+    <Tooltip
+      title={(
+        <div className="space-y-0.5">
+          {labels.map((label) => <div key={label}>{label}</div>)}
+        </div>
+      )}
+    >
+      {summary}
+    </Tooltip>
   );
 }
 
@@ -1113,7 +1132,7 @@ export function CoursesPage() {
     { title: 'Title', dataIndex: 'title', key: 'title' },
     { title: 'Units', dataIndex: 'units', key: 'units', width: 70 },
     { title: 'Status', dataIndex: 'status', key: 'status', width: 110, render: (value) => COURSE_STATUSES.find((item) => item.value === value)?.label || value || 'Core' },
-    { title: 'Programmes', key: 'programs', width: 180, render: (_, r) => programTags(r.programs) },
+    { title: 'Programmes', key: 'programs', width: 200, ellipsis: true, render: (_, r) => programTags(r.programs) },
     { title: 'Department', key: 'department', render: (_, r) => r.department?.name || '—' },
     actionColumn(
       (row) => crud.openEdit(row, {
