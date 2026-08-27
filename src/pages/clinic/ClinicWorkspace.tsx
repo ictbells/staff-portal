@@ -82,6 +82,12 @@ function medicalProfile(student?: any) {
   return student?.medical_profile || student?.medicalProfile;
 }
 
+function billIsLive(bill?: any) {
+  if (!bill) return false;
+  if (bill.status === 'cancelled' || bill.invoice?.status === 'cancelled') return false;
+  return true;
+}
+
 function coverageFieldsFromProfile(profile?: any) {
   const amount = profile?.nhis_coverage_amount;
   const hasAmount = amount !== null && amount !== undefined && amount !== '';
@@ -549,12 +555,14 @@ export default function ClinicWorkspace() {
   const finalize = async () => {
     if (!visitId) return;
     await api.post(`/api/clinic/visits/${visitId}/finalize-bill`, {
-      coverage_percent_override: coverageOverride,
+      ...(coverageOverride != null ? { coverage_percent_override: coverageOverride } : {}),
     });
     message.success('Bill finalized');
     await refreshVisit();
     loadBills();
   };
+
+  const liveBill = billIsLive(visit?.bill);
 
   const saveSettings = async () => {
     const values = await settingsForm.validateFields();
@@ -1347,7 +1355,7 @@ export default function ClinicWorkspace() {
                       render: (v: boolean, row: any) => (
                         <Checkbox
                           checked={!!v}
-                          disabled={!!visit.bill || !(canBill || canManage)}
+                          disabled={liveBill || !(canBill || canManage)}
                           onChange={async (e) => {
                             await api.patch(`/api/clinic/visit-items/${row.id}`, { nhis_covered: e.target.checked });
                             refreshVisit();
@@ -1357,7 +1365,7 @@ export default function ClinicWorkspace() {
                     },
                     {
                       title: '',
-                      render: (_: any, row: any) => !visit.bill && (canBill || canManage) ? (
+                      render: (_: any, row: any) => !liveBill && (canBill || canManage) ? (
                         <Button size="small" danger type="link" onClick={async () => {
                           await api.delete(`/api/clinic/visit-items/${row.id}`);
                           refreshVisit();
@@ -1366,7 +1374,7 @@ export default function ClinicWorkspace() {
                     },
                   ]}
                 />
-                {!visit.bill && (canBill || canManage) && (
+                {!liveBill && (canBill || canManage) && (
                   clinicFees.length === 0 ? (
                     <p className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                       No clinic service lines in the fee catalog.
@@ -1412,7 +1420,7 @@ export default function ClinicWorkspace() {
                     </div>
                   </div>
                 )}
-                {!visit.bill && canBill && (
+                {!liveBill && canBill && (
                   <div className="mt-4 flex flex-wrap gap-2 items-end">
                     <label className={fieldLabelClass}>
                       Coverage % override (optional)
@@ -1427,10 +1435,15 @@ export default function ClinicWorkspace() {
                     <Button type="primary" onClick={finalize}>Finalize bill</Button>
                   </div>
                 )}
-                {visit.bill && (
+                {liveBill && (
                   <p className="mt-3 text-sm text-emerald-700">
                     Bill {visit.bill.status}: student payable {formatNaira(visit.bill.student_payable_amount)}
                     {visit.bill.invoice ? ` · ${visit.bill.invoice.number}` : ' · fully covered (no invoice)'}
+                  </p>
+                )}
+                {visit.bill && !liveBill && canBill && (
+                  <p className="mt-3 text-sm text-amber-800">
+                    Previous invoice {visit.bill.invoice?.number || ''} was disabled. Finalize again to issue the student-payable amount.
                   </p>
                 )}
               </div>

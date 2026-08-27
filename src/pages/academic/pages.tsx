@@ -100,6 +100,34 @@ type Term = {
   is_current: boolean;
   auto_schedule?: boolean;
 };
+
+function sessionTermOptions(terms: Term[]) {
+  const bySession = new Map<string, Term[]>();
+  for (const term of terms) {
+    const key = term.session_label || String(term.academic_session_id || term.id);
+    const list = bySession.get(key) ?? [];
+    list.push(term);
+    bySession.set(key, list);
+  }
+
+  return [...bySession.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([label, list]) => {
+      const preferred = list.find((term) => /^first$/i.test(String(term.name).trim()))
+        ?? [...list].sort((a, b) => a.id - b.id)[0];
+      return { value: preferred.id, label };
+    });
+}
+
+function canonicalSessionTermId(terms: Term[], termId?: number) {
+  if (!termId) return undefined;
+  const current = terms.find((term) => term.id === termId);
+  if (!current) return termId;
+  return sessionTermOptions(terms).find((option) => {
+    const term = terms.find((row) => row.id === option.value);
+    return term?.session_label === current.session_label;
+  })?.value ?? termId;
+}
 type AcademicSessionRow = {
   id: number;
   label: string;
@@ -1346,6 +1374,7 @@ export function IntakesPage() {
   const { rows, loading, reload } = useResourceList<Intake>('/api/academic/intakes');
   const { rows: terms } = useResourceList<Term>('/api/academic/terms');
   const crud = useCrudModal<Intake>();
+  const sessionOptions = useMemo(() => sessionTermOptions(terms), [terms]);
 
   const columns: ColumnsType<Intake> = [
     { title: 'Name', dataIndex: 'name', key: 'name' },
@@ -1368,7 +1397,7 @@ export function IntakesPage() {
     { title: 'Open', dataIndex: 'is_open', key: 'is_open', width: 90, render: (v) => <Tag color={v ? 'success' : 'default'}>{v ? 'Open' : 'Closed'}</Tag> },
     actionColumn(
       (row) => crud.openEdit(row, {
-        academic_term_id: row.academic_term_id ?? row.term?.id,
+        academic_term_id: canonicalSessionTermId(terms, row.academic_term_id ?? row.term?.id),
         name: row.name,
         entry_mode: row.entry_mode,
         opens_on: toDateValue(row.opens_on),
@@ -1403,8 +1432,8 @@ export function IntakesPage() {
     >
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1100 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No application sessions yet.' }} />
       <CrudModal title="application session" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
-        <Form.Item name="academic_term_id" label="Semester" rules={[{ required: true }]}>
-          <Select options={terms.map((t) => ({ value: t.id, label: `${t.session_label} — ${t.name}` }))} />
+        <Form.Item name="academic_term_id" label="Session" rules={[{ required: true }]}>
+          <Select placeholder="Select session" options={sessionOptions} />
         </Form.Item>
         <Form.Item name="name" label="Session name" rules={[{ required: true }]}><Input placeholder="UTME 2025/2026" /></Form.Item>
         <Form.Item name="entry_mode" label="Admission category" rules={[{ required: true }]} extra="UTME, Direct Entry, JUPEB, Postgraduate, or Transfer.">
