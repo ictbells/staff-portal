@@ -925,7 +925,7 @@ export default function HostelManagement() {
         showIcon
         message={category === 'postgraduate'
           ? 'Year 1 postgraduate students are served first from the allocation queue. Activate only the levels that may apply for beds in this category. The switch saves immediately.'
-          : '100 Level students are served first from the allocation queue. Activate only the levels that may apply for beds in this category. The switch saves immediately — Open now means students in this category can see an open window.'}
+          : '100 Level students are served first from the allocation queue. Activate only the levels that may apply for beds in this category. The switch saves immediately — Open now is the live student window for that level, including before a new session starts.'}
       />
       {closedSiblings.length > 0 && (
         <Alert
@@ -982,7 +982,7 @@ export default function HostelManagement() {
       <WorkspaceHero
         eyebrow="Campus services"
         title="Hostel management"
-        description="Undergraduate, JUPEB, and postgraduate hostels are managed separately. Toggling a level saves immediately. Students see Open only for their own category and level, and they must have paid at least 25% of current-session tuition before they can request a bed. A hostel marked Active is not the same as the selection window."
+        description="Undergraduate, JUPEB, and postgraduate hostels are managed separately. Toggling a level saves immediately and is the live Open/Closed switch students see. Students must still have paid at least 25% of current-session tuition before they can request a bed. A hostel marked Active is not the same as the selection window. Beds from a previous academic session are released when a new session is current."
         icon={Building2}
       >
         <RefreshButton onClick={load} loading={loading || tabLoading} />
