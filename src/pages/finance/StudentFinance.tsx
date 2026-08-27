@@ -271,12 +271,27 @@ export function StudentFinance() {
           <RefreshButton onClick={() => openDetail({ id: student.id, matric_number: student.matric_number })} loading={detailLoading} />
         </WorkspaceHero>
         {summary ? (
-          <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
-            <StatCard label="Wallet" value={formatNaira(summary.wallet_balance)} icon={Wallet} />
-            <StatCard label="Billed" value={formatNaira(summary.billed)} icon={Wallet} />
-            <StatCard label="Rebated" value={formatNaira(summary.rebate_total)} icon={BadgeCheck} tone="amber" />
-            <StatCard label="Paid" value={formatNaira(summary.paid)} icon={BadgeCheck} tone="emerald" />
-            <StatCard label="Outstanding" value={formatNaira(summary.outstanding)} icon={AlertTriangle} tone="rose" />
+          <div className="space-y-3">
+            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ${
+              summary.clearance === 'cleared'
+                ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                : 'bg-amber-50 text-amber-800 ring-amber-200'
+            }`}>
+              {summary.clearance === 'cleared' ? 'Cleared — 100% of school fees paid' : 'Outstanding — school fees not paid in full'}
+            </span>
+            <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
+              <StatCard label="Wallet" value={formatNaira(summary.wallet_balance)} icon={Wallet} />
+              <StatCard label="Billed" value={formatNaira(summary.billed)} hint="100% school fees plus other invoices" icon={Wallet} />
+              <StatCard label="Rebated" value={formatNaira(summary.rebate_total)} icon={BadgeCheck} tone="amber" />
+              <StatCard label="Paid" value={formatNaira(summary.paid)} icon={BadgeCheck} tone="emerald" />
+              <StatCard
+                label="Outstanding"
+                value={formatNaira(summary.outstanding)}
+                hint={summary.clearance === 'cleared' ? 'School fees paid in full' : 'Includes unpaid school fees'}
+                icon={Number(summary.outstanding) > 0.009 ? AlertTriangle : BadgeCheck}
+                tone={Number(summary.outstanding) > 0.009 ? 'rose' : 'emerald'}
+              />
+            </div>
           </div>
         ) : null}
         <Card title="Invoices" description="Charges billed to this student. Paid and balance are calculated from receipts, not a stored status alone.">
