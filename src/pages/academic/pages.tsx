@@ -183,6 +183,7 @@ type OlevelSubject = { id: number; name: string; code?: string; is_active: boole
 type Intake = {
   id: number; name: string; entry_mode: string; academic_term_id?: number;
   opens_on?: string; closes_on?: string; is_open: boolean;
+  applications_count?: number;
   application_fee_amount?: number | string;
   acceptance_fee_amount?: number | string;
   resolved_application_fee_amount?: number | string;
@@ -1375,6 +1376,12 @@ export function IntakesPage() {
   const { rows: terms } = useResourceList<Term>('/api/academic/terms');
   const crud = useCrudModal<Intake>();
   const sessionOptions = useMemo(() => sessionTermOptions(terms), [terms]);
+  const usedModes = useMemo(() => new Set(rows.map((row) => row.entry_mode)), [rows]);
+  const missingModes = useMemo(
+    () => ENTRY_MODES.filter((mode) => !usedModes.has(mode.value)),
+    [usedModes],
+  );
+  const canAdd = terms.length > 0 && missingModes.length > 0;
 
   const columns: ColumnsType<Intake> = [
     { title: 'Name', dataIndex: 'name', key: 'name' },
@@ -1395,17 +1402,33 @@ export function IntakesPage() {
       render: (_, row) => formatNaira(row.resolved_acceptance_fee_amount ?? row.acceptance_fee_amount, 'Fee items'),
     },
     { title: 'Open', dataIndex: 'is_open', key: 'is_open', width: 90, render: (v) => <Tag color={v ? 'success' : 'default'}>{v ? 'Open' : 'Closed'}</Tag> },
-    actionColumn(
-      (row) => crud.openEdit(row, {
-        academic_term_id: canonicalSessionTermId(terms, row.academic_term_id ?? row.term?.id),
-        name: row.name,
-        entry_mode: row.entry_mode,
-        opens_on: toDateValue(row.opens_on),
-        closes_on: toDateValue(row.closes_on),
-        is_open: row.is_open,
-      }),
-      (row) => crud.remove(`/api/intakes/${row.id}`, reload),
-    ),
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 130,
+      fixed: 'right',
+      render: (_, row) => (
+        <Space size={4}>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => crud.openEdit(row, {
+              academic_term_id: canonicalSessionTermId(terms, row.academic_term_id ?? row.term?.id),
+              name: row.name,
+              entry_mode: row.entry_mode,
+              opens_on: toDateValue(row.opens_on),
+              closes_on: toDateValue(row.closes_on),
+              is_open: row.is_open,
+            })}
+          >
+            Edit
+          </Button>
+          {(row.applications_count ?? 0) === 0 && (
+            <ConfirmDeleteButton onConfirm={() => crud.remove(`/api/intakes/${row.id}`, reload)} />
+          )}
+        </Space>
+      ),
+    },
   ];
 
   const submit = async () => {
@@ -1421,23 +1444,27 @@ export function IntakesPage() {
   return (
     <ResourceShell
       title="Application sessions"
-      description="Open and close intakes after the admission session exists (not yet current). Set application and acceptance fees under Fees & payments → Fee items, per entry mode. After you stop accepting, run admission, then set that admission session current under Academic Sessions."
+      description="Each admission category (UTME, Direct Entry, JUPEB, Transfer, Postgraduate) is created once. For a new year, stop accepting, then edit the same row: pick the new academic session and dates. Application and acceptance fees stay under Fees & payments → Fee items, per category."
       loading={loading}
       onRefresh={reload}
-      onAdd={() => crud.openCreate({ is_open: true })}
-      canAdd={terms.length > 0}
+      onAdd={() => crud.openCreate({
+        is_open: true,
+        entry_mode: missingModes[0]?.value,
+        name: missingModes[0]?.label,
+      })}
+      canAdd={canAdd}
       count={rows.length}
-      countLabel="Sessions"
+      countLabel="Categories"
       eyebrow="Application setup"
     >
-      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1100 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No application sessions yet.' }} />
-      <CrudModal title="application session" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
-        <Form.Item name="academic_term_id" label="Session" rules={[{ required: true }]}>
+      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1100 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No admission categories yet.' }} />
+      <CrudModal title="admission category" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
+        <Form.Item name="academic_term_id" label="Session" rules={[{ required: true }]} extra={crud.isEdit ? 'Stop accepting before moving this category to a new academic session.' : undefined}>
           <Select placeholder="Select session" options={sessionOptions} />
         </Form.Item>
-        <Form.Item name="name" label="Session name" rules={[{ required: true }]}><Input placeholder="UTME 2025/2026" /></Form.Item>
-        <Form.Item name="entry_mode" label="Admission category" rules={[{ required: true }]} extra="UTME, Direct Entry, JUPEB, Postgraduate, or Transfer.">
-          <Select options={ENTRY_MODES} />
+        <Form.Item name="name" label="Display name" rules={[{ required: true }]}><Input placeholder="UTME" /></Form.Item>
+        <Form.Item name="entry_mode" label="Admission category" rules={[{ required: true }]} extra={crud.isEdit ? 'Category cannot be changed.' : 'One row per category. Missing categories can be added once.'}>
+          <Select options={crud.isEdit ? ENTRY_MODES : missingModes} disabled={crud.isEdit} />
         </Form.Item>
         <Form.Item name="opens_on" label="Application opens" rules={[{ required: true }]}><DatePicker className="w-full" /></Form.Item>
         <Form.Item name="closes_on" label="Application closes" rules={[{ required: true }]}><DatePicker className="w-full" /></Form.Item>

@@ -139,6 +139,7 @@ type ApplicationRow = {
     department?: { id?: number; name?: string; faculty?: { id?: number; name?: string } };
   };
   intake?: { name?: string; acceptance_fee_amount?: number | string; term?: { session_label?: string } };
+  academic_session?: { id?: number; label?: string } | null;
   application_fee_invoice?: { status?: string };
   eligibility?: { meets: boolean; failed?: { rule: string; message: string }[] };
   workflow?: {
@@ -246,17 +247,11 @@ export function AdmissionsPipeline({ channel }: Props) {
   );
 
   const sessionOptions = useMemo(
-    () => sessions.map((intake) => {
-      const mode = intake.entry_mode && channel.showEntryMode
-        ? `${entryModeLabel(intake.entry_mode)} — `
-        : '';
-      const label = `${mode}${intake.session_label}`;
-      return {
-        value: intake.id,
-        label: (intake.is_open || intake.is_current) ? `${label} (open)` : label,
-      };
-    }),
-    [channel.showEntryMode, sessions],
+    () => sessions.map((session) => ({
+      value: session.id,
+      label: (session.is_open || session.is_current) ? `${session.session_label} (open)` : session.session_label,
+    })),
+    [sessions],
   );
 
   const collegeOptions = useMemo(() => {
@@ -332,7 +327,7 @@ export function AdmissionsPipeline({ channel }: Props) {
         params: {
           entry_modes: channel.entryModes.join(','),
           entry_mode: nextEntryMode || undefined,
-          intake_id: nextSession || undefined,
+          academic_session_id: nextSession || undefined,
           faculty_id: nextCollege || undefined,
           department_id: nextDepartment || undefined,
           program_id: nextProgram || undefined,
@@ -500,7 +495,7 @@ export function AdmissionsPipeline({ channel }: Props) {
   const filterParams = useMemo(() => ({
     entry_modes: channel.entryModes.join(','),
     entry_mode: entryModeFilter || undefined,
-    intake_id: sessionFilter || undefined,
+    academic_session_id: sessionFilter || undefined,
     faculty_id: collegeFilter || undefined,
     department_id: departmentFilter || undefined,
     program_id: programFilter || undefined,
@@ -646,17 +641,17 @@ export function AdmissionsPipeline({ channel }: Props) {
         ),
       },
       {
-        title: 'Application session',
+        title: 'Admission session',
         key: 'intake',
         width: 160,
         ellipsis: true,
         render: (_, row) => {
           const name = row.intake?.name;
-          const year = row.intake?.term?.session_label;
+          const year = row.academic_session?.label || row.intake?.term?.session_label;
           return (
             <div className="overflow-hidden text-sm">
-              <div className="text-slate-800 truncate">{name || year || '—'}</div>
-              {name && year && <div className="text-xs text-slate-400 truncate">{year}</div>}
+              <div className="text-slate-800 truncate">{year || name || '—'}</div>
+              {name && year && <div className="text-xs text-slate-400 truncate">{name}</div>}
             </div>
           );
         },
@@ -894,7 +889,7 @@ export function AdmissionsPipeline({ channel }: Props) {
                 allowClear
                 className="w-full min-w-[140px] sm:w-auto sm:min-w-[160px]"
                 size="large"
-                placeholder="Application session"
+                placeholder="Admission session"
                 value={sessionFilter}
                 onChange={(value) => setSessionFilter(value)}
                 options={sessionOptions}
