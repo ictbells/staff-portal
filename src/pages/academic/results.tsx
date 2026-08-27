@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-  Alert, Button, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, Tooltip, Upload, message,
+  Alert, Button, Dropdown, Form, Input, InputNumber, Select, Space, Table, Tabs, Tag, Tooltip, Upload, message,
 } from 'antd';
+import type { MenuProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload';
 import { ClipboardList, Download } from 'lucide-react';
@@ -50,6 +51,16 @@ function currentTermId(terms: Term[]) {
   return terms.find((term) => term.is_current)?.id;
 }
 
+const QUEUE_PAGE_SIZE = 5000;
+
+function gradeStudent(row: any) {
+  return row?.student || row?.enrollment?.student || {};
+}
+
+function gradeCourse(row: any) {
+  return row?.offering?.course || row?.enrollment?.offering?.course || row?.course || {};
+}
+
 const letterColumn = {
   title: (
     <Tooltip title="Letter grade (A–F) from the total score and the university grading scale. Staff do not type this.">
@@ -61,17 +72,20 @@ const letterColumn = {
   render: (value: string | null) => value || '—',
 };
 
+function listQuery(params: Record<string, string | number | undefined>) {
+  return Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== null && String(value) !== ''),
+  );
+}
+
 function openPrintable(path: string, params: Record<string, string | number | undefined>) {
   if (!params.academic_term_id) {
     message.warning('Choose a semester before printing.');
     return;
   }
   const popup = window.open('', '_blank');
-  const query = Object.fromEntries(
-    Object.entries({ ...params, format: 'html' }).filter(([, value]) => value !== undefined && value !== null && String(value) !== ''),
-  );
   api.get(path, {
-    params: query,
+    params: listQuery({ ...params, format: 'html' }),
     responseType: 'text',
     headers: { Accept: 'text/html' },
   })
@@ -94,7 +108,76 @@ function openPrintable(path: string, params: Record<string, string | number | un
     });
 }
 
+async function downloadSubmissionList(
+  path: string,
+  params: Record<string, string | number | undefined>,
+  format: 'pdf' | 'doc',
+  filename: string,
+  extra?: { requireDepartment?: boolean; requireFaculty?: boolean },
+) {
+  if (!params.academic_term_id) {
+    message.warning('Choose a semester before downloading.');
+    return;
+  }
+  if (!params.level) {
+    message.warning('Select a level to download the list.');
+    return;
+  }
+  if (extra?.requireDepartment && !params.department_id) {
+    message.warning('Select a department to download the department list.');
+    return;
+  }
+  if (extra?.requireFaculty && !params.faculty_id) {
+    message.warning('Select a faculty to download the faculty list.');
+    return;
+  }
+  try {
+    const { data } = await api.get(path, {
+      params: listQuery({ ...params, format }),
+      responseType: 'blob',
+    });
+    const blob = new Blob([data], {
+      type: format === 'pdf' ? 'application/pdf' : 'application/msword',
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${filename}.${format === 'doc' ? 'doc' : 'pdf'}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (e: any) {
+    const blob = e?.response?.data;
+    if (blob instanceof Blob) {
+      try {
+        const parsed = JSON.parse(await blob.text());
+        message.error(
+          parsed.message
+            || (parsed.errors ? Object.values(parsed.errors).flat().join(' ') : '')
+            || 'Download failed',
+        );
+      } catch {
+        message.error('Download failed');
+      }
+    } else {
+      message.error(e?.response?.data?.message || 'Download failed');
+    }
+  }
+}
+
+function listDownloadItems(
+  onPick: (format: 'pdf' | 'doc' | 'html') => void,
+): MenuProps['items'] {
+  return [
+    { key: 'pdf', label: 'PDF', onClick: () => onPick('pdf') },
+    { key: 'doc', label: 'MS Word (.doc)', onClick: () => onPick('doc') },
+    { key: 'html', label: 'Print preview', onClick: () => onPick('html') },
+  ];
+}
+
 export function ResultsDashboardPage() {
+  const { has } = useAuth();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
   const load = useCallback(() => {
@@ -116,8 +199,11 @@ export function ResultsDashboardPage() {
       <div className="flex flex-wrap gap-2 pt-2">
         <Link to="/academic/results/students"><Button type="primary">Enter results</Button></Link>
         <Link to="/academic/results/department"><Button>Department uploads</Button></Link>
-        <Link to="/academic/results/approvals"><Button>Faculty Approval</Button></Link>
-        <Link to="/academic/results/release"><Button>Release</Button></Link>
+        {(has('results.faculty_approve') || has('results.submit')) && (
+          <Link to="/academic/results/approvals"><Button>Faculty Approval</Button></Link>
+        )}
+        {has('results.board') && <Link to="/academic/results/board"><Button>Board</Button></Link>}
+        {has('results.release') && <Link to="/academic/results/release"><Button>Release</Button></Link>}
       </div>
     </ResourceShell>
   );
@@ -165,27 +251,49 @@ export function ResultsStudentsPage() {
 export function ResultsStudentDetailPage() {
   const { id } = useParams();
   const { has } = useAuth();
+  const { terms } = useTermsFaculties();
   const [loading, setLoading] = useState(false);
   const [payload, setPayload] = useState<any>(null);
+  const [offerings, setOfferings] = useState<any[]>([]);
+  const [termId, setTermId] = useState<number | undefined>();
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number[]>([]);
   const [form] = Form.useForm();
+
   const load = useCallback(() => {
     if (!id) return;
     setLoading(true);
-    api.get(`/api/academic/results/students/${id}`)
+    api.get(`/api/academic/results/students/${id}`, { params: { academic_term_id: termId } })
       .then((r) => setPayload(r.data))
       .catch(() => message.error('Could not load student results'))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, termId]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    api.get('/api/academic/results/offerings', { params: { academic_term_id: termId } })
+      .then((r) => setOfferings(Array.isArray(r.data) ? r.data : r.data?.data || []))
+      .catch(() => {});
+  }, [termId]);
 
   const save = async () => {
     try {
       const values = await form.validateFields();
-      const res = await api.post('/api/academic/results/grades', values);
+      const body = {
+        student_id: Number(id),
+        course_offering_id: values.course_offering_id,
+        ca_score: values.ca_score,
+        exam_score: values.exam_score,
+        score: values.score,
+        sitting: values.sitting || 'main',
+      };
+      const res = editingId
+        ? await api.patch(`/api/academic/results/grades/${editingId}`, body)
+        : await api.post('/api/academic/results/grades', body);
       if (!isPendingApproval(res)) {
-        message.success('Grade saved as draft');
+        message.success(editingId ? 'Grade updated' : 'Grade saved as draft');
       }
       form.resetFields();
+      setEditingId(null);
       load();
     } catch (e: any) {
       message.error(e.response?.data?.message || 'Save failed');
@@ -198,41 +306,116 @@ export function ResultsStudentDetailPage() {
       if (!isPendingApproval(res)) {
         message.success(`Submitted ${res.data?.updated ?? 0}`);
       }
+      if (res.data?.errors?.length) message.warning(res.data.errors.join('; '));
+      setSelected([]);
       load();
     } catch (e: any) {
       message.error(e.response?.data?.message || 'Submit failed');
     }
   };
 
+  const removeGrade = async (gradeId: number) => {
+    try {
+      const res = await api.delete(`/api/academic/results/grades/${gradeId}`);
+      if (!isPendingApproval(res)) {
+        message.success('Grade deleted');
+      }
+      load();
+    } catch (e: any) {
+      message.error(e.response?.data?.message || 'Delete failed');
+    }
+  };
+
   const grades = payload?.grades || [];
   const columns: ColumnsType = [
-    { title: 'Course', render: (_, r) => r.enrollment?.offering?.course?.code },
+    { title: 'Course', render: (_, r) => gradeCourse(r).code || '—' },
     { title: 'Sitting', dataIndex: 'sitting' },
     { title: 'CA', dataIndex: 'ca_score' },
     { title: 'Exam', dataIndex: 'exam_score' },
     { title: 'Total', dataIndex: 'score' },
     letterColumn,
-    { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{v}</Tag> },
+    {
+      title: 'Status',
+      render: (_, r) => (
+        <Space size={4} wrap>
+          <Tag>{String(r.status || '').replace(/_/g, ' ')}</Tag>
+          {r.registration_held ? <Tag color="orange">Held</Tag> : null}
+        </Space>
+      ),
+    },
     {
       title: '',
-      render: (_, r) => (['draft', 'correction_required'].includes(r.status) && has('results.submit')
-        ? <Button size="small" onClick={() => submitIds([r.id])}>Submit</Button>
-        : null),
+      render: (_, r) => {
+        const editable = ['draft', 'correction_required'].includes(r.status);
+        return (
+          <Space size={4} wrap>
+            {editable && has('results.write') && (
+              <Button
+                size="small"
+                onClick={() => {
+                  setEditingId(r.id);
+                  form.setFieldsValue({
+                    course_offering_id: r.course_offering_id || r.offering?.id || r.enrollment?.course_offering_id,
+                    ca_score: r.ca_score,
+                    exam_score: r.exam_score,
+                    score: r.score,
+                    sitting: r.sitting || 'main',
+                  });
+                }}
+              >
+                Edit
+              </Button>
+            )}
+            {editable && has('results.write') && (
+              <Button size="small" danger onClick={() => removeGrade(r.id)}>Delete</Button>
+            )}
+            {editable && has('results.submit') && (
+              <Button size="small" onClick={() => submitIds([r.id])}>Submit</Button>
+            )}
+          </Space>
+        );
+      },
     },
   ];
+
+  const transcriptRows = payload?.transcript?.rows || payload?.transcript?.terms?.flatMap((t: any) => t.rows) || [];
+  const auditRows = payload?.audit || [];
 
   return (
     <ResourceShell
       title={payload?.student ? `${payload.student.matric_number} · ${payload.student.first_name} ${payload.student.last_name}` : 'Student results'}
-      description="Enter scores for enrolled courses. Only draft/correction rows are editable."
+      description="Enter CA/exam scores by course offering. Drafts can be saved before the student registers; held rows cannot be submitted until registration."
       loading={loading}
       onRefresh={load}
-      extra={<Link to="/academic/results/students"><Button>Back</Button></Link>}
+      extra={(
+        <Space wrap>
+          <Select
+            allowClear
+            placeholder="GPA term"
+            style={{ width: 200 }}
+            value={termId}
+            options={terms.map((t) => ({ value: t.id, label: `${t.session_label || ''} ${t.name}`.trim() }))}
+            onChange={(v) => setTermId(v)}
+          />
+          <Tag>GPA {payload?.gpa ?? '—'}</Tag>
+          <Tag>CGPA {payload?.cgpa ?? payload?.transcript?.cgpa ?? '—'}</Tag>
+          <Link to="/academic/results/students"><Button>Back</Button></Link>
+        </Space>
+      )}
     >
       {has('results.write') && (
         <Form form={form} layout="inline" className="mb-4 flex flex-wrap gap-2" onFinish={save}>
-          <Form.Item name="enrollment_id" rules={[{ required: true }]} label="Enrollment ID">
-            <InputNumber min={1} />
+          <Form.Item name="course_offering_id" rules={[{ required: true, message: 'Select a course' }]} label="Course">
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="Search offering"
+              style={{ minWidth: 260 }}
+              options={offerings.map((o) => ({
+                value: o.id,
+                label: `${o.course?.code || o.id} · ${o.course?.title || ''} · ${o.term?.session_label || ''} ${o.term?.name || ''}`.trim(),
+              }))}
+            />
           </Form.Item>
           <Form.Item name="ca_score" label="CA"><InputNumber min={0} max={100} /></Form.Item>
           <Form.Item name="exam_score" label="Exam"><InputNumber min={0} max={100} /></Form.Item>
@@ -240,11 +423,86 @@ export function ResultsStudentDetailPage() {
           <Form.Item name="sitting" initialValue="main" label="Sitting">
             <Select options={[{ value: 'main', label: 'Main' }, { value: 'supplementary', label: 'Supplementary' }]} style={{ width: 140 }} />
           </Form.Item>
-          <Button type="primary" htmlType="submit">Save draft</Button>
+          <Button type="primary" htmlType="submit">{editingId ? 'Update draft' : 'Save draft'}</Button>
+          {editingId && (
+            <Button onClick={() => { setEditingId(null); form.resetFields(); }}>Cancel</Button>
+          )}
         </Form>
       )}
-      <Alert type="info" showIcon className="mb-3" message="Use enrollment IDs from course registration context, or import via CSV." />
-      <Table rowKey="id" loading={loading} dataSource={grades} columns={columns} pagination={false} />
+      <Tabs
+        items={[
+          {
+            key: 'scores',
+            label: 'Scores',
+            children: (
+              <>
+                {has('results.submit') && (
+                  <div className="mb-2">
+                    <Button
+                      type="primary"
+                      disabled={!selected.length}
+                      onClick={() => submitIds(selected)}
+                    >
+                      Submit selected
+                    </Button>
+                  </div>
+                )}
+                <Table
+                  rowKey="id"
+                  loading={loading}
+                  dataSource={grades}
+                  columns={columns}
+                  pagination={false}
+                  rowSelection={has('results.submit') ? {
+                    selectedRowKeys: selected,
+                    onChange: (keys) => setSelected(keys as number[]),
+                    getCheckboxProps: (r) => ({
+                      disabled: !['draft', 'correction_required'].includes(r.status) || r.registration_held,
+                    }),
+                  } : undefined}
+                />
+              </>
+            ),
+          },
+          {
+            key: 'transcript',
+            label: 'Transcript',
+            children: (
+              <Table
+                rowKey={(r: any) => r.id || `${r.course?.code}-${r.sitting}`}
+                dataSource={transcriptRows}
+                pagination={false}
+                columns={[
+                  { title: 'Course', render: (_: any, r: any) => r.course?.code || '—' },
+                  { title: 'Title', render: (_: any, r: any) => r.course?.title || '—' },
+                  { title: 'Units', render: (_: any, r: any) => r.course?.units ?? '—' },
+                  { title: 'Sitting', dataIndex: 'sitting' },
+                  letterColumn,
+                  { title: 'Points', dataIndex: 'points' },
+                  { title: 'Term', render: (_: any, r: any) => `${r.term?.session_label || ''} ${r.term?.name || ''}`.trim() || '—' },
+                ]}
+              />
+            ),
+          },
+          {
+            key: 'audit',
+            label: 'Audit',
+            children: (
+              <Table
+                rowKey="id"
+                dataSource={auditRows}
+                pagination={false}
+                columns={[
+                  { title: 'When', dataIndex: 'occurred_at', width: 200 },
+                  { title: 'Action', dataIndex: 'action' },
+                  { title: 'Actor', dataIndex: 'actor_name' },
+                  { title: 'Summary', dataIndex: 'summary' },
+                ]}
+              />
+            ),
+          },
+        ]}
+      />
     </ResourceShell>
   );
 }
@@ -256,7 +514,7 @@ export function ResultsImportPage() {
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [uploading, setUploading] = useState(false);
   useEffect(() => {
-    api.get('/api/academic/offerings').then((r) => setOfferings(Array.isArray(r.data) ? r.data : r.data?.data || [])).catch(() => {});
+    api.get('/api/academic/results/offerings').then((r) => setOfferings(Array.isArray(r.data) ? r.data : r.data?.data || [])).catch(() => {});
   }, []);
 
   const downloadTemplate = async () => {
@@ -313,14 +571,14 @@ export function ResultsImportPage() {
   return (
     <ResourceShell
       title="CSV import"
-      description="Download the template, fill one row per enrolled student, then upload the file or paste CSV."
+      description="Download the template, fill one row per student (registration is optional), then upload the file or paste CSV."
       loading={false}
       onRefresh={() => {}}
       extra={<Button icon={<Download size={14} />} onClick={downloadTemplate}>Template</Button>}
     >
       <Form form={form} layout="vertical" className="max-w-xl p-4" onFinish={run}>
         <p className="text-sm text-slate-600 mb-4">
-          Required column: matric. Use ca and exam together, or score for a single total. Choose sitting here; it applies to every row. The student must already be registered on the selected offering.
+          Required column: matric. Use ca and exam together, or score for a single total. Choose sitting here; it applies to every row. Students do not need to be registered yet — unregistered scores stay held until they register.
         </p>
         <Form.Item name="course_offering_id" label="Course offering" rules={[{ required: true }]}>
           <Select
@@ -377,7 +635,7 @@ export function ResultsDepartmentUploadsPage() {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<any[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
-  const [filters, setFilters] = useState<{ academic_term_id?: number; academic_session_id?: number; level?: string; status?: string; faculty_id?: number; department_id?: number }>({
+  const [filters, setFilters] = useState<{ academic_term_id?: number; academic_session_id?: number; level?: string; status?: string; faculty_id?: number; department_id?: number; sitting?: string; matric?: string; course?: string }>({
     status: 'draft',
   });
 
@@ -389,7 +647,7 @@ export function ResultsDepartmentUploadsPage() {
 
   const load = useCallback(() => {
     setLoading(true);
-    api.get('/api/academic/results/grades', { params: { ...filters, per_page: 100 } })
+    api.get('/api/academic/results/grades', { params: { ...filters, per_page: QUEUE_PAGE_SIZE } })
       .then((r) => setRows(r.data?.data || []))
       .catch(() => message.error('Could not load department uploads'))
       .finally(() => setLoading(false));
@@ -411,9 +669,9 @@ export function ResultsDepartmentUploadsPage() {
   };
 
   const columns: ColumnsType = [
-    { title: 'Matric', render: (_, r) => r.enrollment?.student?.matric_number },
-    { title: 'Student', render: (_, r) => `${r.enrollment?.student?.first_name || ''} ${r.enrollment?.student?.last_name || ''}`.trim() || '—' },
-    { title: 'Course', render: (_, r) => r.enrollment?.offering?.course?.code },
+    { title: 'Matric', render: (_, r) => gradeStudent(r).matric_number },
+    { title: 'Student', render: (_, r) => `${gradeStudent(r).first_name || ''} ${gradeStudent(r).last_name || ''}`.trim() || '—' },
+    { title: 'Course', render: (_, r) => gradeCourse(r).code },
     { title: 'CA', dataIndex: 'ca_score', width: 70 },
     { title: 'Exam', dataIndex: 'exam_score', width: 70 },
     { title: 'Score', dataIndex: 'score', width: 70 },
@@ -450,22 +708,50 @@ export function ResultsDepartmentUploadsPage() {
             options={['draft', 'submitted', 'correction_required', 'board_ready'].map((s) => ({ value: s, label: s.replace(/_/g, ' ') }))}
             onChange={(v) => setFilters((f) => ({ ...f, status: v }))}
           />
+          <Select
+            placeholder="Sitting"
+            allowClear
+            style={{ width: 150 }}
+            value={filters.sitting}
+            options={[{ value: 'main', label: 'Main' }, { value: 'supplementary', label: 'Supplementary' }]}
+            onChange={(v) => setFilters((f) => ({ ...f, sitting: v }))}
+          />
           {has('results.submit') && (
             <Button type="primary" onClick={() => act('/api/academic/results/submit', { ids: selected })} disabled={!selected.length}>
               Submit selected
             </Button>
           )}
-          <Button onClick={() => openPrintable('/api/academic/results/reports/submission-list/department', {
-            academic_term_id: filters.academic_term_id,
-            academic_session_id: filters.academic_session_id,
-            department_id: filters.department_id,
-            faculty_id: filters.faculty_id,
-            status: filters.status,
-            level: filters.level,
-          })}
+          <Dropdown
+            menu={{
+              items: listDownloadItems((format) => {
+                const params = {
+                  academic_term_id: filters.academic_term_id,
+                  academic_session_id: filters.academic_session_id,
+                  department_id: filters.department_id,
+                  faculty_id: filters.faculty_id,
+                  status: filters.status,
+                  level: filters.level,
+                  sitting: filters.sitting,
+                };
+                const term = terms.find((t) => t.id === filters.academic_term_id);
+                const filename = `department-results-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}-${filters.sitting === 'supplementary' ? 'supplementary' : 'main'}`;
+                if (format === 'html') {
+                  openPrintable('/api/academic/results/reports/submission-list/department', params);
+                  return;
+                }
+                void downloadSubmissionList(
+                  '/api/academic/results/reports/submission-list/department',
+                  params,
+                  format,
+                  filename,
+                  { requireDepartment: true },
+                );
+              }),
+            }}
+            trigger={['click']}
           >
-            Print dept list
-          </Button>
+            <Button icon={<Download size={14} />}>Department list</Button>
+          </Dropdown>
         </Space>
       )}
     >
@@ -483,6 +769,20 @@ export function ResultsDepartmentUploadsPage() {
           style={{ width: 180 }}
           options={departments.map((d) => ({ value: d.id, label: d.name }))}
           onChange={(v) => setFilters((f) => ({ ...f, department_id: v }))}
+        />
+        <Input
+          placeholder="Matric"
+          allowClear
+          style={{ width: 160 }}
+          value={filters.matric}
+          onChange={(e) => setFilters((f) => ({ ...f, matric: e.target.value || undefined }))}
+        />
+        <Input
+          placeholder="Course code"
+          allowClear
+          style={{ width: 140 }}
+          value={filters.course}
+          onChange={(e) => setFilters((f) => ({ ...f, course: e.target.value || undefined }))}
         />
       </Space>
       <Table
@@ -503,9 +803,10 @@ export function ResultsApprovalsPage() {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<any[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
-  const [filters, setFilters] = useState<{ academic_term_id?: number; academic_session_id?: number; level?: string; status?: string; faculty_id?: number; department_id?: number }>({
+  const [filters, setFilters] = useState<{ academic_term_id?: number; academic_session_id?: number; level?: string; status?: string; faculty_id?: number; department_id?: number; sitting?: string; matric?: string; course?: string }>({
     status: 'submitted',
   });
+  const [returnNote, setReturnNote] = useState('');
 
   useEffect(() => {
     const termId = currentTermId(terms);
@@ -515,7 +816,7 @@ export function ResultsApprovalsPage() {
 
   const load = useCallback(() => {
     setLoading(true);
-    api.get('/api/academic/results/grades', { params: { ...filters, per_page: 100 } })
+    api.get('/api/academic/results/grades', { params: { ...filters, per_page: QUEUE_PAGE_SIZE } })
       .then((r) => setRows(r.data?.data || []))
       .catch(() => message.error('Could not load faculty approval queue'))
       .finally(() => setLoading(false));
@@ -537,9 +838,9 @@ export function ResultsApprovalsPage() {
   };
 
   const columns: ColumnsType = [
-    { title: 'Matric', render: (_, r) => r.enrollment?.student?.matric_number },
-    { title: 'Student', render: (_, r) => `${r.enrollment?.student?.first_name || ''} ${r.enrollment?.student?.last_name || ''}`.trim() || '—' },
-    { title: 'Course', render: (_, r) => r.enrollment?.offering?.course?.code },
+    { title: 'Matric', render: (_, r) => gradeStudent(r).matric_number },
+    { title: 'Student', render: (_, r) => `${gradeStudent(r).first_name || ''} ${gradeStudent(r).last_name || ''}`.trim() || '—' },
+    { title: 'Course', render: (_, r) => gradeCourse(r).code },
     { title: 'Score', dataIndex: 'score' },
     letterColumn,
     { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{String(v || '').replace(/_/g, ' ')}</Tag> },
@@ -574,22 +875,58 @@ export function ResultsApprovalsPage() {
             options={['submitted', 'board_ready', 'correction_required'].map((s) => ({ value: s, label: s.replace(/_/g, ' ') }))}
             onChange={(v) => setFilters((f) => ({ ...f, status: v }))}
           />
+          <Select
+            placeholder="Sitting"
+            allowClear
+            style={{ width: 150 }}
+            value={filters.sitting}
+            options={[{ value: 'main', label: 'Main' }, { value: 'supplementary', label: 'Supplementary' }]}
+            onChange={(v) => setFilters((f) => ({ ...f, sitting: v }))}
+          />
           {has('results.faculty_approve') && (
             <>
+              <Input
+                placeholder="Return note"
+                value={returnNote}
+                onChange={(e) => setReturnNote(e.target.value)}
+                style={{ width: 200 }}
+              />
               <Button type="primary" onClick={() => act('/api/academic/results/faculty-approve', { ids: selected })} disabled={!selected.length}>Approve</Button>
-              <Button danger onClick={() => act('/api/academic/results/faculty-return', { ids: selected, note: 'Returned for correction' })} disabled={!selected.length}>Return</Button>
+              <Button danger onClick={() => act('/api/academic/results/faculty-return', { ids: selected, note: returnNote.trim() || 'Returned for correction' })} disabled={!selected.length}>Return</Button>
             </>
           )}
-          <Button onClick={() => openPrintable('/api/academic/results/reports/submission-list/faculty', {
-            academic_term_id: filters.academic_term_id,
-            faculty_id: filters.faculty_id,
-            department_id: filters.department_id,
-            status: filters.status,
-            level: filters.level,
-          })}
+          <Dropdown
+            menu={{
+              items: listDownloadItems((format) => {
+                const facultyId = filters.faculty_id
+                  || departments.find((d) => d.id === filters.department_id)?.faculty_id;
+                const params = {
+                  academic_term_id: filters.academic_term_id,
+                  faculty_id: facultyId,
+                  department_id: filters.department_id,
+                  status: filters.status,
+                  level: filters.level,
+                  sitting: filters.sitting,
+                };
+                const term = terms.find((t) => t.id === filters.academic_term_id);
+                const filename = `faculty-results-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}-${filters.sitting === 'supplementary' ? 'supplementary' : 'main'}`;
+                if (format === 'html') {
+                  openPrintable('/api/academic/results/reports/submission-list/faculty', params);
+                  return;
+                }
+                void downloadSubmissionList(
+                  '/api/academic/results/reports/submission-list/faculty',
+                  params,
+                  format,
+                  filename,
+                  { requireFaculty: true },
+                );
+              }),
+            }}
+            trigger={['click']}
           >
-            Print faculty list
-          </Button>
+            <Button icon={<Download size={14} />}>Faculty list</Button>
+          </Dropdown>
         </Space>
       )}
     >
@@ -607,6 +944,20 @@ export function ResultsApprovalsPage() {
           style={{ width: 180 }}
           options={departments.map((d) => ({ value: d.id, label: d.name }))}
           onChange={(v) => setFilters((f) => ({ ...f, department_id: v }))}
+        />
+        <Input
+          placeholder="Matric"
+          allowClear
+          style={{ width: 160 }}
+          value={filters.matric}
+          onChange={(e) => setFilters((f) => ({ ...f, matric: e.target.value || undefined }))}
+        />
+        <Input
+          placeholder="Course code"
+          allowClear
+          style={{ width: 140 }}
+          value={filters.course}
+          onChange={(e) => setFilters((f) => ({ ...f, course: e.target.value || undefined }))}
         />
       </Space>
       <Table
@@ -629,6 +980,9 @@ export function ResultsBoardPage() {
   const [sessionId, setSessionId] = useState<number | undefined>();
   const [level, setLevel] = useState<string | undefined>();
   const [status, setStatus] = useState('board_ready');
+  const [sitting, setSitting] = useState<string | undefined>();
+  const [matric, setMatric] = useState<string | undefined>();
+  const [course, setCourse] = useState<string | undefined>();
   const termOptions = terms
     .filter((t) => !sessionId || t.academic_session_id === sessionId || !t.academic_session_id)
     .map((t) => ({ value: t.id, label: `${t.session_label || ''} ${t.name}`.trim() }));
@@ -645,7 +999,10 @@ export function ResultsBoardPage() {
           department_id: values.department_id,
           academic_session_id: sessionId,
           level,
-          per_page: 100,
+          sitting,
+          matric,
+          course,
+          per_page: QUEUE_PAGE_SIZE,
         },
       });
       setRows(data?.data || []);
@@ -654,7 +1011,7 @@ export function ResultsBoardPage() {
     } finally {
       setLoading(false);
     }
-  }, [form, status, sessionId, level]);
+  }, [form, status, sessionId, level, sitting, matric, course]);
 
   useEffect(() => {
     void load();
@@ -674,9 +1031,9 @@ export function ResultsBoardPage() {
   };
 
   const columns: ColumnsType = [
-    { title: 'Matric', render: (_, r) => r.enrollment?.student?.matric_number },
-    { title: 'Student', render: (_, r) => `${r.enrollment?.student?.first_name || ''} ${r.enrollment?.student?.last_name || ''}`.trim() || '—' },
-    { title: 'Course', render: (_, r) => r.enrollment?.offering?.course?.code },
+    { title: 'Matric', render: (_, r) => gradeStudent(r).matric_number },
+    { title: 'Student', render: (_, r) => `${gradeStudent(r).first_name || ''} ${gradeStudent(r).last_name || ''}`.trim() || '—' },
+    { title: 'Course', render: (_, r) => gradeCourse(r).code },
     { title: 'Score', dataIndex: 'score', width: 70 },
     letterColumn,
     { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{String(v || '').replace(/_/g, ' ')}</Tag> },
@@ -719,23 +1076,56 @@ export function ResultsBoardPage() {
           <Form.Item name="department_id" label="Department">
             <Select allowClear options={departments.map((d) => ({ value: d.id, label: d.name }))} />
           </Form.Item>
+          <Form.Item label="Sitting">
+            <Select
+              allowClear
+              value={sitting}
+              options={[{ value: 'main', label: 'Main' }, { value: 'supplementary', label: 'Supplementary' }]}
+              onChange={setSitting}
+            />
+          </Form.Item>
+          <Form.Item label="Matric">
+            <Input allowClear value={matric} onChange={(e) => setMatric(e.target.value || undefined)} />
+          </Form.Item>
+          <Form.Item label="Course">
+            <Input allowClear value={course} onChange={(e) => setCourse(e.target.value || undefined)} />
+          </Form.Item>
         </div>
         <Form.Item name="note" label="Note"><Input.TextArea rows={2} /></Form.Item>
         <Space wrap className="mb-4">
           <Button type="primary" onClick={() => run('/api/academic/results/board-scopes/clear')}>Board clear</Button>
           <Button danger onClick={() => run('/api/academic/results/board-scopes/request-corrections')}>Request corrections</Button>
-          <Button onClick={() => {
-            const v = form.getFieldsValue();
-            openPrintable('/api/academic/results/board-lists/faculty', {
-              academic_term_id: v.academic_term_id,
-              faculty_id: v.faculty_id,
-              department_id: v.department_id,
-              status: status || 'board_ready',
-            });
-          }}
+          <Dropdown
+            menu={{
+              items: listDownloadItems((format) => {
+                const v = form.getFieldsValue();
+                const path = v.department_id && !v.faculty_id
+                  ? '/api/academic/results/board-lists/department'
+                  : '/api/academic/results/board-lists/faculty';
+                const params = {
+                  academic_term_id: v.academic_term_id,
+                  faculty_id: v.faculty_id,
+                  department_id: v.department_id,
+                  status: status || 'board_ready',
+                  level,
+                  sitting,
+                };
+                const term = terms.find((t) => t.id === v.academic_term_id);
+                const filename = `senate-list-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}${sitting === 'supplementary' ? '-supplementary' : ''}`;
+                if (format === 'html') {
+                  openPrintable(path, params);
+                  return;
+                }
+                void downloadSubmissionList(path, params, format, filename, {
+                  requireFaculty: path.endsWith('/faculty'),
+                  requireDepartment: path.endsWith('/department'),
+                });
+              }),
+            }}
+            trigger={['click']}
           >
-            Print board list
-          </Button>
+            <Button icon={<Download size={14} />}>Board list</Button>
+          </Dropdown>
           <Button onClick={load}>Refresh list</Button>
         </Space>
       </Form>
