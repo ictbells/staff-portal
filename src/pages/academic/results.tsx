@@ -263,6 +263,7 @@ export function ResultsImportPage() {
         const formData = new FormData();
         formData.append('course_offering_id', String(values.course_offering_id));
         formData.append('score_component', values.score_component || 'total');
+        formData.append('sitting', values.sitting || 'main');
         formData.append('file', file);
         res = await api.post('/api/academic/results/import', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
@@ -293,7 +294,7 @@ export function ResultsImportPage() {
     >
       <Form form={form} layout="vertical" className="max-w-xl p-4" onFinish={run}>
         <p className="text-sm text-slate-600 mb-4">
-          Required column: matric. Use ca and exam together, or score for a single total. The student must already be registered on the selected offering.
+          Required column: matric. Use ca and exam together, or score for a single total. Choose sitting here; it applies to every row. The student must already be registered on the selected offering.
         </p>
         <Form.Item name="course_offering_id" label="Course offering" rules={[{ required: true }]}>
           <Select
@@ -312,6 +313,12 @@ export function ResultsImportPage() {
             { value: 'exam', label: 'Exam' },
           ]} />
         </Form.Item>
+        <Form.Item name="sitting" label="Sitting" initialValue="main">
+          <Select options={[
+            { value: 'main', label: 'Main' },
+            { value: 'supplementary', label: 'Supplementary' },
+          ]} />
+        </Form.Item>
         <Form.Item label="Template file">
           <Upload
             beforeUpload={() => false}
@@ -324,7 +331,7 @@ export function ResultsImportPage() {
           </Upload>
         </Form.Item>
         <Form.Item name="csv" label="CSV text" extra="Optional if you upload the template file.">
-          <Input.TextArea rows={8} placeholder={'matric,ca,exam,score,letter,sitting\nBUT/2024/001,28,44,,,main'} />
+          <Input.TextArea rows={8} placeholder={'matric,ca,exam,score\nBUT/2024/001,28,44,'} />
         </Form.Item>
         <Button type="primary" htmlType="submit" loading={uploading}>Import</Button>
       </Form>

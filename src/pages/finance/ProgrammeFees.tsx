@@ -10,22 +10,21 @@ import {
 import { formatNaira } from '../../lib/money';
 import { SessionLevelFilters } from '../../components/SessionLevelFilters';
 
-const LEVEL_OPTIONS = [
-  { value: 'all', label: 'All levels' },
-  { value: '100', label: '100' },
-  { value: '200', label: '200' },
-  { value: '300', label: '300' },
-  { value: '400', label: '400' },
-  { value: '500', label: '500' },
-  { value: 'Y1', label: 'Y1' },
-  { value: 'Y2', label: 'Y2' },
-];
+const FALLBACK_LEVEL_CODES = ['100', '200', '300', '400', '500', 'Y1', 'Y2'];
 
 const SEMESTER_OPTIONS = [
   { value: 'both', label: 'Both' },
   { value: 'first', label: 'First' },
   { value: 'second', label: 'Second' },
 ];
+
+function asLevelCodes(value: unknown): string[] {
+  const list = Array.isArray(value) ? value : [value];
+  return list
+    .flatMap((code) => (Array.isArray(code) ? code : [code]))
+    .map((code) => String(code ?? '').trim())
+    .filter(Boolean);
+}
 
 function apiMessage(err: unknown, fallback: string) {
   const ax = err as { response?: { data?: { message?: string } } };
@@ -77,6 +76,32 @@ type SliceGroup = {
   subtotal: number;
 };
 
+type LevelGroup = {
+  key: string;
+  levelCode: string;
+  slices: SliceGroup[];
+  subtotal: number;
+};
+
+function lineLevelCode(line: DetailLine): string {
+  const code = String(line.level_code || 'all').trim();
+  return code || 'all';
+}
+
+function compareLevelCodes(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a === 'all') return -1;
+  if (b === 'all') return 1;
+  const na = Number(a);
+  const nb = Number(b);
+  const aNum = Number.isFinite(na);
+  const bNum = Number.isFinite(nb);
+  if (aNum && bNum) return na - nb;
+  if (aNum) return -1;
+  if (bNum) return 1;
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+}
+
 function groupDetailLines(lines: DetailLine[]): SliceGroup[] {
   const order: Array<number | null> = [1, 2, 3, 4, 100, null];
   const buckets = new Map<string, DetailLine[]>();
@@ -91,7 +116,11 @@ function groupDetailLines(lines: DetailLine[]): SliceGroup[] {
     .filter((tranche) => buckets.has(tranche == null ? 'none' : String(tranche)))
     .map((tranche) => {
       const key = tranche == null ? 'none' : String(tranche);
-      const groupLines = buckets.get(key) || [];
+      const groupLines = (buckets.get(key) || []).slice().sort((a, b) => {
+        const nameA = a.fee_item?.name || '';
+        const nameB = b.fee_item?.name || '';
+        return nameA.localeCompare(nameB);
+      });
       return {
         key,
         tranche,
@@ -100,6 +129,35 @@ function groupDetailLines(lines: DetailLine[]): SliceGroup[] {
           : (TRANCHE_LABELS[tranche] || `Slice ${tranche}`),
         lines: groupLines,
         subtotal: groupLines.reduce((sum, line) => sum + Number(line.effective_amount || 0), 0),
+      };
+    });
+}
+
+function slicePackageTotal(slices: SliceGroup[]): number {
+  const hasQuarter = slices.some((slice) => slice.tranche != null && [1, 2, 3, 4].includes(slice.tranche));
+  return slices.reduce((sum, slice) => {
+    if (hasQuarter && slice.tranche === 100) return sum;
+    return sum + slice.subtotal;
+  }, 0);
+}
+
+function groupDetailLinesByLevel(lines: DetailLine[]): LevelGroup[] {
+  const buckets = new Map<string, DetailLine[]>();
+  for (const line of lines) {
+    const key = lineLevelCode(line);
+    const group = buckets.get(key) || [];
+    group.push(line);
+    buckets.set(key, group);
+  }
+  return [...buckets.keys()]
+    .sort(compareLevelCodes)
+    .map((levelCode) => {
+      const slices = groupDetailLines(buckets.get(levelCode) || []);
+      return {
+        key: levelCode,
+        levelCode,
+        slices,
+        subtotal: slicePackageTotal(slices),
       };
     });
 }
@@ -116,6 +174,51 @@ type ProgrammeSummary = {
   total_amount: number;
 };
 
+function FeeBreakdownTable({
+  lines,
+  onEdit,
+  onRemove,
+}: {
+  lines: DetailLine[];
+  onEdit: (line: DetailLine) => void;
+  onRemove: (line: DetailLine) => void;
+}) {
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr>
+          <th className={thClass}>Fee item</th>
+          <th className={thClass}>Semester</th>
+          <th className={thClass}>Override</th>
+          <th className={thClass}>Effective</th>
+          <th className={thClass}>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {lines.map((line) => (
+          <tr key={line.id} className={trClass}>
+            <td className={`${tdClass} font-medium`}>
+              <div>{line.fee_item?.name || '—'}</div>
+              <div className="text-xs text-slate-500">
+                {(line.fee_item?.category || '').replaceAll('_', ' ')}
+              </div>
+            </td>
+            <td className={tdClass}>{line.semester || 'both'}</td>
+            <td className={tdClass}>{formatNaira(line.amount, 'Catalog default')}</td>
+            <td className={`${tdClass} font-medium`}>{formatNaira(line.effective_amount)}</td>
+            <td className={tdClass}>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className="text-sm text-sky-700 hover:underline" onClick={() => onEdit(line)}>Edit</button>
+                <button type="button" className="text-sm text-rose-600 hover:underline" onClick={() => onRemove(line)}>Remove</button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export function ProgrammeFees() {
   const [fees, setFees] = useState<any[]>([]);
   const [programOptions, setProgramOptions] = useState<{ id: number; name: string; code?: string | null }[]>([]);
@@ -124,6 +227,7 @@ export function ProgrammeFees() {
   const [rows, setRows] = useState<ProgrammeSummary[]>([]);
   const [faculties, setFaculties] = useState<{ id: number; name: string }[]>([]);
   const [departments, setDepartments] = useState<{ id: number; name: string; faculty_id?: number }[]>([]);
+  const [catalogLevels, setCatalogLevels] = useState<{ value: string; label: string }[]>([]);
   const [meta, setMeta] = useState({ programmes: 0, with_schedule: 0, without_schedule: 0 });
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -146,7 +250,7 @@ export function ProgrammeFees() {
     amount: '',
     itemAmounts: {} as Record<number, string>,
     itemSlices: {} as Record<number, number[]>,
-    level_code: 'all',
+    level_codes: ['all'] as string[],
     semester: 'both',
     is_active: true,
   });
@@ -166,11 +270,36 @@ export function ProgrammeFees() {
     ),
   ), [fees, scheduleCategories, categories]);
 
-  const detailGroups = useMemo(() => groupDetailLines(detailLines), [detailLines]);
+  const detailGroups = useMemo(() => groupDetailLinesByLevel(detailLines), [detailLines]);
+
+  const levelHeading = (code: string) => {
+    if (code === 'all') return 'All levels';
+    const named = catalogLevels.find((row) => row.value === code);
+    if (named?.label && named.label !== code) return named.label;
+    return `${code} level`;
+  };
   const copySameDepartment = useMemo(
     () => copyCandidates.filter((p) => p.department?.id && p.department.id === detail?.department?.id),
     [copyCandidates, detail],
   );
+
+  const assignLevelOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const options: { value: string; label: string }[] = [{ value: 'all', label: 'All levels' }];
+    seen.add('all');
+    for (const row of catalogLevels) {
+      const value = String(row.value || '').trim();
+      if (!value || seen.has(value)) continue;
+      seen.add(value);
+      options.push({ value, label: row.label || value });
+    }
+    for (const code of FALLBACK_LEVEL_CODES) {
+      if (seen.has(code)) continue;
+      seen.add(code);
+      options.push({ value: code, label: code });
+    }
+    return options;
+  }, [catalogLevels]);
 
   const assignProgramOptions = useMemo(() => {
     const map = new Map<number, { id: number; name: string; code?: string | null }>();
@@ -213,6 +342,7 @@ export function ProgrammeFees() {
       setMeta(r.data.meta || { programmes: 0, with_schedule: 0, without_schedule: 0 });
       setFaculties(r.data.filters?.faculties || []);
       setDepartments(r.data.filters?.departments || []);
+      setCatalogLevels(r.data.filters?.levels || []);
     }).catch((err) => {
       setRows([]);
       message.error(apiMessage(err, 'Could not load programme fees.'));
@@ -254,7 +384,7 @@ export function ProgrammeFees() {
       itemSlices: line?.fee_item_id
         ? { [line.fee_item_id]: line?.installment_tranche != null ? [Number(line.installment_tranche)] : [] }
         : {},
-      level_code: line?.level_code || 'all',
+      level_codes: [line?.level_code || 'all'],
       semester: line?.semester || 'both',
       is_active: line ? line.is_active !== false : true,
     });
@@ -271,13 +401,13 @@ export function ProgrammeFees() {
           fee_item_id: assignForm.fee_item_ids[0],
           amount: assignForm.amount === '' ? null : Number(assignForm.amount),
           installment_tranche: (assignForm.itemSlices[assignForm.fee_item_ids[0]] || [])[0] ?? null,
-          level_code: assignForm.level_code || 'all',
+          level_code: assignForm.level_codes[0] || 'all',
           semester: assignForm.semester || 'both',
           is_active: assignForm.is_active,
         })
         : await api.post('/api/programme-fees/bulk', {
           program_id: assignForm.program_id,
-          level_code: assignForm.level_code || 'all',
+          level_codes: assignForm.level_codes.length ? assignForm.level_codes : ['all'],
           semester: assignForm.semester || 'both',
           items: assignForm.fee_item_ids.flatMap((id) => {
             const raw = assignForm.itemAmounts[id];
@@ -515,58 +645,52 @@ export function ProgrammeFees() {
               </div>
             </div>
             <div className="px-5 py-4 overflow-y-auto space-y-4">
-              {detailTotal != null && (
-                <p className="text-sm font-medium text-slate-800">
-                  Grand total (1st–4th 25%): {formatNaira(detailTotal)}
-                </p>
-              )}
               {detailLoading ? (
                 <p className="text-sm text-slate-500 py-8 text-center">Loading breakdown…</p>
               ) : !detailLines.length ? (
                 <p className="text-sm text-slate-500 py-8 text-center">No fee lines on this programme yet.</p>
               ) : (
-                detailGroups.map((group) => (
-                  <div key={group.key} className="rounded-xl border border-slate-200 overflow-hidden">
-                    <div className="flex items-center justify-between gap-3 bg-slate-50 px-4 py-2.5">
-                      <p className="text-sm font-semibold text-slate-800">{group.label}</p>
-                      <p className="text-sm font-medium text-slate-700 tabular-nums">{formatNaira(group.subtotal)}</p>
+                <>
+                  {detailGroups.length === 1 && detailTotal != null && (
+                    <p className="text-sm font-medium text-slate-800">
+                      Grand total (1st–4th 25%): {formatNaira(detailTotal)}
+                    </p>
+                  )}
+                  {detailGroups.length > 1 && (
+                    <p className="text-sm text-slate-500">
+                      Grouped by level. A student is billed <span className="font-medium text-slate-700">All levels</span> plus the lines for their current level.
+                    </p>
+                  )}
+                  {detailGroups.map((level) => (
+                    <div key={level.key} className="rounded-xl border border-slate-200 overflow-hidden">
+                      <div className="flex items-center justify-between gap-3 bg-slate-100 px-4 py-2.5">
+                        <p className="text-sm font-semibold text-slate-900">{levelHeading(level.levelCode)}</p>
+                        <p className="text-sm font-medium text-slate-800 tabular-nums">{formatNaira(level.subtotal)}</p>
+                      </div>
+                      {level.slices.length === 1 ? (
+                        <FeeBreakdownTable
+                          lines={level.slices[0].lines}
+                          onEdit={(line) => openAssign(detail, line)}
+                          onRemove={removeLine}
+                        />
+                      ) : (
+                        level.slices.map((slice) => (
+                          <div key={`${level.key}-${slice.key}`} className="border-t border-slate-200">
+                            <div className="flex items-center justify-between gap-3 bg-slate-50 px-4 py-2">
+                              <p className="text-sm font-medium text-slate-700">{slice.label}</p>
+                              <p className="text-sm text-slate-600 tabular-nums">{formatNaira(slice.subtotal)}</p>
+                            </div>
+                            <FeeBreakdownTable
+                              lines={slice.lines}
+                              onEdit={(line) => openAssign(detail, line)}
+                              onRemove={removeLine}
+                            />
+                          </div>
+                        ))
+                      )}
                     </div>
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr>
-                          <th className={thClass}>Fee item</th>
-                          <th className={thClass}>Level</th>
-                          <th className={thClass}>Semester</th>
-                          <th className={thClass}>Override</th>
-                          <th className={thClass}>Effective</th>
-                          <th className={thClass}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {group.lines.map((line) => (
-                          <tr key={line.id} className={trClass}>
-                            <td className={`${tdClass} font-medium`}>
-                              <div>{line.fee_item?.name || '—'}</div>
-                              <div className="text-xs text-slate-500">
-                                {(line.fee_item?.category || '').replaceAll('_', ' ')}
-                              </div>
-                            </td>
-                            <td className={tdClass}>{line.level_code || 'all'}</td>
-                            <td className={tdClass}>{line.semester || 'both'}</td>
-                            <td className={tdClass}>{formatNaira(line.amount, 'Catalog default')}</td>
-                            <td className={`${tdClass} font-medium`}>{formatNaira(line.effective_amount)}</td>
-                            <td className={tdClass}>
-                              <div className="flex flex-wrap gap-2">
-                                <button type="button" className="text-sm text-sky-700 hover:underline" onClick={() => openAssign(detail, line)}>Edit</button>
-                                <button type="button" className="text-sm text-rose-600 hover:underline" onClick={() => removeLine(line)}>Remove</button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ))
+                  ))}
+                </>
               )}
             </div>
           </div>
@@ -708,10 +832,31 @@ export function ProgrammeFees() {
               <span className={fieldLabelClass}>Level</span>
               <Select
                 className="w-full"
-                value={assignForm.level_code}
-                onChange={(v) => setAssignForm((s) => ({ ...s, level_code: v }))}
-                options={LEVEL_OPTIONS}
+                mode={editingLine ? undefined : 'tags'}
+                tokenSeparators={[',']}
+                showSearch
+                optionFilterProp="label"
+                placeholder={editingLine ? 'Level' : 'Select or type levels'}
+                value={editingLine ? (assignForm.level_codes[0] || 'all') : assignForm.level_codes}
+                onChange={(v) => {
+                  const selected = asLevelCodes(v);
+                  if (editingLine) {
+                    setAssignForm((s) => ({ ...s, level_codes: [selected[0] || 'all'] }));
+                    return;
+                  }
+                  const last = selected[selected.length - 1];
+                  const next = last === 'all'
+                    ? ['all']
+                    : selected.filter((code) => code !== 'all');
+                  setAssignForm((s) => ({ ...s, level_codes: next.length ? next : ['all'] }));
+                }}
+                options={assignLevelOptions}
               />
+              {!editingLine && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Select 200, 300, 400 and 500 together when the amount is the same. All levels is one shared line. Type a code if it is not listed.
+                </p>
+              )}
             </label>
             <label className="block">
               <span className={fieldLabelClass}>Semester</span>
