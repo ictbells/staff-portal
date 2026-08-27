@@ -173,6 +173,28 @@ function courseOfferingLabel(course?: CourseRef | null) {
   return `${course.code} — ${course.title}`;
 }
 
+function termAcademicSessionId(term: Term): number | null {
+  const nested = (term as Term & { session?: { id?: number } }).session?.id;
+  const id = term.academic_session_id ?? nested ?? null;
+  return id == null ? null : Number(id);
+}
+
+function academicSemesterTerms(terms: Term[], sessionId?: number): Term[] {
+  const current = terms.find((term) => term.is_current);
+  const scopeId = sessionId ?? (current ? termAcademicSessionId(current) : undefined);
+  if (scopeId == null) {
+    return terms.filter((term) => termAcademicSessionId(term) != null);
+  }
+  return terms.filter((term) => termAcademicSessionId(term) === Number(scopeId));
+}
+
+function semesterSelectOptions(terms: Term[]) {
+  return terms.map((term) => ({
+    value: term.id,
+    label: `${term.session_label || ''} ${term.name}`.trim(),
+  }));
+}
+
 function CourseOfferingCell({ course }: { course?: CourseRef | null }) {
   if (!course) return <span>—</span>;
   const programs = courseProgrammeNames(course);
@@ -212,7 +234,23 @@ export function OfferingsPage() {
   const { rows: courses } = useResourceList<CourseRef>('/api/academic/courses');
   const { rows: programs } = useResourceList<ProgramRef>('/api/academic/programs');
   const crud = useCrudModal<Offering>();
-  const currentTermId = termId ?? terms.find((term) => term.is_current)?.id;
+  const semesterTerms = useMemo(() => academicSemesterTerms(terms, sessionId), [terms, sessionId]);
+  const semesterOptions = useMemo(() => semesterSelectOptions(semesterTerms), [semesterTerms]);
+  const formSemesterOptions = useMemo(() => {
+    const extraId = crud.editing?.academic_term_id ?? crud.editing?.term?.id;
+    if (!extraId || semesterOptions.some((option) => option.value === extraId)) return semesterOptions;
+    const extra = terms.find((term) => term.id === extraId);
+    if (!extra) return semesterOptions;
+    return [...semesterOptions, { value: extra.id, label: `${extra.session_label || ''} ${extra.name}`.trim() }];
+  }, [crud.editing, semesterOptions, terms]);
+  const currentTermId = termId ?? semesterTerms.find((term) => term.is_current)?.id ?? semesterTerms[0]?.id;
+
+  useEffect(() => {
+    if (!termId) return;
+    if (!semesterTerms.some((term) => term.id === termId)) {
+      setTermId(undefined);
+    }
+  }, [termId, semesterTerms]);
 
   const openPublish = () => {
     publishForm.setFieldsValue({
@@ -305,21 +343,29 @@ export function OfferingsPage() {
       loading={loading}
       onRefresh={reload}
       onAdd={() => crud.openCreate({ section: 'A', academic_term_id: currentTermId, course_id: [] })}
-      canAdd={courses.length > 0 && terms.length > 0}
+      canAdd={courses.length > 0 && semesterTerms.length > 0}
       count={rows.length}
       countLabel="Offerings"
       extra={(
         <>
-          <SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />
+          <SessionLevelFilters
+            sessionId={sessionId}
+            level={level}
+            onSessionChange={(value) => {
+              setSessionId(value);
+              setTermId(undefined);
+            }}
+            onLevelChange={setLevel}
+          />
           <Select
             allowClear
             className="min-w-[180px]"
             placeholder="Semester"
             value={termId}
             onChange={setTermId}
-            options={terms.map((term) => ({ value: term.id, label: `${term.session_label || ''} ${term.name}`.trim() }))}
+            options={semesterOptions}
           />
-          <Button onClick={openPublish} disabled={terms.length === 0}>
+          <Button onClick={openPublish} disabled={semesterTerms.length === 0}>
             Publish programme courses
           </Button>
         </>
@@ -342,7 +388,7 @@ export function OfferingsPage() {
         </p>
         <Form form={publishForm} layout="vertical">
           <Form.Item name="academic_term_id" label="Semester" rules={[{ required: true, message: 'Choose the semester to publish into.' }]}>
-            <Select options={terms.map((term) => ({ value: term.id, label: `${term.session_label || ''} ${term.name}`.trim() }))} />
+            <Select options={semesterOptions} />
           </Form.Item>
           <Form.Item name="program_id" label="Programme" extra="Leave blank to publish mapped courses from every programme. Shared courses still create one offering.">
             <Select
@@ -377,7 +423,7 @@ export function OfferingsPage() {
             </Form.Item>
           )}
           <Form.Item name="academic_term_id" label="Semester" rules={[{ required: true }]}>
-            <Select options={terms.map((term) => ({ value: term.id, label: `${term.session_label || ''} ${term.name}`.trim() }))} />
+            <Select options={formSemesterOptions} />
           </Form.Item>
           <Form.Item
             name="lecturer_name"
