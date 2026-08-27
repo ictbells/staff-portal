@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button, DatePicker, Modal, Select, message } from 'antd';
 import dayjs from 'dayjs';
 import { Bell, ClipboardCheck, ExternalLink, FileText, GraduationCap, Landmark, Plug } from 'lucide-react';
-import api from '../api';
+import api, { apiUrl } from '../api';
 import { useAuth } from '../auth';
 import { RefreshButton } from '../components/RefreshButton';
 import {
@@ -12,7 +12,7 @@ import {
 import { formatNaira } from '../lib/money';
 import { SessionLevelFilters } from '../components/SessionLevelFilters';
 
-const API_DOCS_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/docs`;
+const API_DOCS_URL = apiUrl('/api/docs', 'http://localhost:8000');
 
 const ONLINE_ONLY_FEE_CATEGORIES = ['application_fee', 'acceptance_fee', 'transcript'];
 

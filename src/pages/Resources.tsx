@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BookOpen, Download, FileDown, FileText, FolderOpen } from 'lucide-react';
-import api from '../api';
+import api, { apiUrl } from '../api';
 import { useAuth } from '../auth';
 import { AccessDeniedPanel } from '../components/AccessDeniedPanel';
 import { getNavItemAccess } from '../lib/portalAccess';
@@ -105,7 +105,7 @@ export default function Resources() {
           type="button"
           variant="secondary"
           className="inline-flex items-center gap-1.5"
-          onClick={() => window.open(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/docs`, '_blank', 'noopener,noreferrer')}
+          onClick={() => window.open(apiUrl('/api/docs', 'http://localhost:8000'), '_blank', 'noopener,noreferrer')}
         >
           Open API docs
         </Btn>

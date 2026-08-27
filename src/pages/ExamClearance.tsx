@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Input, Select, Tag } from 'antd';
-import { ClipboardList, Search } from 'lucide-react';
+import { Drawer, Input, Select, Tag, message } from 'antd';
+import { ClipboardList, Printer, Search } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../auth';
 import { RefreshButton } from '../components/RefreshButton';
 import {
-  Badge, Card, DataTable, StatCard, TablePager, WorkspaceHero, tdClass, thClass, trClass,
+  Badge, DataTable, StatCard, TablePager, WorkspaceHero, tdClass, thClass, trClass,
 } from '../components/ui';
 
 type CheckRow = {
@@ -27,11 +27,18 @@ type SummaryRow = {
 };
 
 type Detail = {
-  student: { id: number; name: string; matric_number?: string | null; program?: string | null };
+  student: {
+    id: number;
+    name: string;
+    matric_number?: string | null;
+    student_number?: string | null;
+    program?: string | null;
+    current_level?: string | number | null;
+  };
   cleared: boolean;
   status: string;
   checks: CheckRow[];
-  term?: { name?: string } | null;
+  term?: { name?: string; session_label?: string } | null;
 };
 
 export default function ExamClearance() {
@@ -43,7 +50,10 @@ export default function ExamClearance() {
   const [status, setStatus] = useState<string | undefined>();
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ page: 1, lastPage: 1, total: 0, from: null as number | null, to: null as number | null });
+  const [selected, setSelected] = useState<SummaryRow | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   const load = useCallback(async (nextPage = page, nextSearch = search, nextStatus = status) => {
     if (!has('exam_clearance.view')) return;
@@ -73,12 +83,53 @@ export default function ExamClearance() {
     load();
   }, [load]);
 
-  const openDetail = async (studentId: number) => {
-    const { data } = await api.get(`/api/exam-clearance/students/${studentId}`);
-    setDetail(data);
+  const openDetail = async (row: SummaryRow) => {
+    setSelected(row);
+    setDetail(null);
+    setDetailLoading(true);
+    try {
+      const { data } = await api.get(`/api/exam-clearance/students/${row.student_id}`);
+      setDetail(data);
+    } catch {
+      message.error('Could not load clearance details.');
+      setSelected(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const closeDetail = () => {
+    setSelected(null);
+    setDetail(null);
+  };
+
+  const printDetail = async () => {
+    if (!selected) return;
+    setPrinting(true);
+    try {
+      const { data } = await api.get(`/api/exam-clearance/students/${selected.student_id}`, {
+        params: { format: 'html' },
+        responseType: 'text',
+        headers: { Accept: 'text/html' },
+      });
+      const html = typeof data === 'string' ? data : String(data);
+      const popup = window.open('', '_blank');
+      if (!popup) {
+        message.error('Allow pop-ups to print exam clearance.');
+        return;
+      }
+      popup.document.write(html);
+      popup.document.close();
+    } catch {
+      message.error('Could not open exam clearance for printing.');
+    } finally {
+      setPrinting(false);
+    }
   };
 
   const clearedCount = rows.filter((row) => row.cleared).length;
+  const student = detail?.student;
+  const termLabel = [detail?.term?.session_label, detail?.term?.name].filter(Boolean).join(' · ');
 
   if (!has('exam_clearance.view')) {
     return <p className="text-slate-500">You do not have access to exam clearance.</p>;
@@ -137,7 +188,7 @@ export default function ExamClearance() {
         {!rows.length ? null : (
           <tbody>
             {rows.map((row) => (
-              <tr key={row.student_id} className={`${trClass} cursor-pointer`} onClick={() => openDetail(row.student_id)}>
+              <tr key={row.student_id} className={`${trClass} cursor-pointer`} onClick={() => openDetail(row)}>
                 <td className={tdClass}>
                   <div className="font-medium text-slate-800">{row.name}</div>
                   <div className="text-xs text-slate-500">{row.student_number || '—'}</div>
@@ -145,7 +196,7 @@ export default function ExamClearance() {
                 <td className={tdClass}><code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">{row.matric_number || '—'}</code></td>
                 <td className={tdClass}>{row.program || '—'}</td>
                 <td className={tdClass}>
-                  <Badge>{row.cleared ? 'Cleared' : 'Not cleared'}</Badge>
+                  <Badge variant={row.cleared ? 'success' : 'warning'}>{row.cleared ? 'Cleared' : 'Not cleared'}</Badge>
                 </td>
                 <td className={tdClass}>
                   {row.failed?.length ? row.failed.join(', ') : '—'}
@@ -165,28 +216,58 @@ export default function ExamClearance() {
         disabled={loading}
       />
 
-      {detail && (
-        <Card
-          title={detail.student.name}
-          description={`${detail.student.matric_number || 'No matric'} · ${detail.student.program || 'No programme'}${detail.term?.name ? ` · ${detail.term.name}` : ''}`}
-          actions={<button type="button" className="text-sm text-slate-500 hover:text-slate-800" onClick={() => setDetail(null)}>Close</button>}
-        >
-          <div className="mb-3">
-            <Tag color={detail.cleared ? 'success' : 'warning'}>{detail.cleared ? 'Cleared to sit exams' : 'Not cleared'}</Tag>
+      <Drawer
+        title={selected?.name || 'Exam clearance'}
+        open={!!selected}
+        onClose={closeDetail}
+        width={520}
+        destroyOnHidden
+        extra={detail ? (
+          <button
+            type="button"
+            onClick={printDetail}
+            disabled={printing}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          >
+            <Printer size={14} />
+            Print
+          </button>
+        ) : null}
+      >
+        {detailLoading && <p className="text-sm text-slate-500">Loading clearance details…</p>}
+        {detail && student && (
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm text-slate-600">
+                {student.matric_number || 'No matric'}
+                {student.student_number ? ` · ${student.student_number}` : ''}
+              </p>
+              <p className="text-sm text-slate-600">{student.program || 'No programme'}</p>
+              {student.current_level != null && student.current_level !== '' && (
+                <p className="text-sm text-slate-600">Level {student.current_level}</p>
+              )}
+              {termLabel && <p className="text-sm text-slate-500 mt-1">{termLabel}</p>}
+            </div>
+            <Tag color={detail.cleared ? 'success' : 'warning'}>
+              {detail.cleared ? 'Cleared to sit exams' : 'Not cleared'}
+            </Tag>
+            <ul className="space-y-2">
+              {(detail.checks || []).map((check) => (
+                <li key={check.key} className="rounded-lg border border-slate-100 px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium text-slate-800">{check.label}</span>
+                    <Badge variant={check.passed ? 'success' : 'warning'}>{check.passed ? 'Passed' : 'Failed'}</Badge>
+                  </div>
+                  <p className="text-sm text-slate-500 mt-1">{check.detail}</p>
+                </li>
+              ))}
+            </ul>
+            {(detail.checks || []).length === 0 && (
+              <p className="text-sm text-slate-500">No exam-clearance conditions are currently enabled.</p>
+            )}
           </div>
-          <ul className="space-y-2">
-            {(detail.checks || []).map((check) => (
-              <li key={check.key} className="rounded-lg border border-slate-100 px-3 py-2">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-medium text-slate-800">{check.label}</span>
-                  <Badge>{check.passed ? 'Passed' : 'Failed'}</Badge>
-                </div>
-                <p className="text-sm text-slate-500 mt-1">{check.detail}</p>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
+        )}
+      </Drawer>
     </div>
   );
 }

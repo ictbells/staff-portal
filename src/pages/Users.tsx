@@ -325,7 +325,7 @@ function UserFormFields({
         icon={KeyRound}
         title={mode === 'create' ? 'Sign-in password' : 'Reset password'}
         description={mode === 'create'
-          ? 'They will use this password on the staff portal. It must meet the checks below.'
+          ? 'They will use this password on the staff portal and receive it at their work email. It must meet the checks below.'
           : 'Leave blank to keep the current password.'}
       >
         <div className="grid gap-4 sm:grid-cols-2">
@@ -614,7 +614,7 @@ export default function Users() {
     try {
       const res = await api.post('/api/users', buildPayload(createForm));
       if (!isPendingApproval(res)) {
-        message.success('User created.');
+        message.success('User created. Sign-in details were emailed.');
       }
       closeCreate();
       load(pagination.current, filters);

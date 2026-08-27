@@ -1,7 +1,13 @@
 import axios from 'axios';
 import { message } from 'antd';
 
-const baseURL = import.meta.env.VITE_API_URL || '';
+export function apiUrl(path: string, fallback = ''): string {
+  const base = String(import.meta.env.VITE_API_URL || fallback).replace(/\/+$/, '');
+  const suffix = String(path).replace(/^\/+/, '');
+  return base ? `${base}/${suffix}` : `/${suffix}`;
+}
+
+const baseURL = String(import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
 
 const api = axios.create({
   baseURL,

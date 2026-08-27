@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-  Alert, Button, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, Upload, message,
+  Alert, Button, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, Tooltip, Upload, message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload';
@@ -46,26 +46,52 @@ function useTermsFaculties() {
   return { terms, faculties, departments };
 }
 
+function currentTermId(terms: Term[]) {
+  return terms.find((term) => term.is_current)?.id;
+}
+
+const letterColumn = {
+  title: (
+    <Tooltip title="Letter grade (A–F) from the total score and the university grading scale. Staff do not type this.">
+      <span>Grade</span>
+    </Tooltip>
+  ),
+  dataIndex: 'letter',
+  width: 80,
+  render: (value: string | null) => value || '—',
+};
+
 function openPrintable(path: string, params: Record<string, string | number | undefined>) {
-  const qs = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && String(v) !== '') qs.set(k, String(v));
-  });
-  qs.set('format', 'html');
-  const token = sessionStorage.getItem('bells_token');
-  const base = import.meta.env.VITE_API_URL || '';
-  const url = `${base}${path}?${qs.toString()}`;
-  fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'text/html' } })
-    .then(async (res) => {
-      if (!res.ok) throw new Error('Could not load printable list');
-      const html = await res.text();
-      const w = window.open('', '_blank');
-      if (w) {
-        w.document.write(html);
-        w.document.close();
+  if (!params.academic_term_id) {
+    message.warning('Choose a semester before printing.');
+    return;
+  }
+  const popup = window.open('', '_blank');
+  const query = Object.fromEntries(
+    Object.entries({ ...params, format: 'html' }).filter(([, value]) => value !== undefined && value !== null && String(value) !== ''),
+  );
+  api.get(path, {
+    params: query,
+    responseType: 'text',
+    headers: { Accept: 'text/html' },
+  })
+    .then((res) => {
+      if (!popup) {
+        message.warning('Allow pop-ups to view the printable list.');
+        return;
       }
+      popup.document.write(String(res.data || ''));
+      popup.document.close();
     })
-    .catch((e) => message.error(e.message || 'Printable list failed'));
+    .catch((e: any) => {
+      popup?.close();
+      const errors = e?.response?.data?.errors;
+      message.error(
+        errors
+          ? Object.values(errors).flat().join(' ')
+          : (e?.response?.data?.message || 'Could not load printable list'),
+      );
+    });
 }
 
 export function ResultsDashboardPage() {
@@ -185,7 +211,7 @@ export function ResultsStudentDetailPage() {
     { title: 'CA', dataIndex: 'ca_score' },
     { title: 'Exam', dataIndex: 'exam_score' },
     { title: 'Total', dataIndex: 'score' },
-    { title: 'Letter', dataIndex: 'letter' },
+    letterColumn,
     { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{v}</Tag> },
     {
       title: '',
@@ -355,6 +381,12 @@ export function ResultsDepartmentUploadsPage() {
     status: 'draft',
   });
 
+  useEffect(() => {
+    const termId = currentTermId(terms);
+    if (!termId) return;
+    setFilters((current) => (current.academic_term_id ? current : { ...current, academic_term_id: termId }));
+  }, [terms]);
+
   const load = useCallback(() => {
     setLoading(true);
     api.get('/api/academic/results/grades', { params: { ...filters, per_page: 100 } })
@@ -385,14 +417,14 @@ export function ResultsDepartmentUploadsPage() {
     { title: 'CA', dataIndex: 'ca_score', width: 70 },
     { title: 'Exam', dataIndex: 'exam_score', width: 70 },
     { title: 'Score', dataIndex: 'score', width: 70 },
-    { title: 'Letter', dataIndex: 'letter', width: 70 },
+    letterColumn,
     { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{String(v || '').replace(/_/g, ' ')}</Tag> },
   ];
 
   return (
     <ResourceShell
       title="Department uploads"
-      description="Review grades entered by the department. Submit drafts for faculty approval and print the department list."
+      description="Review department scores. Grade is the A–F letter from the total (you do not type it). Choose a semester, then print the department list."
       loading={loading}
       onRefresh={load}
       extra={(
@@ -404,9 +436,10 @@ export function ResultsDepartmentUploadsPage() {
             onLevelChange={(v) => setFilters((f) => ({ ...f, level: v }))}
           />
           <Select
-            placeholder="Term"
+            placeholder="Semester"
             allowClear
             style={{ width: 180 }}
+            value={filters.academic_term_id}
             options={terms.map((t) => ({ value: t.id, label: `${t.session_label || ''} ${t.name}`.trim() }))}
             onChange={(v) => setFilters((f) => ({ ...f, academic_term_id: v }))}
           />
@@ -424,8 +457,11 @@ export function ResultsDepartmentUploadsPage() {
           )}
           <Button onClick={() => openPrintable('/api/academic/results/reports/submission-list/department', {
             academic_term_id: filters.academic_term_id,
+            academic_session_id: filters.academic_session_id,
             department_id: filters.department_id,
+            faculty_id: filters.faculty_id,
             status: filters.status,
+            level: filters.level,
           })}
           >
             Print dept list
@@ -471,6 +507,12 @@ export function ResultsApprovalsPage() {
     status: 'submitted',
   });
 
+  useEffect(() => {
+    const termId = currentTermId(terms);
+    if (!termId) return;
+    setFilters((current) => (current.academic_term_id ? current : { ...current, academic_term_id: termId }));
+  }, [terms]);
+
   const load = useCallback(() => {
     setLoading(true);
     api.get('/api/academic/results/grades', { params: { ...filters, per_page: 100 } })
@@ -499,7 +541,7 @@ export function ResultsApprovalsPage() {
     { title: 'Student', render: (_, r) => `${r.enrollment?.student?.first_name || ''} ${r.enrollment?.student?.last_name || ''}`.trim() || '—' },
     { title: 'Course', render: (_, r) => r.enrollment?.offering?.course?.code },
     { title: 'Score', dataIndex: 'score' },
-    { title: 'Letter', dataIndex: 'letter' },
+    letterColumn,
     { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{String(v || '').replace(/_/g, ' ')}</Tag> },
   ];
 
@@ -518,9 +560,10 @@ export function ResultsApprovalsPage() {
             onLevelChange={(v) => setFilters((f) => ({ ...f, level: v }))}
           />
           <Select
-            placeholder="Term"
+            placeholder="Semester"
             allowClear
             style={{ width: 180 }}
+            value={filters.academic_term_id}
             options={terms.map((t) => ({ value: t.id, label: `${t.session_label || ''} ${t.name}`.trim() }))}
             onChange={(v) => setFilters((f) => ({ ...f, academic_term_id: v }))}
           />
@@ -540,7 +583,9 @@ export function ResultsApprovalsPage() {
           <Button onClick={() => openPrintable('/api/academic/results/reports/submission-list/faculty', {
             academic_term_id: filters.academic_term_id,
             faculty_id: filters.faculty_id,
+            department_id: filters.department_id,
             status: filters.status,
+            level: filters.level,
           })}
           >
             Print faculty list
@@ -633,7 +678,7 @@ export function ResultsBoardPage() {
     { title: 'Student', render: (_, r) => `${r.enrollment?.student?.first_name || ''} ${r.enrollment?.student?.last_name || ''}`.trim() || '—' },
     { title: 'Course', render: (_, r) => r.enrollment?.offering?.course?.code },
     { title: 'Score', dataIndex: 'score', width: 70 },
-    { title: 'Letter', dataIndex: 'letter', width: 70 },
+    letterColumn,
     { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{String(v || '').replace(/_/g, ' ')}</Tag> },
   ];
 
