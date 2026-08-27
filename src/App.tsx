@@ -50,6 +50,7 @@ import TranscriptChannelPage from './pages/transcripts/TranscriptChannelPage';
 import {
   Documents, Finance, FeeCategories, Institution,
   GenerateInvoice, Integrations, Invoices, Medical, Notifications, ProgrammeFees, Rebates, Students, StudentFinance,
+  PaymentDashboard,
 } from './pages/Modules';
 import Announcements from './pages/Announcements';
 import Audit from './pages/Audit';
@@ -141,6 +142,7 @@ export default function App() {
         <Route path="exam-clearance" element={<ExamClearance />} />
         <Route path="finance" element={<Finance />} />
         <Route path="finance/sundry" element={<Navigate to="/finance" replace />} />
+        <Route path="finance/dashboard" element={<PaymentDashboard />} />
         <Route path="finance/categories" element={<FeeCategories />} />
         <Route path="finance/rebates" element={<Rebates />} />
         <Route path="finance/programme-fees" element={<ProgrammeFees />} />

@@ -230,6 +230,7 @@ export { ProgrammeFees } from './finance/ProgrammeFees';
 export { FeeCategories as SundryFees } from './finance/FeeCategories';
 export { FeeCategories } from './finance/FeeCategories';
 export { StudentFinance } from './finance/StudentFinance';
+export { PaymentDashboard } from './finance/PaymentDashboard';
 export { Rebates } from './finance/Rebates';
 
 function LegacyInvoices() {

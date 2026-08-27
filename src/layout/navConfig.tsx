@@ -174,6 +174,7 @@ export const navSections: NavSection[] = [
         label: 'Fees & payments',
         icon: Wallet,
         items: [
+          { key: 'finance', to: '/finance/dashboard', label: 'Payment dashboard', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'finance', to: '/finance/categories', label: 'Fee categories', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'finance', to: '/finance', label: 'Fee items', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'finance', to: '/finance/rebates', label: 'Rebates', perm: 'finance.invoices.manage', icon: Wallet },

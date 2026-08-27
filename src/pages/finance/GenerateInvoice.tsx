@@ -27,7 +27,7 @@ type FoundStudent = {
   current_level?: string | number | null;
 };
 
-const EXCLUDED_CATEGORIES = ['application_fee', 'acceptance_fee', 'programme_fee'];
+const EXCLUDED_CATEGORIES = ['application_fee', 'acceptance_fee', 'transcript', 'programme_fee'];
 
 function studentFromStatus(payload: any): FoundStudent | null {
   const row = payload?.student;
@@ -57,7 +57,7 @@ export function GenerateInvoice() {
 
   const loadCatalog = () => {
     setCatalogLoading(true);
-    api.get('/api/fees', { params: { active: 1 } })
+    api.get('/api/fees', { params: { active: 1, operational: 1 } })
       .then((res) => {
         const list = Array.isArray(res.data) ? res.data : res.data?.data || [];
         setItems(list.filter((row: CatalogFee) => (
@@ -141,17 +141,17 @@ export function GenerateInvoice() {
       <WorkspaceHero
         eyebrow="Fees & payments"
         title="Generate invoice"
-        description="Enter a matric number, choose catalog fee items, and generate one invoice. Students pay from the student portal wallet."
+        description="Enter a matric number and choose operational fee items (hostel, clinic, sundry, and similar). School-fee programme lines are not listed here."
         icon={Receipt}
       >
         <RefreshButton onClick={loadCatalog} loading={catalogLoading} />
       </WorkspaceHero>
       <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
-        <StatCard label="Fee items" value={items.length} hint="Catalog charges available to invoice" icon={List} />
+        <StatCard label="Fee items" value={items.length} hint="Operational catalog charges" icon={List} />
         <StatCard label="Selected" value={selectedIds.length} hint={selectedIds.length ? formatNaira(total) : 'Choose charges below'} icon={Wallet} tone="amber" />
       </div>
 
-      <Card title="Student and fee items" description="The invoice total is the sum of every selected fee item. Programme fee schedules are not used here.">
+      <Card title="Student and fee items" description="Only operational fee items appear here. Programme-schedule charges (tuition, ICT, laboratory, and the rest) stay on Programme fees.">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-3">
             <label className="block">
