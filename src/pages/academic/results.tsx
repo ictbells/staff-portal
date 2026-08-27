@@ -4,7 +4,8 @@ import {
   Alert, Button, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, Upload, message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { ClipboardList } from 'lucide-react';
+import type { UploadFile } from 'antd/es/upload';
+import { ClipboardList, Download } from 'lucide-react';
 import { RefreshButton } from '../../components/RefreshButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 import api, { isPendingApproval } from '../../api';
@@ -226,25 +227,74 @@ export function ResultsImportPage() {
   const [offerings, setOfferings] = useState<any[]>([]);
   const [form] = Form.useForm();
   const [result, setResult] = useState<any>(null);
+  const [fileList, setFileList] = useState<UploadFile[]>([]);
+  const [uploading, setUploading] = useState(false);
   useEffect(() => {
     api.get('/api/academic/offerings').then((r) => setOfferings(Array.isArray(r.data) ? r.data : r.data?.data || [])).catch(() => {});
   }, []);
+
+  const downloadTemplate = async () => {
+    try {
+      const { data } = await api.get('/api/academic/results/import-template', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'results-import-template.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      message.error('Unable to download the template.');
+    }
+  };
+
   const run = async () => {
     try {
       const values = await form.validateFields();
-      const res = await api.post('/api/academic/results/import', values);
+      const file = fileList[0]?.originFileObj;
+      if (!file && !String(values.csv || '').trim()) {
+        message.warning('Download the template, then upload the filled file or paste CSV.');
+        return;
+      }
+      setUploading(true);
+      let res;
+      if (file) {
+        const formData = new FormData();
+        formData.append('course_offering_id', String(values.course_offering_id));
+        formData.append('score_component', values.score_component || 'total');
+        formData.append('file', file);
+        res = await api.post('/api/academic/results/import', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      } else {
+        res = await api.post('/api/academic/results/import', values);
+      }
       if (isPendingApproval(res)) {
         return;
       }
       setResult(res.data);
+      setFileList([]);
       message.success(`Import done: ${res.data.created} created, ${res.data.updated} updated`);
     } catch (e: any) {
       message.error(e.response?.data?.message || 'Import failed');
+    } finally {
+      setUploading(false);
     }
   };
+
   return (
-    <ResourceShell title="CSV import" description="Import matric,score (or ca/exam columns) into draft grades." loading={false} onRefresh={() => {}}>
-      <Form form={form} layout="vertical" className="max-w-xl" onFinish={run}>
+    <ResourceShell
+      title="CSV import"
+      description="Download the template, fill one row per enrolled student, then upload the file or paste CSV."
+      loading={false}
+      onRefresh={() => {}}
+      extra={<Button icon={<Download size={14} />} onClick={downloadTemplate}>Template</Button>}
+    >
+      <Form form={form} layout="vertical" className="max-w-xl p-4" onFinish={run}>
+        <p className="text-sm text-slate-600 mb-4">
+          Required column: matric. Use ca and exam together, or score for a single total. The student must already be registered on the selected offering.
+        </p>
         <Form.Item name="course_offering_id" label="Course offering" rules={[{ required: true }]}>
           <Select
             showSearch
@@ -262,10 +312,21 @@ export function ResultsImportPage() {
             { value: 'exam', label: 'Exam' },
           ]} />
         </Form.Item>
-        <Form.Item name="csv" label="CSV text" rules={[{ required: true }]}>
-          <Input.TextArea rows={10} placeholder={'matric,score\nBU/2020/001,72'} />
+        <Form.Item label="Template file">
+          <Upload
+            beforeUpload={() => false}
+            maxCount={1}
+            accept=".xlsx,.xls,.csv"
+            fileList={fileList}
+            onChange={({ fileList: next }) => setFileList(next)}
+          >
+            <Button>Choose file</Button>
+          </Upload>
         </Form.Item>
-        <Button type="primary" htmlType="submit">Import</Button>
+        <Form.Item name="csv" label="CSV text" extra="Optional if you upload the template file.">
+          <Input.TextArea rows={8} placeholder={'matric,ca,exam,score,letter,sitting\nBUT/2024/001,28,44,,,main'} />
+        </Form.Item>
+        <Button type="primary" htmlType="submit" loading={uploading}>Import</Button>
       </Form>
       {result && (
         <Alert className="mt-4" type={result.errors?.length ? 'warning' : 'success'}
