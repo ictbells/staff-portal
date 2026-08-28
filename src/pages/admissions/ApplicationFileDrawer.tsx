@@ -1155,8 +1155,8 @@ export function ApplicationFileDrawer({
             {app.student && canChangeProgramme && programmeChanging && (
               <p className="text-sm text-sky-800 bg-sky-50 border border-sky-200 rounded-lg px-3 py-2">
                 {sameCollegeChange
-                  ? `Changing programme within the same college keeps the student at ${studentLevel}L. Outstanding courses of the new programme will be available for registration.`
-                  : `Changing programme will set the student level to ${nextLevel}L${studentLevel === 100 ? ' (100L remains 100L).' : ` (currently ${studentLevel}L).`}`}
+                  ? `Changing programme within the same college keeps the student at ${studentLevel}L. Outstanding courses of the new programme will be available for registration. CGPA is unchanged.`
+                  : `Changing programme will set the student level to ${nextLevel}L${studentLevel === 100 ? ' (100L remains 100L). The transcript and CGPA will not keep the old 100L.' : ` (currently ${studentLevel}L). The transcript and CGPA will keep only old-programme courses below ${nextLevel}L, then add the new programme.`}`}
               </p>
             )}
             <p className="text-xs font-medium text-slate-500">{app.entry_mode === 'jupeb' ? 'Programme' : 'First choice'}</p>

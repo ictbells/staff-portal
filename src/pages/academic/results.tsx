@@ -551,6 +551,9 @@ export function ResultsStudentDetailPage() {
           />
           <Tag>GPA {payload?.gpa ?? '—'}</Tag>
           <Tag>CGPA {payload?.cgpa ?? payload?.transcript?.cgpa ?? '—'}</Tag>
+          {payload?.transcript?.cgpa_note ? (
+            <span className="text-xs text-slate-500 max-w-md">{payload.transcript.cgpa_note}</span>
+          ) : null}
           <Link to="/academic/results/students"><Button>Back</Button></Link>
         </Space>
       )}
