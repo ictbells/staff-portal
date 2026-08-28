@@ -35,6 +35,9 @@ export function hasAcademicResourcePermission(
   if (resource.key === 'results-department' && (has('results.submit') || has('results.read'))) {
     return true;
   }
+  if (resource.key === 'results-grading-scale' && has('results.read')) {
+    return true;
+  }
   if (resource.key === 'import-students' && has('students.manage')) {
     return true;
   }

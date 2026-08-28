@@ -1368,57 +1368,121 @@ export function ResultsReleasePage() {
 }
 
 export function ResultsGradingScalePage() {
+  const { has } = useAuth();
+  const canEdit = has('scales.manage');
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [scale, setScale] = useState<any>(null);
   const [form] = Form.useForm();
+
+  const applyScale = (def: any) => {
+    setScale(def);
+    form.setFieldsValue({
+      name: def.name,
+      max_points: Number(def.max_points),
+      is_default: !!def.is_default,
+      boundaries: (def.boundaries || []).map((row: any) => ({
+        letter: row.letter,
+        min_score: Number(row.min_score),
+        max_score: Number(row.max_score),
+        grade_point: Number(row.grade_point),
+      })),
+    });
+  };
+
   const load = () => {
-    api.get('/api/academic/results/grading-scales').then((r) => {
-      const list = Array.isArray(r.data) ? r.data : [];
-      const def = list.find((s: any) => s.is_default) || list[0];
-      setScale(def);
-      if (def) {
-        form.setFieldsValue({
-          name: def.name,
-          max_points: def.max_points,
-          is_default: def.is_default,
-          boundaries: def.boundaries || [],
-        });
-      }
-    }).catch(() => message.error('Could not load scale'));
+    setLoading(true);
+    api.get('/api/academic/results/grading-scales')
+      .then((r) => {
+        const list = Array.isArray(r.data) ? r.data : (r.data?.data || []);
+        const def = list.find((s: any) => s.is_default) || list[0];
+        if (def) {
+          applyScale(def);
+        } else {
+          setScale(null);
+          form.resetFields();
+        }
+      })
+      .catch(() => message.error('Could not load scale'))
+      .finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
+
   const save = async () => {
-    if (!scale) return;
+    if (!scale || !canEdit) return;
     try {
       const values = await form.validateFields();
-      const res = await api.put(`/api/academic/results/grading-scales/${scale.id}`, values);
+      setSaving(true);
+      const res = await api.put(`/api/academic/results/grading-scales/${scale.id}`, {
+        ...values,
+        max_points: values.max_points != null ? Number(values.max_points) : undefined,
+        boundaries: (values.boundaries || []).map((row: any) => ({
+          letter: String(row.letter || '').trim().toUpperCase(),
+          min_score: Number(row.min_score),
+          max_score: Number(row.max_score),
+          grade_point: Number(row.grade_point),
+        })),
+      });
       if (!isPendingApproval(res)) {
         message.success('Grading scale updated');
+        if (res.data?.id) {
+          applyScale(res.data);
+        } else {
+          load();
+        }
       }
-      load();
     } catch (e: any) {
       message.error(e.response?.data?.message || 'Save failed');
+    } finally {
+      setSaving(false);
     }
   };
+
   return (
-    <ResourceShell title="Grading scale" description="Review letter boundaries before first release." loading={false} onRefresh={load}>
-      <Form form={form} layout="vertical" className="max-w-2xl" onFinish={save}>
+    <ResourceShell
+      title="Grading scale"
+      description="Letter bands used to turn a total score into A–F and grade points. This is applied when scores are saved."
+      loading={loading}
+      onRefresh={load}
+    >
+      <Form form={form} layout="vertical" className="max-w-2xl" onFinish={save} disabled={!canEdit}>
         <Form.Item name="name" label="Name" rules={[{ required: true }]}><Input /></Form.Item>
-        <Form.Item name="max_points" label="Max points"><InputNumber min={1} max={10} step={0.1} /></Form.Item>
+        <Form.Item name="max_points" label="Max points"><InputNumber min={1} max={10} step={0.1} className="w-full" /></Form.Item>
         <Form.List name="boundaries">
-          {(fields) => (
+          {(fields, { add, remove }) => (
             <div className="space-y-2">
               {fields.map((field) => (
-                <Space key={field.key} align="start">
-                  <Form.Item {...field} name={[field.name, 'letter']} rules={[{ required: true }]}><Input placeholder="Letter" style={{ width: 70 }} /></Form.Item>
-                  <Form.Item {...field} name={[field.name, 'min_score']} rules={[{ required: true }]}><InputNumber placeholder="Min" /></Form.Item>
-                  <Form.Item {...field} name={[field.name, 'max_score']} rules={[{ required: true }]}><InputNumber placeholder="Max" /></Form.Item>
-                  <Form.Item {...field} name={[field.name, 'grade_point']} rules={[{ required: true }]}><InputNumber placeholder="Point" step={0.1} /></Form.Item>
+                <Space key={field.key} align="start" wrap>
+                  <Form.Item {...field} name={[field.name, 'letter']} rules={[{ required: true, message: 'Letter' }]}>
+                    <Input placeholder="Letter" style={{ width: 70 }} />
+                  </Form.Item>
+                  <Form.Item {...field} name={[field.name, 'min_score']} rules={[{ required: true, message: 'Min' }]}>
+                    <InputNumber placeholder="Min" min={0} max={100} />
+                  </Form.Item>
+                  <Form.Item {...field} name={[field.name, 'max_score']} rules={[{ required: true, message: 'Max' }]}>
+                    <InputNumber placeholder="Max" min={0} max={100} />
+                  </Form.Item>
+                  <Form.Item {...field} name={[field.name, 'grade_point']} rules={[{ required: true, message: 'Point' }]}>
+                    <InputNumber placeholder="Point" min={0} max={10} step={0.1} />
+                  </Form.Item>
+                  {canEdit && (
+                    <Button type="link" danger onClick={() => remove(field.name)}>Remove</Button>
+                  )}
                 </Space>
               ))}
+              {canEdit && (
+                <Button onClick={() => add({ letter: '', min_score: 0, max_score: 0, grade_point: 0 })}>
+                  Add band
+                </Button>
+              )}
             </div>
           )}
         </Form.List>
-        <Button type="primary" htmlType="submit" className="mt-3">Save scale</Button>
+        {canEdit && (
+          <Button type="primary" htmlType="submit" className="mt-3" loading={saving} disabled={!scale}>
+            Save scale
+          </Button>
+        )}
       </Form>
     </ResourceShell>
   );
