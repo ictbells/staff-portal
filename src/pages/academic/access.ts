@@ -32,7 +32,10 @@ export function hasAcademicResourcePermission(
   if (resource.key === 'results-approvals' && (has('results.faculty_approve') || has('results.submit'))) {
     return true;
   }
-  if (resource.key === 'results-department' && (has('results.submit') || has('results.read'))) {
+  if (resource.key === 'results-department' && (has('results.department_submit') || has('results.read'))) {
+    return true;
+  }
+  if (resource.key === 'results-college' && (has('results.submit') || has('results.read'))) {
     return true;
   }
   if (resource.key === 'results-grading-scale' && has('results.read')) {

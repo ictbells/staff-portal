@@ -26,6 +26,7 @@ type LevelOption = { id: number; name: string; code?: string | null };
 
 const GRADE_STATUS_LABELS: Record<string, string> = {
   draft: 'Draft',
+  department_submitted: 'Department submitted',
   submitted: 'College submitted',
   faculty_approved: 'Deans approved',
   board_ready: 'Awaiting Senate',
@@ -224,6 +225,17 @@ const letterColumn = {
   render: (value: string | null) => value || '—',
 };
 
+const gradeQueueColumns: ColumnsType = [
+  { title: 'Matric', render: (_, r) => gradeStudent(r).matric_number },
+  { title: 'Student', render: (_, r) => `${gradeStudent(r).first_name || ''} ${gradeStudent(r).last_name || ''}`.trim() || '—' },
+  { title: 'Course', render: (_, r) => gradeCourse(r).code },
+  { title: 'CA', dataIndex: 'ca_score', width: 70 },
+  { title: 'Exam', dataIndex: 'exam_score', width: 70 },
+  { title: 'Score', dataIndex: 'score', width: 70 },
+  letterColumn,
+  { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{gradeStatusLabel(v)}</Tag> },
+];
+
 function listQuery(params: Record<string, string | number | undefined>) {
   return Object.fromEntries(
     Object.entries(params).filter(([, value]) => value !== undefined && value !== null && String(value) !== ''),
@@ -342,7 +354,7 @@ export function ResultsDashboardPage() {
   useEffect(() => { load(); }, [load]);
   const counts = data?.counts || {};
   return (
-    <ResourceShell title="Results" description="Result processing: College → Committee of Deans → Senate → Release." loading={loading} onRefresh={load}>
+    <ResourceShell title="Results" description="Result processing: Department → College → Committee of Deans → Senate → Release." loading={loading} onRefresh={load}>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {Object.entries(counts).map(([status, total]) => (
           <StatCard key={status} label={gradeStatusLabel(status)} value={String(total)} icon={ClipboardList} />
@@ -350,7 +362,12 @@ export function ResultsDashboardPage() {
       </div>
       <div className="flex flex-wrap gap-2 pt-2">
         <Link to="/academic/results/students"><Button type="primary">Enter results</Button></Link>
-        <Link to="/academic/results/department"><Button>College</Button></Link>
+        {(has('results.department_submit') || has('results.read')) && (
+          <Link to="/academic/results/department"><Button>Department</Button></Link>
+        )}
+        {(has('results.submit') || has('results.read')) && (
+          <Link to="/academic/results/college"><Button>College</Button></Link>
+        )}
         {(has('results.faculty_approve') || has('results.submit')) && (
           <Link to="/academic/results/approvals"><Button>Committee of Deans</Button></Link>
         )}
@@ -452,11 +469,11 @@ export function ResultsStudentDetailPage() {
     }
   };
 
-  const submitIds = async (ids: number[]) => {
+  const submitIds = async (ids: number[], path: string, done = 'Submitted') => {
     try {
-      const res = await api.post('/api/academic/results/submit', { ids });
+      const res = await api.post(path, { ids });
       if (!isPendingApproval(res)) {
-        message.success(`Submitted ${res.data?.updated ?? 0}`);
+        message.success(`${done} ${res.data?.updated ?? 0}`);
       }
       if (res.data?.errors?.length) message.warning(res.data.errors.join('; '));
       setSelected([]);
@@ -521,8 +538,11 @@ export function ResultsStudentDetailPage() {
             {editable && has('results.write') && (
               <Button size="small" danger onClick={() => removeGrade(r.id)}>Delete</Button>
             )}
-            {editable && has('results.submit') && (
-              <Button size="small" onClick={() => submitIds([r.id])}>Submit</Button>
+            {editable && has('results.department_submit') && (
+              <Button size="small" onClick={() => submitIds([r.id], '/api/academic/results/department-submit', 'Submitted to College')}>Submit to College</Button>
+            )}
+            {r.status === 'department_submitted' && has('results.submit') && (
+              <Button size="small" onClick={() => submitIds([r.id], '/api/academic/results/submit', 'Submitted to Committee of Deans')}>Submit to Committee of Deans</Button>
             )}
           </Space>
         );
@@ -591,12 +611,22 @@ export function ResultsStudentDetailPage() {
             label: 'Scores',
             children: (
               <>
-                {has('results.submit') && (
+                {has('results.department_submit') && (
                   <div className="mb-2">
                     <Button
                       type="primary"
                       disabled={!selected.length}
-                      onClick={() => submitIds(selected)}
+                      onClick={() => submitIds(selected, '/api/academic/results/department-submit', 'Submitted to College')}
+                    >
+                      Submit to College
+                    </Button>
+                  </div>
+                )}
+                {has('results.submit') && (
+                  <div className="mb-2">
+                    <Button
+                      disabled={!selected.length}
+                      onClick={() => submitIds(selected, '/api/academic/results/submit', 'Submitted to Committee of Deans')}
                     >
                       Submit to Committee of Deans
                     </Button>
@@ -808,7 +838,7 @@ export function ResultsDepartmentUploadsPage() {
     setLoading(true);
     api.get('/api/academic/results/grades', { params: { ...filters, per_page: QUEUE_PAGE_SIZE } })
       .then((r) => setRows(r.data?.data || []))
-      .catch(() => message.error('Could not load department uploads'))
+      .catch(() => message.error('Could not load department results'))
       .finally(() => setLoading(false));
   }, [filters]);
   useEffect(() => { load(); }, [load]);
@@ -827,21 +857,10 @@ export function ResultsDepartmentUploadsPage() {
     }
   };
 
-  const columns: ColumnsType = [
-    { title: 'Matric', render: (_, r) => gradeStudent(r).matric_number },
-    { title: 'Student', render: (_, r) => `${gradeStudent(r).first_name || ''} ${gradeStudent(r).last_name || ''}`.trim() || '—' },
-    { title: 'Course', render: (_, r) => gradeCourse(r).code },
-    { title: 'CA', dataIndex: 'ca_score', width: 70 },
-    { title: 'Exam', dataIndex: 'exam_score', width: 70 },
-    { title: 'Score', dataIndex: 'score', width: 70 },
-    letterColumn,
-    { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{gradeStatusLabel(v)}</Tag> },
-  ];
-
   return (
     <ResourceShell
-      title="College"
-      description="Review college scores, then submit them to the Committee of Deans. Grade is the A–F letter from the total (you do not type it). Choose a semester, college, and level, then download the college list."
+      title="Department"
+      description="Review draft scores for your department, then submit them to College. Grade is the A–F letter from the total (you do not type it)."
       loading={loading}
       onRefresh={load}
       extra={(
@@ -855,9 +874,176 @@ export function ResultsDepartmentUploadsPage() {
           />
           <Select
             placeholder="Status"
-            style={{ width: 180 }}
+            style={{ width: 200 }}
             value={filters.status}
-            options={statusOptions(['draft', 'submitted', 'correction_required', 'board_ready'])}
+            options={statusOptions(['draft', 'department_submitted', 'correction_required'])}
+            onChange={(v) => setFilters((f) => ({ ...f, status: v }))}
+          />
+          <Select
+            placeholder="Sitting"
+            allowClear
+            style={{ width: 150 }}
+            value={filters.sitting}
+            options={[{ value: 'main', label: 'Main' }, { value: 'supplementary', label: 'Supplementary' }]}
+            onChange={(v) => setFilters((f) => ({ ...f, sitting: v }))}
+          />
+          <Select
+            placeholder="College"
+            allowClear
+            style={{ width: 180 }}
+            value={filters.faculty_id}
+            options={faculties.map((f) => ({ value: f.id, label: f.name }))}
+            onChange={(v) => setFilters((f) => ({
+              ...f,
+              faculty_id: v,
+              department_id: !v || departments.find((d) => d.id === f.department_id)?.faculty_id === v
+                ? f.department_id
+                : undefined,
+            }))}
+          />
+          <Select
+            placeholder="Department"
+            allowClear
+            style={{ width: 200 }}
+            value={filters.department_id}
+            options={departmentOptions(departments, filters.faculty_id)}
+            onChange={(v) => setFilters((f) => ({ ...f, department_id: v }))}
+          />
+          {has('results.department_submit') && (
+            <Button type="primary" onClick={() => act('/api/academic/results/department-submit', { ids: selected })} disabled={!selected.length}>
+              Submit to College
+            </Button>
+          )}
+          <Dropdown
+            menu={{
+              items: listDownloadItems((format) => {
+                const departmentId = filters.department_id || uniqueNumericId(rows.map(gradeDepartmentId));
+                const params = {
+                  academic_term_id: filters.academic_term_id,
+                  academic_session_id: filters.academic_session_id,
+                  department_id: departmentId,
+                  status: filters.status,
+                  level: filters.level,
+                  sitting: filters.sitting,
+                };
+                const term = terms.find((t) => t.id === filters.academic_term_id);
+                const filename = `department-results-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}-${filters.sitting === 'supplementary' ? 'supplementary' : 'main'}`;
+                if (format === 'html') {
+                  if (!params.department_id) {
+                    message.warning('Select a department to download the department list.');
+                    return;
+                  }
+                  openPrintable('/api/academic/results/reports/submission-list/department', params);
+                  return;
+                }
+                void downloadSubmissionList(
+                  '/api/academic/results/reports/submission-list/department',
+                  params,
+                  format,
+                  filename,
+                  { requireDepartment: true },
+                );
+              }),
+            }}
+            trigger={['click']}
+          >
+            <Button icon={<Download size={14} />}>Department list</Button>
+          </Dropdown>
+        </Space>
+      )}
+    >
+      <Space className="mb-3" wrap>
+        <Input
+          placeholder="Matric"
+          allowClear
+          style={{ width: 160 }}
+          value={filters.matric}
+          onChange={(e) => setFilters((f) => ({ ...f, matric: e.target.value || undefined }))}
+        />
+        <Input
+          placeholder="Course code"
+          allowClear
+          style={{ width: 140 }}
+          value={filters.course}
+          onChange={(e) => setFilters((f) => ({ ...f, course: e.target.value || undefined }))}
+        />
+      </Space>
+      <Table
+        rowKey="id"
+        loading={loading}
+        dataSource={rows}
+        columns={gradeQueueColumns}
+        rowSelection={{ selectedRowKeys: selected, onChange: (keys) => setSelected(keys as number[]) }}
+        pagination={false}
+      />
+    </ResourceShell>
+  );
+}
+
+export function ResultsCollegeUploadsPage() {
+  const { has } = useAuth();
+  const { terms, faculties, departments, levels } = useResultsLookups();
+  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState<any[]>([]);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [returnNote, setReturnNote] = useState('');
+  const [filters, setFilters] = useState<{ academic_term_id?: number; academic_session_id?: number; level?: string; status?: string; faculty_id?: number; department_id?: number; sitting?: string; matric?: string; course?: string }>({
+    status: 'department_submitted',
+  });
+
+  useEffect(() => {
+    const term = terms.find((row) => row.is_current);
+    if (!term) return;
+    setFilters((current) => ({
+      ...current,
+      academic_term_id: current.academic_term_id ?? term.id,
+      academic_session_id: current.academic_session_id ?? term.academic_session_id,
+    }));
+  }, [terms]);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.get('/api/academic/results/grades', { params: { ...filters, per_page: QUEUE_PAGE_SIZE } })
+      .then((r) => setRows(r.data?.data || []))
+      .catch(() => message.error('Could not load college results'))
+      .finally(() => setLoading(false));
+  }, [filters]);
+  useEffect(() => { load(); }, [load]);
+
+  const act = async (path: string, body: any) => {
+    try {
+      const res = await api.post(path, body);
+      if (!isPendingApproval(res)) {
+        message.success(`Updated ${res.data?.updated ?? 0}`);
+      }
+      if (res.data?.errors?.length) message.warning(res.data.errors.join('; '));
+      setSelected([]);
+      load();
+    } catch (e: any) {
+      message.error(e.response?.data?.message || 'Action failed');
+    }
+  };
+
+  return (
+    <ResourceShell
+      title="College"
+      description="Review department submissions, then submit them to the Committee of Deans or return them to the department. Grade is the A–F letter from the total (you do not type it)."
+      loading={loading}
+      onRefresh={load}
+      extra={(
+        <Space wrap>
+          <CourseLevelFilter levels={levels} value={filters.level} onChange={(v) => setFilters((f) => ({ ...f, level: v }))} />
+          <AcademicSessionSemesterFilters
+            terms={terms}
+            sessionId={filters.academic_session_id}
+            termId={filters.academic_term_id}
+            onChange={(next) => setFilters((f) => ({ ...f, ...next }))}
+          />
+          <Select
+            placeholder="Status"
+            style={{ width: 200 }}
+            value={filters.status}
+            options={statusOptions(['department_submitted', 'submitted', 'correction_required'])}
             onChange={(v) => setFilters((f) => ({ ...f, status: v }))}
           />
           <Select
@@ -891,9 +1077,20 @@ export function ResultsDepartmentUploadsPage() {
             onChange={(v) => setFilters((f) => ({ ...f, department_id: v }))}
           />
           {has('results.submit') && (
-            <Button type="primary" onClick={() => act('/api/academic/results/submit', { ids: selected })} disabled={!selected.length}>
-              Submit to Committee of Deans
-            </Button>
+            <>
+              <Input
+                placeholder="Return note"
+                value={returnNote}
+                onChange={(e) => setReturnNote(e.target.value)}
+                style={{ width: 200 }}
+              />
+              <Button type="primary" onClick={() => act('/api/academic/results/submit', { ids: selected })} disabled={!selected.length}>
+                Submit to Committee of Deans
+              </Button>
+              <Button danger onClick={() => act('/api/academic/results/college-return', { ids: selected, note: returnNote.trim() || 'Returned to department' })} disabled={!selected.length}>
+                Return to department
+              </Button>
+            </>
           )}
           <Dropdown
             menu={{
@@ -963,7 +1160,7 @@ export function ResultsDepartmentUploadsPage() {
         rowKey="id"
         loading={loading}
         dataSource={rows}
-        columns={columns}
+        columns={gradeQueueColumns}
         rowSelection={{ selectedRowKeys: selected, onChange: (keys) => setSelected(keys as number[]) }}
         pagination={false}
       />
@@ -1150,17 +1347,6 @@ export function ResultsApprovalsPage() {
     </ResourceShell>
   );
 }
-
-const gradeQueueColumns: ColumnsType = [
-  { title: 'Matric', render: (_, r) => gradeStudent(r).matric_number },
-  { title: 'Student', render: (_, r) => `${gradeStudent(r).first_name || ''} ${gradeStudent(r).last_name || ''}`.trim() || '—' },
-  { title: 'Course', render: (_, r) => gradeCourse(r).code },
-  { title: 'CA', dataIndex: 'ca_score', width: 70 },
-  { title: 'Exam', dataIndex: 'exam_score', width: 70 },
-  { title: 'Score', dataIndex: 'score', width: 70 },
-  letterColumn,
-  { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{gradeStatusLabel(v)}</Tag> },
-];
 
 export function ResultsBoardPage() {
   const { terms, faculties, departments, levels } = useResultsLookups();

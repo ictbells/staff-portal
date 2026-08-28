@@ -30,6 +30,7 @@ import {
 import {
   ResultsApprovalsPage,
   ResultsBoardPage,
+  ResultsCollegeUploadsPage,
   ResultsDashboardPage,
   ResultsDepartmentUploadsPage,
   ResultsGradingScalePage,
@@ -139,6 +140,7 @@ export default function App() {
           <Route path="results/students/:id" element={<AcademicResourceGuard resourceKey="results-students"><ResultsStudentDetailPage /></AcademicResourceGuard>} />
           <Route path="results/import" element={<AcademicResourceGuard resourceKey="results-import"><ResultsImportPage /></AcademicResourceGuard>} />
           <Route path="results/department" element={<AcademicResourceGuard resourceKey="results-department"><ResultsDepartmentUploadsPage /></AcademicResourceGuard>} />
+          <Route path="results/college" element={<AcademicResourceGuard resourceKey="results-college"><ResultsCollegeUploadsPage /></AcademicResourceGuard>} />
           <Route path="results/approvals" element={<AcademicResourceGuard resourceKey="results-approvals"><ResultsApprovalsPage /></AcademicResourceGuard>} />
           <Route path="results/board" element={<AcademicResourceGuard resourceKey="results-board"><ResultsBoardPage /></AcademicResourceGuard>} />
           <Route path="results/release" element={<AcademicResourceGuard resourceKey="results-release"><ResultsReleasePage /></AcademicResourceGuard>} />
