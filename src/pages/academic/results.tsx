@@ -1121,164 +1121,130 @@ export function ResultsApprovalsPage() {
   );
 }
 
+const gradeQueueColumns: ColumnsType = [
+  { title: 'Matric', render: (_, r) => gradeStudent(r).matric_number },
+  { title: 'Student', render: (_, r) => `${gradeStudent(r).first_name || ''} ${gradeStudent(r).last_name || ''}`.trim() || '—' },
+  { title: 'Course', render: (_, r) => gradeCourse(r).code },
+  { title: 'CA', dataIndex: 'ca_score', width: 70 },
+  { title: 'Exam', dataIndex: 'exam_score', width: 70 },
+  { title: 'Score', dataIndex: 'score', width: 70 },
+  letterColumn,
+  { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{String(v || '').replace(/_/g, ' ')}</Tag> },
+];
+
 export function ResultsBoardPage() {
   const { terms, faculties, departments, levels } = useResultsLookups();
-  const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<any[]>([]);
-  const [sessionId, setSessionId] = useState<number | undefined>();
-  const [level, setLevel] = useState<string | undefined>();
-  const [status, setStatus] = useState('board_ready');
-  const [sitting, setSitting] = useState<string | undefined>();
-  const [matric, setMatric] = useState<string | undefined>();
-  const [course, setCourse] = useState<string | undefined>();
-  const termOptions = semesterOptions(terms, sessionId);
-
-  const load = useCallback(async () => {
-    const values = form.getFieldsValue();
-    setLoading(true);
-    try {
-      const { data } = await api.get('/api/academic/results/grades', {
-        params: {
-          status,
-          academic_term_id: values.academic_term_id,
-          faculty_id: values.faculty_id,
-          department_id: values.department_id,
-          academic_session_id: sessionId,
-          level,
-          sitting,
-          matric,
-          course,
-          per_page: QUEUE_PAGE_SIZE,
-        },
-      });
-      setRows(data?.data || []);
-    } catch {
-      message.error('Could not load board records');
-    } finally {
-      setLoading(false);
-    }
-  }, [form, status, sessionId, level, sitting, matric, course]);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [note, setNote] = useState('');
+  const [filters, setFilters] = useState<{ academic_term_id?: number; academic_session_id?: number; level?: string; status?: string; faculty_id?: number; department_id?: number; sitting?: string; matric?: string; course?: string }>({
+    status: 'board_ready',
+  });
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    const term = terms.find((row) => row.is_current);
+    if (!term) return;
+    setFilters((current) => ({
+      ...current,
+      academic_term_id: current.academic_term_id ?? term.id,
+      academic_session_id: current.academic_session_id ?? term.academic_session_id,
+    }));
+  }, [terms]);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.get('/api/academic/results/grades', { params: { ...filters, per_page: QUEUE_PAGE_SIZE } })
+      .then((r) => setRows(r.data?.data || []))
+      .catch(() => message.error('Could not load board records'))
+      .finally(() => setLoading(false));
+  }, [filters]);
+  useEffect(() => { load(); }, [load]);
+
+  const listedIds = () => (selected.length ? selected : rows.map((row) => row.id));
+  const canAct = rows.length > 0 && !!filters.academic_term_id;
 
   const run = async (path: string) => {
+    if (!canAct) {
+      message.warning('Review the student list before taking a board action.');
+      return;
+    }
     try {
-      const values = await form.validateFields();
-      const res = await api.post(path, { ...values, level });
+      const res = await api.post(path, {
+        ids: listedIds(),
+        academic_term_id: filters.academic_term_id,
+        faculty_id: filters.faculty_id,
+        department_id: filters.department_id,
+        note: note.trim() || undefined,
+        level: filters.level,
+      });
       if (!isPendingApproval(res)) {
         message.success(`Updated ${res.data?.updated ?? 0}`);
       }
-      await load();
+      if (res.data?.errors?.length) message.warning(res.data.errors.join('; '));
+      setSelected([]);
+      load();
     } catch (e: any) {
       message.error(e.response?.data?.message || 'Board action failed');
     }
   };
 
-  const columns: ColumnsType = [
-    { title: 'Matric', render: (_, r) => gradeStudent(r).matric_number },
-    { title: 'Student', render: (_, r) => `${gradeStudent(r).first_name || ''} ${gradeStudent(r).last_name || ''}`.trim() || '—' },
-    { title: 'Course', render: (_, r) => gradeCourse(r).code },
-    { title: 'Score', dataIndex: 'score', width: 70 },
-    letterColumn,
-    { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{String(v || '').replace(/_/g, ' ')}</Tag> },
-  ];
-
   return (
     <ResourceShell
       title="Board"
-      description="Review board-ready grades, clear them, or request corrections. Print the board list when needed."
+      description="Review the student list first, then clear the board or request corrections. Print the board list when needed."
       loading={loading}
       onRefresh={load}
       extra={(
         <Space wrap>
-          <CourseLevelFilter levels={levels} value={level} onChange={setLevel} />
-          <Select
-            allowClear
-            placeholder="Session"
-            style={{ width: 160 }}
-            value={sessionId}
-            options={academicSessionsFromTerms(terms).map((session) => ({
-              value: session.id,
-              label: session.is_current ? `${session.label} (current)` : session.label,
-            }))}
-            onChange={(value) => {
-              setSessionId(value);
-              form.setFieldsValue({
-                academic_term_id: value ? termInSession(terms, value, form.getFieldValue('academic_term_id')) : undefined,
-              });
-            }}
+          <CourseLevelFilter levels={levels} value={filters.level} onChange={(v) => setFilters((f) => ({ ...f, level: v }))} />
+          <AcademicSessionSemesterFilters
+            terms={terms}
+            sessionId={filters.academic_session_id}
+            termId={filters.academic_term_id}
+            onChange={(next) => setFilters((f) => ({ ...f, ...next }))}
           />
-        </Space>
-      )}
-    >
-      <Form
-        form={form}
-        layout="vertical"
-        className="max-w-3xl"
-        onValuesChange={() => {
-          window.setTimeout(() => { void load(); }, 0);
-        }}
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Form.Item name="academic_term_id" label="Semester" rules={[{ required: true }]}>
-            <Select options={termOptions} placeholder="Select semester" />
-          </Form.Item>
-          <Form.Item label="Status">
-            <Select
-              value={status}
-              options={[
-                { value: 'board_ready', label: 'board ready' },
-                { value: 'board_cleared', label: 'board cleared' },
-                { value: 'correction_required', label: 'correction required' },
-              ]}
-              onChange={setStatus}
-            />
-          </Form.Item>
-          <Form.Item name="faculty_id" label="Faculty">
-            <Select allowClear options={faculties.map((f) => ({ value: f.id, label: f.name }))} />
-          </Form.Item>
-          <Form.Item name="department_id" label="Department">
-            <Select allowClear options={departments.map((d) => ({ value: d.id, label: d.name }))} />
-          </Form.Item>
-          <Form.Item label="Sitting">
-            <Select
-              allowClear
-              value={sitting}
-              options={[{ value: 'main', label: 'Main' }, { value: 'supplementary', label: 'Supplementary' }]}
-              onChange={setSitting}
-            />
-          </Form.Item>
-          <Form.Item label="Matric">
-            <Input allowClear value={matric} onChange={(e) => setMatric(e.target.value || undefined)} />
-          </Form.Item>
-          <Form.Item label="Course">
-            <Input allowClear value={course} onChange={(e) => setCourse(e.target.value || undefined)} />
-          </Form.Item>
-        </div>
-        <Form.Item name="note" label="Note"><Input.TextArea rows={2} /></Form.Item>
-        <Space wrap className="mb-4">
-          <Button type="primary" onClick={() => run('/api/academic/results/board-scopes/clear')}>Board clear</Button>
-          <Button danger onClick={() => run('/api/academic/results/board-scopes/request-corrections')}>Request corrections</Button>
+          <Select
+            placeholder="Status"
+            style={{ width: 180 }}
+            value={filters.status}
+            options={[
+              { value: 'board_ready', label: 'board ready' },
+              { value: 'board_cleared', label: 'board cleared' },
+              { value: 'correction_required', label: 'correction required' },
+            ]}
+            onChange={(v) => setFilters((f) => ({ ...f, status: v }))}
+          />
+          <Select
+            placeholder="Sitting"
+            allowClear
+            style={{ width: 150 }}
+            value={filters.sitting}
+            options={[{ value: 'main', label: 'Main' }, { value: 'supplementary', label: 'Supplementary' }]}
+            onChange={(v) => setFilters((f) => ({ ...f, sitting: v }))}
+          />
+          <Button type="primary" onClick={() => run('/api/academic/results/board-scopes/clear')} disabled={!canAct}>
+            Board clear
+          </Button>
+          <Button danger onClick={() => run('/api/academic/results/board-scopes/request-corrections')} disabled={!canAct}>
+            Request corrections
+          </Button>
           <Dropdown
             menu={{
               items: listDownloadItems((format) => {
-                const v = form.getFieldsValue();
-                const path = v.department_id && !v.faculty_id
+                const path = filters.department_id && !filters.faculty_id
                   ? '/api/academic/results/board-lists/department'
                   : '/api/academic/results/board-lists/faculty';
                 const params = {
-                  academic_term_id: v.academic_term_id,
-                  faculty_id: v.faculty_id,
-                  department_id: v.department_id,
-                  status: status || 'board_ready',
-                  level,
-                  sitting,
+                  academic_term_id: filters.academic_term_id,
+                  faculty_id: filters.faculty_id,
+                  department_id: filters.department_id,
+                  status: filters.status || 'board_ready',
+                  level: filters.level,
+                  sitting: filters.sitting,
                 };
-                const term = terms.find((t) => t.id === v.academic_term_id);
-                const filename = `senate-list-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}${sitting === 'supplementary' ? '-supplementary' : ''}`;
+                const term = terms.find((t) => t.id === filters.academic_term_id);
+                const filename = `senate-list-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}${filters.sitting === 'supplementary' ? '-supplementary' : ''}`;
                 if (format === 'html') {
                   openPrintable(path, params);
                   return;
@@ -1293,76 +1259,209 @@ export function ResultsBoardPage() {
           >
             <Button icon={<Download size={14} />}>Board list</Button>
           </Dropdown>
-          <Button onClick={load}>Refresh list</Button>
         </Space>
-      </Form>
+      )}
+    >
+      <Space className="mb-3" wrap>
+        <Select
+          placeholder="Faculty"
+          allowClear
+          style={{ width: 180 }}
+          value={filters.faculty_id}
+          options={faculties.map((f) => ({ value: f.id, label: f.name }))}
+          onChange={(v) => setFilters((f) => ({
+            ...f,
+            faculty_id: v,
+            department_id: !v || departments.find((d) => d.id === f.department_id)?.faculty_id === v
+              ? f.department_id
+              : undefined,
+          }))}
+        />
+        <Select
+          placeholder="Department"
+          allowClear
+          style={{ width: 180 }}
+          value={filters.department_id}
+          options={departmentOptions(departments, filters.faculty_id)}
+          onChange={(v) => setFilters((f) => ({ ...f, department_id: v }))}
+        />
+        <Input
+          placeholder="Matric"
+          allowClear
+          style={{ width: 160 }}
+          value={filters.matric}
+          onChange={(e) => setFilters((f) => ({ ...f, matric: e.target.value || undefined }))}
+        />
+        <Input
+          placeholder="Course code"
+          allowClear
+          style={{ width: 140 }}
+          value={filters.course}
+          onChange={(e) => setFilters((f) => ({ ...f, course: e.target.value || undefined }))}
+        />
+        <Input.TextArea
+          placeholder="Board note"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={1}
+          style={{ width: 240 }}
+        />
+      </Space>
       <Table
         rowKey="id"
         loading={loading}
         dataSource={rows}
-        columns={columns}
+        columns={gradeQueueColumns}
+        rowSelection={{ selectedRowKeys: selected, onChange: (keys) => setSelected(keys as number[]) }}
         pagination={false}
-        locale={{ emptyText: 'No board records for these filters. Select a term to load the list.' }}
+        locale={{ emptyText: 'No students for these filters. Adjust session, semester, or department, then review the list before acting.' }}
       />
     </ResourceShell>
   );
 }
 
 export function ResultsReleasePage() {
+  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState<any[]>([]);
+  const [selected, setSelected] = useState<number[]>([]);
   const { terms, faculties, departments, levels } = useResultsLookups();
-  const [form] = Form.useForm();
-  const [sessionId, setSessionId] = useState<number | undefined>();
-  const [level, setLevel] = useState<string | undefined>();
-  const termOptions = semesterOptions(terms, sessionId);
+  const [filters, setFilters] = useState<{ academic_term_id?: number; academic_session_id?: number; level?: string; status?: string; faculty_id?: number; department_id?: number; sitting?: string; matric?: string; course?: string }>({
+    status: 'board_cleared',
+  });
+
+  useEffect(() => {
+    const term = terms.find((row) => row.is_current);
+    if (!term) return;
+    setFilters((current) => ({
+      ...current,
+      academic_term_id: current.academic_term_id ?? term.id,
+      academic_session_id: current.academic_session_id ?? term.academic_session_id,
+    }));
+  }, [terms]);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.get('/api/academic/results/grades', { params: { ...filters, per_page: QUEUE_PAGE_SIZE } })
+      .then((r) => setRows(r.data?.data || []))
+      .catch(() => message.error('Could not load results for release'))
+      .finally(() => setLoading(false));
+  }, [filters]);
+  useEffect(() => { load(); }, [load]);
+
+  const canAct = rows.length > 0 && !!filters.academic_term_id;
+
   const release = async () => {
+    if (!canAct) {
+      message.warning('Review the student list before releasing.');
+      return;
+    }
+    const ids = selected.length ? selected : rows.map((row) => row.id);
     try {
-      const values = await form.validateFields();
-      const res = await api.post('/api/academic/results/release', { ...values, level });
-      if (res.data?.pending_approval) {
-        message.info(res.data.message || 'Queued for office approval');
-      } else {
+      const res = await api.post('/api/academic/results/release', {
+        ids,
+        academic_term_id: filters.academic_term_id,
+        faculty_id: filters.faculty_id,
+        department_id: filters.department_id,
+        level: filters.level,
+      });
+      if (!isPendingApproval(res)) {
         message.success(`Released ${res.data?.updated ?? 0}`);
       }
+      if (res.data?.errors?.length) message.warning(res.data.errors.join('; '));
+      setSelected([]);
+      load();
     } catch (e: any) {
       message.error(e.response?.data?.message || 'Release failed');
     }
   };
+
   return (
-    <ResourceShell title="Release results" description="Release board-cleared grades to the student portal." loading={false} onRefresh={() => {}}
+    <ResourceShell
+      title="Release results"
+      description="Review board-cleared students first, then release them to the student portal."
+      loading={loading}
+      onRefresh={load}
       extra={(
         <Space wrap>
-          <CourseLevelFilter levels={levels} value={level} onChange={setLevel} />
-          <Select
-            allowClear
-            placeholder="Session"
-            style={{ width: 160 }}
-            value={sessionId}
-            options={academicSessionsFromTerms(terms).map((session) => ({
-              value: session.id,
-              label: session.is_current ? `${session.label} (current)` : session.label,
-            }))}
-            onChange={(value) => {
-              setSessionId(value);
-              form.setFieldsValue({
-                academic_term_id: value ? termInSession(terms, value, form.getFieldValue('academic_term_id')) : undefined,
-              });
-            }}
+          <CourseLevelFilter levels={levels} value={filters.level} onChange={(v) => setFilters((f) => ({ ...f, level: v }))} />
+          <AcademicSessionSemesterFilters
+            terms={terms}
+            sessionId={filters.academic_session_id}
+            termId={filters.academic_term_id}
+            onChange={(next) => setFilters((f) => ({ ...f, ...next }))}
           />
+          <Select
+            placeholder="Status"
+            style={{ width: 180 }}
+            value={filters.status}
+            options={[
+              { value: 'board_cleared', label: 'board cleared' },
+              { value: 'board_ready', label: 'board ready' },
+              { value: 'released', label: 'released' },
+            ]}
+            onChange={(v) => setFilters((f) => ({ ...f, status: v }))}
+          />
+          <Select
+            placeholder="Sitting"
+            allowClear
+            style={{ width: 150 }}
+            value={filters.sitting}
+            options={[{ value: 'main', label: 'Main' }, { value: 'supplementary', label: 'Supplementary' }]}
+            onChange={(v) => setFilters((f) => ({ ...f, sitting: v }))}
+          />
+          <Button type="primary" onClick={release} disabled={!canAct}>
+            Release listed
+          </Button>
         </Space>
       )}
     >
-      <Form form={form} layout="vertical" className="max-w-lg" onFinish={release}>
-        <Form.Item name="academic_term_id" label="Semester" rules={[{ required: true }]}>
-          <Select options={termOptions} placeholder="Select semester" />
-        </Form.Item>
-        <Form.Item name="faculty_id" label="Faculty">
-          <Select allowClear options={faculties.map((f) => ({ value: f.id, label: f.name }))} />
-        </Form.Item>
-        <Form.Item name="department_id" label="Department">
-          <Select allowClear options={departments.map((d) => ({ value: d.id, label: d.name }))} />
-        </Form.Item>
-        <Button type="primary" htmlType="submit">Release</Button>
-      </Form>
+      <Space className="mb-3" wrap>
+        <Select
+          placeholder="Faculty"
+          allowClear
+          style={{ width: 180 }}
+          value={filters.faculty_id}
+          options={faculties.map((f) => ({ value: f.id, label: f.name }))}
+          onChange={(v) => setFilters((f) => ({
+            ...f,
+            faculty_id: v,
+            department_id: !v || departments.find((d) => d.id === f.department_id)?.faculty_id === v
+              ? f.department_id
+              : undefined,
+          }))}
+        />
+        <Select
+          placeholder="Department"
+          allowClear
+          style={{ width: 180 }}
+          value={filters.department_id}
+          options={departmentOptions(departments, filters.faculty_id)}
+          onChange={(v) => setFilters((f) => ({ ...f, department_id: v }))}
+        />
+        <Input
+          placeholder="Matric"
+          allowClear
+          style={{ width: 160 }}
+          value={filters.matric}
+          onChange={(e) => setFilters((f) => ({ ...f, matric: e.target.value || undefined }))}
+        />
+        <Input
+          placeholder="Course code"
+          allowClear
+          style={{ width: 140 }}
+          value={filters.course}
+          onChange={(e) => setFilters((f) => ({ ...f, course: e.target.value || undefined }))}
+        />
+      </Space>
+      <Table
+        rowKey="id"
+        loading={loading}
+        dataSource={rows}
+        columns={gradeQueueColumns}
+        rowSelection={{ selectedRowKeys: selected, onChange: (keys) => setSelected(keys as number[]) }}
+        pagination={false}
+        locale={{ emptyText: 'No students ready for release with these filters. Review the list before releasing.' }}
+      />
     </ResourceShell>
   );
 }
