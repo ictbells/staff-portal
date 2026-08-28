@@ -241,11 +241,6 @@ export function PhysicalClearancePage({ channel }: Props) {
         )}
       </WorkspaceHero>
 
-      <Alert
-        type="info"
-        showIcon
-        message="Only applicants who have paid the acceptance fee appear here. Clearing creates the student record (or reattaches an existing one)."
-      />
 
       <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
         <StatCard
