@@ -11,7 +11,6 @@ import { RefreshButton } from '../../components/RefreshButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 import api, { isPendingApproval } from '../../api';
 import { useAuth } from '../../auth';
-import { SessionLevelFilters } from '../../components/SessionLevelFilters';
 
 type Term = {
   id: number;
@@ -23,6 +22,7 @@ type Term = {
 };
 type Faculty = { id: number; name: string };
 type Department = { id: number; name: string; faculty_id?: number };
+type LevelOption = { id: number; name: string; code?: string | null };
 
 function academicSessionsFromTerms(terms: Term[]) {
   const map = new Map<number, { id: number; label: string; is_current: boolean }>();
@@ -57,6 +57,30 @@ function termInSession(terms: Term[], sessionId?: number, termId?: number) {
   return (
     terms.find((term) => term.academic_session_id === sessionId && term.is_current)?.id
     || terms.find((term) => term.academic_session_id === sessionId)?.id
+  );
+}
+
+function CourseLevelFilter({
+  levels,
+  value,
+  onChange,
+}: {
+  levels: LevelOption[];
+  value?: string;
+  onChange: (value: string | undefined) => void;
+}) {
+  return (
+    <Select
+      allowClear
+      placeholder="Level"
+      style={{ width: 140 }}
+      value={value}
+      options={levels.map((level) => ({
+        value: level.code || String(level.id),
+        label: level.name || level.code || String(level.id),
+      }))}
+      onChange={onChange}
+    />
   );
 }
 
@@ -123,16 +147,22 @@ function ResourceShell({
   );
 }
 
-function useTermsFaculties() {
+function useResultsLookups() {
   const [terms, setTerms] = useState<Term[]>([]);
   const [faculties, setFaculties] = useState<Faculty[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [levels, setLevels] = useState<LevelOption[]>([]);
   useEffect(() => {
-    api.get('/api/academic/terms').then((r) => setTerms(Array.isArray(r.data) ? r.data : r.data?.data || [])).catch(() => {});
-    api.get('/api/academic/faculties').then((r) => setFaculties(Array.isArray(r.data) ? r.data : r.data?.data || [])).catch(() => {});
-    api.get('/api/academic/departments').then((r) => setDepartments(Array.isArray(r.data) ? r.data : r.data?.data || [])).catch(() => {});
+    api.get('/api/academic/results/meta')
+      .then((r) => {
+        setTerms(r.data?.terms || []);
+        setFaculties(r.data?.faculties || []);
+        setDepartments(r.data?.departments || []);
+        setLevels(r.data?.levels || []);
+      })
+      .catch(() => {});
   }, []);
-  return { terms, faculties, departments };
+  return { terms, faculties, departments, levels };
 }
 
 const QUEUE_PAGE_SIZE = 5000;
@@ -312,6 +342,7 @@ export function ResultsDashboardPage() {
 }
 
 export function ResultsStudentsPage() {
+  const { levels } = useResultsLookups();
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [level, setLevel] = useState<string | undefined>();
@@ -338,7 +369,7 @@ export function ResultsStudentsPage() {
     <ResourceShell title="Result entry" description="Search students and enter CA/exam scores." loading={loading} onRefresh={load}
       extra={(
         <Space wrap>
-          <SessionLevelFilters showSession={false} level={level} onLevelChange={setLevel} />
+          <CourseLevelFilter levels={levels} value={level} onChange={setLevel} />
           <Input.Search placeholder="Matric or name" allowClear onSearch={setSearch} style={{ width: 260 }} />
           <Button onClick={load}>Search</Button>
         </Space>
@@ -352,7 +383,7 @@ export function ResultsStudentsPage() {
 export function ResultsStudentDetailPage() {
   const { id } = useParams();
   const { has } = useAuth();
-  const { terms } = useTermsFaculties();
+  const { terms } = useResultsLookups();
   const [loading, setLoading] = useState(false);
   const [payload, setPayload] = useState<any>(null);
   const [offerings, setOfferings] = useState<any[]>([]);
@@ -732,7 +763,7 @@ export function ResultsImportPage() {
 
 export function ResultsDepartmentUploadsPage() {
   const { has } = useAuth();
-  const { terms, faculties, departments } = useTermsFaculties();
+  const { terms, faculties, departments, levels } = useResultsLookups();
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<any[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
@@ -792,7 +823,7 @@ export function ResultsDepartmentUploadsPage() {
       onRefresh={load}
       extra={(
         <Space wrap>
-          <SessionLevelFilters showSession={false} level={filters.level} onLevelChange={(v) => setFilters((f) => ({ ...f, level: v }))} />
+          <CourseLevelFilter levels={levels} value={filters.level} onChange={(v) => setFilters((f) => ({ ...f, level: v }))} />
           <AcademicSessionSemesterFilters
             terms={terms}
             sessionId={filters.academic_session_id}
@@ -912,7 +943,7 @@ export function ResultsDepartmentUploadsPage() {
 
 export function ResultsApprovalsPage() {
   const { has } = useAuth();
-  const { terms, faculties, departments } = useTermsFaculties();
+  const { terms, faculties, departments, levels } = useResultsLookups();
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<any[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
@@ -971,7 +1002,7 @@ export function ResultsApprovalsPage() {
       onRefresh={load}
       extra={(
         <Space wrap>
-          <SessionLevelFilters showSession={false} level={filters.level} onLevelChange={(v) => setFilters((f) => ({ ...f, level: v }))} />
+          <CourseLevelFilter levels={levels} value={filters.level} onChange={(v) => setFilters((f) => ({ ...f, level: v }))} />
           <AcademicSessionSemesterFilters
             terms={terms}
             sessionId={filters.academic_session_id}
@@ -1091,7 +1122,7 @@ export function ResultsApprovalsPage() {
 }
 
 export function ResultsBoardPage() {
-  const { terms, faculties, departments } = useTermsFaculties();
+  const { terms, faculties, departments, levels } = useResultsLookups();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<any[]>([]);
@@ -1163,7 +1194,7 @@ export function ResultsBoardPage() {
       onRefresh={load}
       extra={(
         <Space wrap>
-          <SessionLevelFilters showSession={false} level={level} onLevelChange={setLevel} />
+          <CourseLevelFilter levels={levels} value={level} onChange={setLevel} />
           <Select
             allowClear
             placeholder="Session"
@@ -1278,7 +1309,7 @@ export function ResultsBoardPage() {
 }
 
 export function ResultsReleasePage() {
-  const { terms, faculties, departments } = useTermsFaculties();
+  const { terms, faculties, departments, levels } = useResultsLookups();
   const [form] = Form.useForm();
   const [sessionId, setSessionId] = useState<number | undefined>();
   const [level, setLevel] = useState<string | undefined>();
@@ -1300,7 +1331,7 @@ export function ResultsReleasePage() {
     <ResourceShell title="Release results" description="Release board-cleared grades to the student portal." loading={false} onRefresh={() => {}}
       extra={(
         <Space wrap>
-          <SessionLevelFilters showSession={false} level={level} onLevelChange={setLevel} />
+          <CourseLevelFilter levels={levels} value={level} onChange={setLevel} />
           <Select
             allowClear
             placeholder="Session"
