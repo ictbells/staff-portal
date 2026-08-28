@@ -468,6 +468,8 @@ export function CourseRegistrationPage() {
   const [graceBucket, setGraceBucket] = useState('overall');
   const [graceUnits, setGraceUnits] = useState(1);
   const [graceReason, setGraceReason] = useState('');
+  const [selectedOfferingIds, setSelectedOfferingIds] = useState<number[]>([]);
+  const [enrolling, setEnrolling] = useState(false);
   const canGrace = has('academic.enrollments.grace');
 
   const loadContext = async (id: number) => {
@@ -476,6 +478,7 @@ export function CourseRegistrationPage() {
       const { data } = await api.get('/api/academic/course-registration', { params: { student_id: id } });
       setCtx(data);
       setStudentId(id);
+      setSelectedOfferingIds([]);
     } catch (err) {
       setCtx(null);
       message.error(apiError(err, "Unable to load this student's course registration."));
@@ -504,6 +507,7 @@ export function CourseRegistrationPage() {
 
   const enroll = async (courseOfferingId: number) => {
     if (!studentId) return;
+    setEnrolling(true);
     try {
       const res = await api.post('/api/academic/course-registration/enroll', {
         student_id: studentId,
@@ -517,6 +521,30 @@ export function CourseRegistrationPage() {
       }
     } catch (err) {
       message.error(apiError(err, 'Unable to register this course.'));
+    } finally {
+      setEnrolling(false);
+    }
+  };
+
+  const enrollSelected = async () => {
+    if (!studentId || selectedOfferingIds.length === 0) return;
+    setEnrolling(true);
+    try {
+      const res = await api.post('/api/academic/course-registration/enroll', {
+        student_id: studentId,
+        course_offering_ids: selectedOfferingIds,
+        reason: reason || undefined,
+      });
+      if (!isPendingApproval(res)) {
+        message.success(`Registered ${selectedOfferingIds.length} course${selectedOfferingIds.length === 1 ? '' : 's'}.`);
+        setReason('');
+        setSelectedOfferingIds([]);
+        await loadContext(studentId);
+      }
+    } catch (err) {
+      message.error(apiError(err, 'Unable to register the selected courses.'));
+    } finally {
+      setEnrolling(false);
     }
   };
 
@@ -565,7 +593,7 @@ export function CourseRegistrationPage() {
       <WorkspaceHero
         eyebrow="Courses"
         title="Course registration"
-        description="Add or drop courses for a student. A reason is required when the window is closed, tuition is below 25%, or a carry-over is dropped."
+        description="Add or drop courses for a student, one at a time or in bulk. A reason is required when the window is closed, tuition is below 25%, or a carry-over is dropped."
         icon={BookOpen}
       >
         <RefreshButton onClick={() => studentId && loadContext(studentId)} loading={loading} />
@@ -673,15 +701,36 @@ export function CourseRegistrationPage() {
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <h3 className="text-sm font-semibold text-slate-800 mb-2">Available</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <h3 className="text-sm font-semibold text-slate-800">Available</h3>
+              <Button
+                size="small"
+                type="primary"
+                disabled={enrolling || selectedOfferingIds.length === 0}
+                onClick={enrollSelected}
+              >
+                {enrolling ? 'Registering…' : `Register selected (${selectedOfferingIds.length})`}
+              </Button>
+            </div>
             <Table
               rowKey="id"
               size="small"
               pagination={false}
               dataSource={ctx.available || []}
               locale={{ emptyText: 'No offerings available for this student.' }}
+              rowSelection={{
+                selectedRowKeys: selectedOfferingIds,
+                onChange: (keys) => setSelectedOfferingIds(keys.map((key) => Number(key))),
+                getCheckboxProps: () => ({ disabled: enrolling }),
+              }}
               columns={[
-                { title: 'Course', render: (_, row: any) => `${row.course?.code || ''} ${row.course?.title || ''}`.trim() },
+                { title: 'Course', render: (_, row: any) => (
+                  <span>
+                    {`${row.course?.code || ''} ${row.course?.title || ''}`.trim()}
+                    {row.is_carry_over ? <Tag color="orange" className="ml-2">Carry-over</Tag> : null}
+                    {row.is_outstanding ? <Tag color="blue" className="ml-2">Outstanding</Tag> : null}
+                  </span>
+                ) },
                 { title: 'Units', width: 70, render: (_, row: any) => row.course?.units ?? '—' },
                 { title: 'Bucket', width: 130, render: (_, row: any) => bucketLabel(row.bucket || row.course?.course_type) },
                 { title: 'Status', width: 110, render: (_, row: any) => courseStatusLabel(row.course?.status) },
@@ -690,7 +739,7 @@ export function CourseRegistrationPage() {
                   title: '',
                   width: 110,
                   render: (_, row: any) => (
-                    <Button size="small" type="primary" onClick={() => enroll(row.id)}>Register</Button>
+                    <Button size="small" type="primary" disabled={enrolling} onClick={() => enroll(row.id)}>Register</Button>
                   ),
                 },
               ]}

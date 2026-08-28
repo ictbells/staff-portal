@@ -32,7 +32,7 @@ import {
   RESULTS_RESOURCES,
   type AcademicResource,
 } from '../pages/academic/constants';
-import { ADMISSIONS_CHANNELS } from '../pages/admissions/constants';
+import { ADMISSIONS_CHANNELS, CLEARANCE_CHANNELS } from '../pages/admissions/constants';
 import { REGISTRATION_CHANNELS } from '../pages/registrations/constants';
 import { TRANSCRIPT_CHANNELS } from '../pages/transcripts/constants';
 
@@ -116,14 +116,37 @@ export const navSections: NavSection[] = [
   },
   {
     title: 'Applications',
-    items: ADMISSIONS_CHANNELS.map((channel) => ({
-      key: channel.navKey,
-      to: channel.path,
-      label: channel.label,
-      hint: 'Applications',
-      perm: 'admissions.view' as string | null,
-      icon: channel.key === 'undergraduate' ? School : channel.key === 'jupeb' ? BookOpen : Award,
-    })),
+    items: [
+      ...ADMISSIONS_CHANNELS.map((channel) => ({
+        key: channel.navKey,
+        to: channel.path,
+        label: channel.label,
+        hint: 'Applications',
+        perm: 'admissions.view' as string | null,
+        icon: channel.key === 'undergraduate' ? School : channel.key === 'jupeb' ? BookOpen : Award,
+      })),
+      {
+        key: 'physical-clearance',
+        label: 'Physical clearance',
+        icon: ClipboardCheck,
+        items: CLEARANCE_CHANNELS.map((channel) => ({
+          key: channel.navKey,
+          to: channel.path,
+          label: channel.label,
+          hint: 'Physical clearance',
+          perm: 'admissions.clear' as string | null,
+          icon: ClipboardCheck,
+        })),
+      },
+      {
+        key: 'admission-guide',
+        to: '/applications/guide',
+        label: 'Admission guide',
+        hint: 'Publish the student portal guide',
+        perm: 'admissions.guide' as string | null,
+        icon: BookOpen,
+      },
+    ],
   },
   {
     title: 'Registrations',
@@ -180,7 +203,7 @@ export const navSections: NavSection[] = [
           { key: 'finance', to: '/finance/rebates', label: 'Rebates', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'finance', to: '/finance/programme-fees', label: 'Programme fees', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'finance', to: '/finance/generate', label: 'Generate invoice', perm: 'finance.invoices.manage', icon: Wallet },
-          { key: 'finance', to: '/finance/invoices', label: 'Invoices', perm: 'finance.invoices.manage', icon: Wallet },
+          { key: 'finance', to: '/finance/invoices', label: 'Payments', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'finance', to: '/finance/student-status', label: 'Students Financial Status', perm: 'finance.invoices.manage', icon: Wallet },
           { key: 'import-invoices', to: '/finance/import-invoices', label: 'Import invoices', perm: 'finance.invoices.manage', permAny: ['finance.invoices.manage', 'finance.invoices.import'], icon: Wallet },
           { key: 'import-wallet', to: '/finance/import-wallet', label: 'Import wallet history', perm: 'finance.invoices.manage', permAny: ['finance.invoices.manage', 'finance.invoices.import'], icon: Wallet },

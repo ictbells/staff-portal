@@ -1,8 +1,9 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Drawer, Input, Select, Space, Tag, message } from 'antd';
-import { Eye, FileText, Printer, Save } from 'lucide-react';
+import { Eye, FileText, Printer, RefreshCw, Save } from 'lucide-react';
 import api from '../../api';
 import { useAuth } from '../../auth';
+import { isValidPhone, PHONE_ERROR, PHONE_HINT } from '../../lib/phone';
 import { requiredDocumentsFor } from './requiredDocuments';
 
 type Step = { step_key?: string; payload?: Record<string, any> };
@@ -28,13 +29,10 @@ type Sitting = {
   exam_number: string;
   results: { subject_id: number; subject_name: string; grade: string }[];
 };
-type UtmeChoice = { choice_order: number; institution_name: string; programme_name: string };
 type Utme = {
   aggregate: string;
-  course_choice: string;
   exam_year: string;
   subjects: { subject: string; score: string }[];
-  institution_choices: UtmeChoice[];
 };
 type DirectEntry = {
   jamb_de_number: string;
@@ -79,7 +77,7 @@ type FileApp = {
   entry_mode?: string;
   stage?: string;
   submitted_at?: string | null;
-  user?: { name?: string; email?: string; phone?: string; jamb_registration?: string | null };
+  user?: { name?: string; email?: string; phone?: string; alternate_phone?: string; jamb_registration?: string | null };
   program?: {
     id?: number;
     name?: string;
@@ -100,11 +98,18 @@ type FileApp = {
   };
   eligibility?: { meets: boolean; failed?: { rule: string; message: string }[]; requirements?: Record<string, any> };
   referee_invites?: { id: number; name?: string; email?: string; status?: string; position?: number }[];
+  pg_word_limits?: {
+    pg_research_interest_min_words?: number;
+    pg_research_interest_max_words?: number;
+    pg_statement_of_purpose_min_words?: number;
+    pg_statement_of_purpose_max_words?: number;
+  };
 };
 
 type FormState = {
   email: string;
   phone: string;
+  alternate_phone: string;
   jamb_registration: string;
   first_name: string;
   middle_name: string;
@@ -160,8 +165,8 @@ type FormState = {
   credit_assessment: CreditAssessment;
 };
 
-const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-const GENOTYPES = ['AA', 'AS', 'AC', 'SS', 'SC', 'CC'];
+const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Other'];
+const GENOTYPES = ['AA', 'AS', 'AC', 'SS', 'SC', 'CC', 'Other'];
 const MARITAL_STATUSES = ['Single', 'Married', 'Divorced', 'Widowed', 'Separated'];
 const RELIGIONS = ['Christianity', 'Islam', 'Traditional', 'Other'];
 const GENDERS = ['Male', 'Female'];
@@ -285,14 +290,9 @@ function emptySitting(): Sitting {
   return { exam_type: '', exam_center: '', exam_year: '', exam_number: '', results: [{ subject_id: 0, subject_name: '', grade: '' }] };
 }
 
-function emptyUtmeChoices(): UtmeChoice[] {
-  return [1, 2].map((order) => ({ choice_order: order, institution_name: '', programme_name: '' }));
-}
-
 function emptyUtme(): Utme {
   return {
     aggregate: '',
-    course_choice: '',
     exam_year: '',
     subjects: [
       { subject: '', score: '' },
@@ -300,15 +300,12 @@ function emptyUtme(): Utme {
       { subject: '', score: '' },
       { subject: '', score: '' },
     ],
-    institution_choices: emptyUtmeChoices(),
   };
 }
 
-function asUtme(raw: any, universityName = ''): Utme {
+function asUtme(raw: any): Utme {
   const base = emptyUtme();
-  if (!raw || typeof raw !== 'object') {
-    return universityName ? withDefaultFirstInstitution(base, universityName) : base;
-  }
+  if (!raw || typeof raw !== 'object') return base;
   const subjects = (Array.isArray(raw.subjects) ? raw.subjects : [])
     .slice(0, 4)
     .map((row: any) => ({
@@ -316,46 +313,23 @@ function asUtme(raw: any, universityName = ''): Utme {
       score: row.score != null ? String(row.score) : '',
     }));
   while (subjects.length < 4) subjects.push({ subject: '', score: '' });
-  const choices = Array.isArray(raw.institution_choices) && raw.institution_choices.length
-    ? raw.institution_choices.map((row: any, index: number) => ({
-        choice_order: Number(row.choice_order || index + 1),
-        institution_name: row.institution_name || '',
-        programme_name: row.programme_name || '',
-      }))
-    : emptyUtmeChoices();
-  while (choices.length < 2) choices.push({ choice_order: choices.length + 1, institution_name: '', programme_name: '' });
-  return withDefaultFirstInstitution({
+  return {
     aggregate: raw.aggregate != null ? String(raw.aggregate) : '',
-    course_choice: raw.course_choice || '',
     exam_year: raw.exam_year != null ? String(raw.exam_year) : '',
     subjects,
-    institution_choices: choices.slice(0, 2),
-  }, universityName);
-}
-
-function catalogueProgramLabel(program: ProgramOption) {
-  if (!program.name) return '';
-  return program.code ? `${program.name} (${program.code})` : program.name;
-}
-
-function programmeSelectOptions(programs: ProgramOption[], current?: string) {
-  const options = programs
-    .filter((program) => program.name)
-    .map((program) => ({ value: program.name as string, label: catalogueProgramLabel(program) }));
-  if (current && !options.some((option) => option.value === current)) {
-    options.unshift({ value: current, label: current });
-  }
-  return options;
-}
-
-function withDefaultFirstInstitution(utme: Utme, universityName = ''): Utme {
-  if (!universityName || utme.institution_choices[0]?.institution_name) return utme;
-  return {
-    ...utme,
-    institution_choices: utme.institution_choices.map((row, index) => (
-      index === 0 ? { ...row, institution_name: universityName } : row
-    )),
   };
+}
+
+function utmeSubjectTotal(utme: Utme): number {
+  return utme.subjects.reduce((sum, row) => sum + (Number(row.score) || 0), 0);
+}
+
+function utmeAggregateMatches(utme: Utme): boolean {
+  const aggregate = Number(utme.aggregate);
+  if (!Number.isFinite(aggregate) || utme.subjects.some((row) => String(row.score).trim() === '' || !Number.isFinite(Number(row.score)))) {
+    return false;
+  }
+  return Math.abs(utmeSubjectTotal(utme) - aggregate) < 0.005;
 }
 
 function utmeSubjectOptions(subjects: OlevelSubject[], current?: string) {
@@ -368,9 +342,8 @@ function utmeSubjectOptions(subjects: OlevelSubject[], current?: string) {
 
 function utmeForSave(utme: Utme): Utme | null {
   const subjects = utme.subjects.filter((row) => row.subject || row.score);
-  const institution_choices = utme.institution_choices.filter((row) => row.institution_name || row.programme_name);
-  if (!utme.aggregate && !utme.course_choice && !utme.exam_year && subjects.length === 0 && institution_choices.length === 0) return null;
-  return { ...utme, subjects, institution_choices };
+  if (!utme.aggregate && !utme.exam_year && subjects.length === 0) return null;
+  return { aggregate: utme.aggregate, exam_year: utme.exam_year, subjects };
 }
 
 function emptyDirectEntry(jamb?: string): DirectEntry {
@@ -508,15 +481,25 @@ function programmeLevel(level: number | string | undefined) {
   return n >= 100 ? n : n * 100;
 }
 
-function levelAfterProgrammeChange(level: number | string | undefined) {
+function programmesShareCollege(from?: ProgramOption, to?: ProgramOption) {
+  const a = facultyIdOf(from);
+  const b = facultyIdOf(to);
+  return Boolean(a && b && a === b);
+}
+
+function levelAfterProgrammeChange(
+  level: number | string | undefined,
+  sameCollege: boolean,
+) {
   const stored = Number(level);
+  if (sameCollege) return stored;
   const band = programmeLevel(level);
   if (!band) return stored;
   if (band === 100) return stored;
   return stored >= 100 ? stored - 100 : Math.max(1, stored - 1);
 }
 
-function formFromApp(app: FileApp, programs: ProgramOption[], universityName = ''): FormState {
+function formFromApp(app: FileApp, programs: ProgramOption[]): FormState {
   const biodata = stepPayload(app, 'biodata');
   const personal = { ...biodata, ...stepPayload(app, 'personal_details') };
   const health = { ...personal, ...stepPayload(app, 'health_information') };
@@ -536,6 +519,7 @@ function formFromApp(app: FileApp, programs: ProgramOption[], universityName = '
   return {
     email: app.user?.email || pick(contact, 'email') || '',
     phone: pick(contact, 'phone') || app.user?.phone || '',
+    alternate_phone: pick(contact, 'alternate_phone') || app.user?.alternate_phone || '',
     jamb_registration: app.jamb_registration || app.user?.jamb_registration || '',
     first_name: pick(personal, 'first_name') || '',
     middle_name: pick(personal, 'middle_name') || '',
@@ -565,7 +549,7 @@ function formFromApp(app: FileApp, programs: ProgramOption[], universityName = '
     sponsor_email: pick(sponsor, 'sponsor_email') || '',
     sponsor_address: pick(sponsor, 'sponsor_address') || '',
     other_qualifications: pick(academic, 'other_qualifications') || '',
-    utme: asUtme(pick(utmeStep, 'utme') || pick(academic, 'utme'), universityName),
+    utme: asUtme(pick(utmeStep, 'utme') || pick(academic, 'utme')),
     first_sitting: asSitting(pick(academic, 'first_sitting') || (Array.isArray(academic.olevel_results) ? { ...academic, results: academic.olevel_results } : null)),
     second_sitting: asSitting(pick(academic, 'second_sitting')),
     first_choice_college_id: Number(pick(programme, 'first_choice_college_id') || facultyIdOf(first) || 0) || '',
@@ -596,11 +580,32 @@ function formFromApp(app: FileApp, programs: ProgramOption[], universityName = '
   };
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function countWords(text?: string) {
+  const trimmed = String(text || '').trim().replace(/\s+/g, ' ');
+  if (!trimmed) return 0;
+  return trimmed.split(/\s+/).filter(Boolean).length;
+}
+
+function wordLimitHint(count: number, min: number, max: number) {
+  const parts: string[] = [`${count} word${count === 1 ? '' : 's'}`];
+  if (min > 0) parts.push(`min ${min}`);
+  if (max > 0) parts.push(`max ${max}`);
+  return parts.join(' · ');
+}
+
+function wordLimitError(label: string, count: number, min: number, max: number) {
+  if (count === 0) return null;
+  if (min > 0 && count < min) return `${label} must be at least ${min} words (currently ${count}).`;
+  if (max > 0 && count > max) return `${label} must be at most ${max} words (currently ${count}).`;
+  return null;
+}
+
+function Field({ label, hint, hintTone, children }: { label: string; hint?: string; hintTone?: 'error' | 'muted'; children: ReactNode }) {
   return (
     <label className="min-w-0 block">
       <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">{label}</div>
       {children}
+      {hint ? <div className={`mt-1 text-xs ${hintTone === 'error' ? 'text-rose-700' : 'text-slate-500'}`}>{hint}</div> : null}
     </label>
   );
 }
@@ -620,13 +625,16 @@ function SittingEditor({
   subjects,
   onChange,
   onClear,
+  excludeNabteb = false,
 }: {
   title: string;
   sitting: Sitting;
   subjects: OlevelSubject[];
   onChange: (next: Sitting) => void;
   onClear?: () => void;
+  excludeNabteb?: boolean;
 }) {
+  const examTypes = OLEVEL_EXAM_TYPES.filter((value) => !excludeNabteb || value !== 'NABTEB' || sitting.exam_type === 'NABTEB');
   return (
     <Section title={title}>
       <div className="grid grid-cols-2 gap-3">
@@ -635,7 +643,7 @@ function SittingEditor({
             className="w-full"
             allowClear
             value={sitting.exam_type || undefined}
-            options={OLEVEL_EXAM_TYPES.map((value) => ({ value, label: value }))}
+            options={examTypes.map((value) => ({ value, label: value }))}
             onChange={(value) => onChange({ ...sitting, exam_type: value || '' })}
           />
         </Field>
@@ -693,7 +701,7 @@ function SittingEditor({
         ))}
         <Space>
           {sitting.results.length < OLEVEL_SUBJECT_CAP && (
-            <Button onClick={() => onChange({ ...sitting, results: [...sitting.results, { subject_id: 0, subject_name: '', grade: '' }] })}>
+            <Button type="primary" onClick={() => onChange({ ...sitting, results: [...sitting.results, { subject_id: 0, subject_name: '', grade: '' }] })}>
               Add subject
             </Button>
           )}
@@ -725,8 +733,7 @@ export function ApplicationFileDrawer({
   onSaved?: () => void;
   mode?: 'application' | 'student';
 }) {
-  const { auth } = useAuth();
-  const universityName = auth?.university?.name || '';
+  const { has } = useAuth();
   const [app, setApp] = useState<FileApp | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
@@ -736,6 +743,9 @@ export function ApplicationFileDrawer({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [jambHint, setJambHint] = useState<string | null>(null);
+  const [refereeInviteEmails, setRefereeInviteEmails] = useState<Record<number, string>>({});
+  const [resendingInviteId, setResendingInviteId] = useState<number | null>(null);
+  const [resyncingNin, setResyncingNin] = useState(false);
 
   const originalProgramId = app?.program?.id || app?.student?.program_id || null;
 
@@ -747,7 +757,11 @@ export function ApplicationFileDrawer({
     }
     setLoading(true);
     api.get(`/api/applications/${applicationId}`)
-      .then(({ data }) => setApp(data))
+      .then(({ data }) => {
+        setApp(data);
+        const invites = Array.isArray(data?.referee_invites) ? data.referee_invites : [];
+        setRefereeInviteEmails(Object.fromEntries(invites.map((invite: { id: number; email?: string }) => [invite.id, invite.email || ''])));
+      })
       .catch(() => {
         message.error('Unable to load the application file.');
         setApp(null);
@@ -770,8 +784,8 @@ export function ApplicationFileDrawer({
   }, [open]);
 
   useEffect(() => {
-    if (app) setForm(formFromApp(app, programs, universityName));
-  }, [app, programs, universityName]);
+    if (app) setForm(formFromApp(app, programs));
+  }, [app, programs]);
 
   useEffect(() => {
     if (!form?.state_id) {
@@ -811,13 +825,19 @@ export function ApplicationFileDrawer({
   const studentLevel = programmeLevel(app?.student?.current_level);
   const canChangeProgramme = !app?.student || (studentLevel >= 100 && studentLevel <= 300);
   const programmeChanging = !!(form && originalProgramId && Number(form.first_choice_program_id) !== Number(originalProgramId));
-  const nextLevel = programmeChanging ? levelAfterProgrammeChange(app?.student?.current_level) : app?.student?.current_level;
+  const fromProgram = programs.find((program) => program.id === Number(originalProgramId));
+  const toProgram = programs.find((program) => program.id === Number(form?.first_choice_program_id));
+  const sameCollegeChange = programmeChanging && programmesShareCollege(fromProgram, toProgram);
+  const nextLevel = programmeChanging
+    ? levelAfterProgrammeChange(app?.student?.current_level, sameCollegeChange)
+    : app?.student?.current_level;
   const biodata = stepPayload(app, 'biodata');
   const nin = pick(biodata, 'nin');
   const photoPath = pick(biodata, 'photo_path');
   const checklist = useMemo(
-    () => requiredDocumentsFor(app?.entry_mode, stepPayload(app || { steps: [] }, 'pg_background').nysc_status),
-    [app],
+    () => requiredDocumentsFor(app?.entry_mode, stepPayload(app || { steps: [] }, 'pg_background').nysc_status)
+      .filter((doc) => !(doc.key === 'olevel_second_sitting' && form?.first_sitting.exam_type === 'NABTEB')),
+    [app, form?.first_sitting.exam_type],
   );
   const uploaded = app?.documents || [];
   const uploadedTypes = new Set(uploaded.map((doc) => pick(doc, 'doc_type')).filter(Boolean) as string[]);
@@ -826,6 +846,42 @@ export function ApplicationFileDrawer({
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
+  };
+
+  const resendRefereeInvite = async (invite: NonNullable<FileApp['referee_invites']>[number]) => {
+    if (!app?.id || !invite?.id) return;
+    const email = (refereeInviteEmails[invite.id] ?? invite.email ?? '').trim();
+    if (!email) {
+      message.error('Enter a referee email.');
+      return;
+    }
+    setResendingInviteId(invite.id);
+    try {
+      const { data } = await api.post(`/api/applications/${app.id}/referees/${invite.id}/resend`, { email });
+      const referees = Array.isArray(data?.referees) ? data.referees : app.referee_invites;
+      setApp((prev) => (prev ? { ...prev, referee_invites: referees } : prev));
+      setRefereeInviteEmails(Object.fromEntries((referees || []).map((row: { id: number; email?: string }) => [row.id, row.email || ''])));
+      setForm((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          referees: prev.referees.map((row, index) => {
+            const match = (referees || []).find((item: { position?: number; email?: string; name?: string }) => Number(item.position) === index + 1)
+              || (referees || []).find((item: { email?: string }) => String(item.email || '').toLowerCase() === email.toLowerCase());
+            return match ? { ...row, email: match.email || row.email, name: match.name || row.name } : row;
+          }),
+        };
+      });
+      message.success(data?.message || 'Invite resent.');
+    } catch (err: any) {
+      const errors = err?.response?.data?.errors;
+      const first = errors && typeof errors === 'object'
+        ? Object.values(errors).flat().find((value) => typeof value === 'string')
+        : null;
+      message.error((typeof first === 'string' ? first : err?.response?.data?.message) || 'Could not update or resend this invite.');
+    } finally {
+      setResendingInviteId(null);
+    }
   };
 
   const checkJamb = async (value: string) => {
@@ -875,6 +931,37 @@ export function ApplicationFileDrawer({
       message.error('Change of programme is only allowed for 100L to 300L students.');
       return;
     }
+    if (form.alternate_phone.trim() && !isValidPhone(form.alternate_phone)) {
+      message.error(PHONE_ERROR);
+      return;
+    }
+    {
+      const utme = asUtme(form.utme);
+      const scoresFilled = utme.subjects.filter((row) => String(row.score).trim() !== '').length;
+      if (scoresFilled === 4 && String(utme.aggregate).trim() !== '' && !utmeAggregateMatches(utme)) {
+        message.error(`The four subject scores total ${utmeSubjectTotal(utme)}, which must match the aggregate.`);
+        return;
+      }
+    }
+    if (app.entry_mode === 'pg') {
+      const limits = app.pg_word_limits || {};
+      const researchError = wordLimitError(
+        'Research interest',
+        countWords(form.research_interest),
+        Number(limits.pg_research_interest_min_words || 0),
+        Number(limits.pg_research_interest_max_words || 0),
+      );
+      const purposeError = wordLimitError(
+        'Statement of purpose',
+        countWords(form.statement_of_purpose),
+        Number(limits.pg_statement_of_purpose_min_words || 0),
+        Number(limits.pg_statement_of_purpose_max_words || 0),
+      );
+      if (researchError || purposeError) {
+        message.error(researchError || purposeError || '');
+        return;
+      }
+    }
     setSaving(true);
     try {
       const { data, status } = await api.patch(`/api/applications/${app.id}`, {
@@ -884,11 +971,13 @@ export function ApplicationFileDrawer({
         first_choice_college_id: form.first_choice_college_id || null,
         first_choice_department_id: form.first_choice_department_id || null,
         first_choice_program_id: form.first_choice_program_id,
-        second_choice_college_id: form.second_choice_college_id || null,
-        second_choice_department_id: form.second_choice_department_id || null,
-        second_choice_program_id: form.second_choice_program_id || null,
+        second_choice_college_id: app.entry_mode === 'jupeb' ? null : (form.second_choice_college_id || null),
+        second_choice_department_id: app.entry_mode === 'jupeb' ? null : (form.second_choice_department_id || null),
+        second_choice_program_id: app.entry_mode === 'jupeb' ? null : (form.second_choice_program_id || null),
         first_sitting: sittingForSave(form.first_sitting),
-        second_sitting: sittingForSave(form.second_sitting),
+        second_sitting: form.first_sitting.exam_type === 'NABTEB' || form.second_sitting.exam_type === 'NABTEB'
+          ? null
+          : sittingForSave(form.second_sitting),
         utme: utmeForSave(form.utme),
         jamb_registration: form.jamb_registration.replace(/\s+/g, '').toUpperCase() || null,
         prior_degrees: form.prior_degrees,
@@ -940,6 +1029,25 @@ export function ApplicationFileDrawer({
       message.error((typeof first === 'string' ? first : err?.response?.data?.message) || 'Unable to save the application file.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const resyncFromNin = async () => {
+    if (!app?.id || resyncingNin) return;
+    setResyncingNin(true);
+    try {
+      const { data } = await api.post(`/api/applications/${app.id}/nin/resync`);
+      setApp(data);
+      message.success('NIN biodata was refreshed from the identity service.');
+      onSaved?.();
+    } catch (err: any) {
+      const errors = err?.response?.data?.errors;
+      const first = errors && typeof errors === 'object'
+        ? Object.values(errors).flat().find((value) => typeof value === 'string')
+        : null;
+      message.error((typeof first === 'string' ? first : err?.response?.data?.message) || 'Unable to resync NIN biodata.');
+    } finally {
+      setResyncingNin(false);
     }
   };
 
@@ -1019,8 +1127,16 @@ export function ApplicationFileDrawer({
               <Field label="Email">
                 <Input value={form.email} onChange={(e) => setField('email', e.target.value)} />
               </Field>
-              <Field label="Phone">
-                <Input value={form.phone} onChange={(e) => setField('phone', e.target.value)} />
+              <Field label="Phone from NIN">
+                <Input value={form.phone} disabled />
+              </Field>
+              <Field label="Alternate phone">
+                <Input
+                  value={form.alternate_phone}
+                  onChange={(e) => setField('alternate_phone', e.target.value)}
+                  placeholder="0803 123 4567 or +1 202 555 0100"
+                />
+                <p className="text-xs text-slate-500 mt-1">{PHONE_HINT}</p>
               </Field>
               {app.student && (
                 <Field label="Current level">
@@ -1038,11 +1154,12 @@ export function ApplicationFileDrawer({
             )}
             {app.student && canChangeProgramme && programmeChanging && (
               <p className="text-sm text-sky-800 bg-sky-50 border border-sky-200 rounded-lg px-3 py-2">
-                Changing programme will set the student level to {nextLevel}L
-                {studentLevel === 100 ? ' (100L remains 100L).' : ` (currently ${studentLevel}L).`}
+                {sameCollegeChange
+                  ? `Changing programme within the same college keeps the student at ${studentLevel}L. Outstanding courses of the new programme will be available for registration.`
+                  : `Changing programme will set the student level to ${nextLevel}L${studentLevel === 100 ? ' (100L remains 100L).' : ` (currently ${studentLevel}L).`}`}
               </p>
             )}
-            <p className="text-xs font-medium text-slate-500">First choice</p>
+            <p className="text-xs font-medium text-slate-500">{app.entry_mode === 'jupeb' ? 'Programme' : 'First choice'}</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Field label="College">
                 <Select
@@ -1087,6 +1204,8 @@ export function ApplicationFileDrawer({
                 />
               </Field>
             </div>
+            {app.entry_mode !== 'jupeb' && (
+            <>
             <p className="text-xs font-medium text-slate-500 pt-2">Second choice</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Field label="College">
@@ -1134,6 +1253,8 @@ export function ApplicationFileDrawer({
                 />
               </Field>
             </div>
+            </>
+            )}
           </Section>
 
           <Section title="Personal details">
@@ -1142,14 +1263,22 @@ export function ApplicationFileDrawer({
                 <StaffPassportPhoto applicationId={app.id} />
               </div>
             ) : null}
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-slate-500">NIN identity fields are locked. Staff with Re-verify NIN can refresh them from the NIN portal.</p>
+              {has('identity.verify_nin') && (
+                <Button icon={<RefreshCw size={14} />} loading={resyncingNin} onClick={resyncFromNin} disabled={!nin}>
+                  Resync from NIN
+                </Button>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="First name"><Input value={form.first_name} onChange={(e) => setField('first_name', e.target.value)} /></Field>
-              <Field label="Middle name"><Input value={form.middle_name} onChange={(e) => setField('middle_name', e.target.value)} /></Field>
-              <Field label="Surname"><Input value={form.last_name} onChange={(e) => setField('last_name', e.target.value)} /></Field>
+              <Field label="First name"><Input value={form.first_name} disabled /></Field>
+              <Field label="Middle name"><Input value={form.middle_name} disabled /></Field>
+              <Field label="Surname"><Input value={form.last_name} disabled /></Field>
               <Field label="NIN"><Input value={nin || ''} disabled /></Field>
-              <Field label="Date of birth"><Input type="date" value={form.date_of_birth} onChange={(e) => setField('date_of_birth', e.target.value)} /></Field>
+              <Field label="Date of birth"><Input type="date" value={form.date_of_birth} disabled /></Field>
               <Field label="Gender">
-                <Select className="w-full" allowClear value={form.gender || undefined} options={GENDERS.map((value) => ({ value, label: value }))} onChange={(value) => setField('gender', value || '')} />
+                <Select className="w-full" disabled value={form.gender || undefined} options={GENDERS.map((value) => ({ value, label: value }))} />
               </Field>
               <Field label="Marital status">
                 <Select className="w-full" allowClear value={form.marital_status || undefined} options={MARITAL_STATUSES.map((value) => ({ value, label: value }))} onChange={(value) => setField('marital_status', value || '')} />
@@ -1248,7 +1377,7 @@ export function ApplicationFileDrawer({
             </div>
           </Section>
 
-          {(app.entry_mode === 'utme' || form.utme.aggregate || form.utme.course_choice || form.utme.exam_year || form.utme.subjects.some((row) => row.subject || row.score)) && (
+          {(app.entry_mode === 'utme' || form.utme.aggregate || form.utme.exam_year || form.utme.subjects.some((row) => row.subject || row.score)) && (
             <Section title="JAMB information">
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Examination year">
@@ -1263,21 +1392,9 @@ export function ApplicationFileDrawer({
                 <Field label="Aggregate">
                   <Input value={form.utme.aggregate} onChange={(e) => setField('utme', { ...form.utme, aggregate: e.target.value })} />
                 </Field>
-                <Field label="Course choice">
-                  <Select
-                    className="w-full"
-                    showSearch
-                    allowClear
-                    optionFilterProp="label"
-                    placeholder="Select programme"
-                    value={form.utme.course_choice || undefined}
-                    options={programmeSelectOptions(programs, form.utme.course_choice)}
-                    onChange={(value) => setField('utme', { ...form.utme, course_choice: value || '' })}
-                  />
-                </Field>
               </div>
               <div className="space-y-2">
-                <p className="text-xs font-medium text-slate-500">Subject scores (4)</p>
+                <p className="text-xs font-medium text-slate-500">Subject scores (4) — total must match aggregate</p>
                 {asUtme(form.utme).subjects.map((row, index) => (
                   <div key={index} className="grid grid-cols-[minmax(0,1fr)_5.75rem] gap-2 items-center">
                     <Select
@@ -1304,35 +1421,10 @@ export function ApplicationFileDrawer({
                     />
                   </div>
                 ))}
-              </div>
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-slate-500">JAMB institution choices</p>
-                {form.utme.institution_choices.map((row, index) => (
-                  <div key={index} className="grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] gap-2">
-                    <Input value={String(row.choice_order)} disabled />
-                    <Input
-                      placeholder="Institution"
-                      value={row.institution_name}
-                      onChange={(e) => {
-                        const next = form.utme.institution_choices.map((item, i) => i === index ? { ...item, institution_name: e.target.value } : item);
-                        setField('utme', { ...form.utme, institution_choices: next });
-                      }}
-                    />
-                    <Select
-                      className="w-full"
-                      showSearch
-                      allowClear
-                      optionFilterProp="label"
-                      placeholder="Programme"
-                      value={row.programme_name || undefined}
-                      options={programmeSelectOptions(programs, row.programme_name)}
-                      onChange={(value) => {
-                        const next = form.utme.institution_choices.map((item, i) => i === index ? { ...item, programme_name: value || '' } : item);
-                        setField('utme', { ...form.utme, institution_choices: next });
-                      }}
-                    />
-                  </div>
-                ))}
+                <p className="text-xs text-slate-500">
+                  Subject total: {utmeSubjectTotal(asUtme(form.utme))}
+                  {form.utme.aggregate ? ` · aggregate ${form.utme.aggregate}` : ''}
+                </p>
               </div>
             </Section>
           )}
@@ -1341,15 +1433,29 @@ export function ApplicationFileDrawer({
             title="O'Level — first sitting"
             sitting={form.first_sitting}
             subjects={subjects}
-            onChange={(sitting) => setField('first_sitting', sitting)}
+            onChange={(sitting) => {
+              setField('first_sitting', sitting);
+              if (sitting.exam_type === 'NABTEB') {
+                setField('second_sitting', emptySitting());
+              }
+            }}
           />
+          {form.first_sitting.exam_type !== 'NABTEB' && (
           <SittingEditor
             title="O'Level — second sitting"
             sitting={form.second_sitting}
             subjects={subjects}
-            onChange={(sitting) => setField('second_sitting', sitting)}
+            excludeNabteb
+            onChange={(sitting) => {
+              if (sitting.exam_type === 'NABTEB') {
+                setField('second_sitting', emptySitting());
+                return;
+              }
+              setField('second_sitting', sitting);
+            }}
             onClear={() => setField('second_sitting', emptySitting())}
           />
+          )}
 
           <Section title="Other qualifications">
             <Input.TextArea rows={3} value={form.other_qualifications} onChange={(e) => setField('other_qualifications', e.target.value)} />
@@ -1531,13 +1637,41 @@ export function ApplicationFileDrawer({
               </Section>
               <Section title="Research and purpose">
                 <div className="space-y-3">
-                  <Field label="Research interest"><Input.TextArea rows={2} value={form.research_interest} onChange={(e) => setField('research_interest', e.target.value)} /></Field>
-                  <Field label="Proposed area"><Input value={form.proposed_area} onChange={(e) => setField('proposed_area', e.target.value)} /></Field>
-                  <Field label="Statement of purpose"><Input.TextArea rows={4} value={form.statement_of_purpose} onChange={(e) => setField('statement_of_purpose', e.target.value)} /></Field>
+                  {(() => {
+                    const limits = app.pg_word_limits || {};
+                    const researchMin = Number(limits.pg_research_interest_min_words || 0);
+                    const researchMax = Number(limits.pg_research_interest_max_words || 0);
+                    const purposeMin = Number(limits.pg_statement_of_purpose_min_words || 0);
+                    const purposeMax = Number(limits.pg_statement_of_purpose_max_words || 0);
+                    const researchCount = countWords(form.research_interest);
+                    const purposeCount = countWords(form.statement_of_purpose);
+                    return (
+                      <>
+                        <Field
+                          label="Research interest"
+                          hint={wordLimitHint(researchCount, researchMin, researchMax)}
+                          hintTone={wordLimitError('Research interest', researchCount, researchMin, researchMax) ? 'error' : 'muted'}
+                        >
+                          <Input.TextArea rows={2} value={form.research_interest} onChange={(e) => setField('research_interest', e.target.value)} />
+                        </Field>
+                        <Field label="Proposed area"><Input value={form.proposed_area} onChange={(e) => setField('proposed_area', e.target.value)} /></Field>
+                        <Field
+                          label="Statement of purpose"
+                          hint={wordLimitHint(purposeCount, purposeMin, purposeMax)}
+                          hintTone={wordLimitError('Statement of purpose', purposeCount, purposeMin, purposeMax) ? 'error' : 'muted'}
+                        >
+                          <Input.TextArea rows={4} value={form.statement_of_purpose} onChange={(e) => setField('statement_of_purpose', e.target.value)} />
+                        </Field>
+                      </>
+                    );
+                  })()}
                 </div>
               </Section>
               <Section title="Referees">
                 <div className="space-y-3">
+                  <p className="text-xs text-slate-500 m-0">
+                    Change a referee email below and resend the recommendation request. The previous link stops working when you resend.
+                  </p>
                   {form.referees.map((row, index) => (
                     <div key={index} className="grid grid-cols-2 gap-2 rounded-lg border border-slate-100 p-3">
                       <Field label="Name"><Input value={row.name} onChange={(e) => {
@@ -1558,26 +1692,43 @@ export function ApplicationFileDrawer({
                       }} /></Field>
                     </div>
                   ))}
-                  {(app.referee_invites || []).map((invite) => (
-                    <div key={invite.id} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2">
-                      <span className="text-sm">{invite.name} — {invite.email}</span>
-                      <Space>
-                        <Tag color={invite.status === 'submitted' ? 'success' : invite.status === 'expired' ? 'error' : 'warning'}>
-                          {invite.status}
-                        </Tag>
-                        {invite.status !== 'submitted' && (
-                          <Button size="small" onClick={() => {
-                            api.post(`/api/applications/${app.id}/referees/${invite.id}/resend`)
-                              .then(({ data }) => {
-                                setApp((prev) => prev ? { ...prev, referee_invites: data.referees || prev.referee_invites } : prev);
-                                message.success('Invite resent.');
-                              })
-                              .catch(() => message.error('Could not resend this invite.'));
-                          }}>Resend</Button>
-                        )}
-                      </Space>
-                    </div>
-                  ))}
+                  {(app.referee_invites || []).map((invite) => {
+                    const draft = refereeInviteEmails[invite.id] ?? invite.email ?? '';
+                    const submitted = invite.status === 'submitted';
+                    const emailChanged = draft.trim().toLowerCase() !== String(invite.email || '').trim().toLowerCase();
+                    return (
+                      <div key={invite.id} className="rounded-lg border border-slate-100 px-3 py-2 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-medium text-slate-800">{invite.name || 'Referee'}</span>
+                          <Tag color={invite.status === 'submitted' ? 'success' : invite.status === 'expired' ? 'error' : 'warning'}>
+                            {invite.status}
+                          </Tag>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+                          <div className="min-w-0 flex-1">
+                            <Field label="Invite email">
+                              <Input
+                                type="email"
+                                value={draft}
+                                disabled={submitted}
+                                onChange={(e) => setRefereeInviteEmails((current) => ({ ...current, [invite.id]: e.target.value }))}
+                              />
+                            </Field>
+                          </div>
+                          {!submitted && (
+                            <Button
+                              size="small"
+                              type={emailChanged ? 'primary' : 'default'}
+                              loading={resendingInviteId === invite.id}
+                              onClick={() => void resendRefereeInvite(invite)}
+                            >
+                              {emailChanged ? 'Save email & resend' : 'Resend invite'}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </Section>
             </>

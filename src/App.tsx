@@ -6,6 +6,8 @@ import Forgot from './pages/Forgot';
 import Reset from './pages/Reset';
 import Dashboard from './pages/Dashboard';
 import AdmissionsChannelPage from './pages/admissions/AdmissionsChannelPage';
+import PhysicalClearanceChannelPage from './pages/admissions/PhysicalClearanceChannelPage';
+import AdmissionGuidePage from './pages/admissions/AdmissionGuidePage';
 import LegacyAdmissionsRedirect from './pages/admissions/LegacyAdmissionsRedirect';
 import RegistrationsChannelPage from './pages/registrations/RegistrationsChannelPage';
 import Users from './pages/Users';
@@ -39,6 +41,7 @@ import {
 import { CandidateDataPage } from './pages/academic/CandidateDataPage';
 import { ImportApplicantsPage } from './pages/academic/ImportApplicantsPage';
 import { ImportStudentsPage } from './pages/academic/ImportStudentsPage';
+import { JupebMatricPage } from './pages/academic/JupebMatricPage';
 import { ImportInvoicesPage } from './pages/finance/ImportInvoicesPage';
 import { ImportWalletPage } from './pages/finance/ImportWalletPage';
 import ApplicationSettings from './pages/ApplicationSettings';
@@ -101,6 +104,9 @@ export default function App() {
       >
         <Route index element={<Dashboard />} />
         <Route path="applications" element={<Navigate to="undergraduate" replace />} />
+        <Route path="applications/clearance" element={<Navigate to="undergraduate" replace />} />
+        <Route path="applications/clearance/:channel" element={<PhysicalClearanceChannelPage />} />
+        <Route path="applications/guide" element={<AdmissionGuidePage />} />
         <Route path="applications/:channel" element={<AdmissionsChannelPage />} />
         <Route path="admissions" element={<Navigate to="/applications/undergraduate" replace />} />
         <Route path="admissions/:channel" element={<LegacyAdmissionsRedirect />} />
@@ -122,6 +128,7 @@ export default function App() {
           <Route path="candidate-data" element={<AcademicResourceGuard resourceKey="candidate-data"><CandidateDataPage /></AcademicResourceGuard>} />
           <Route path="import-applicants" element={<AcademicResourceGuard resourceKey="import-applicants"><ImportApplicantsPage /></AcademicResourceGuard>} />
           <Route path="import-students" element={<AcademicResourceGuard resourceKey="import-students"><ImportStudentsPage /></AcademicResourceGuard>} />
+          <Route path="jupeb-matric" element={<AcademicResourceGuard resourceKey="jupeb-matric"><JupebMatricPage /></AcademicResourceGuard>} />
           <Route path="olevel" element={<AcademicResourceGuard resourceKey="olevel"><OlevelPage /></AcademicResourceGuard>} />
           <Route path="offerings" element={<AcademicResourceGuard resourceKey="offerings"><OfferingsPage /></AcademicResourceGuard>} />
           <Route path="course-registration" element={<AcademicResourceGuard resourceKey="course-registration"><CourseRegistrationPage /></AcademicResourceGuard>} />

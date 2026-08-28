@@ -85,7 +85,7 @@ function courseTags(courses?: CourseRef[]) {
 }
 
 type Campus = { id: number; name: string; code?: string; city?: string; address?: string; is_active?: boolean };
-type Faculty = { id: number; name: string; code?: string; campus_id?: number; campus?: Campus };
+type Faculty = { id: number; name: string; code?: string; campus_id?: number; campus?: Campus; is_jupeb_centre?: boolean };
 type Department = { id: number; name: string; code?: string; faculty_id?: number; faculty?: Faculty };
 type Term = {
   id: number;
@@ -182,7 +182,7 @@ type Level = { id: number; name: string; code?: string; study_level: string; sor
 type OlevelSubject = { id: number; name: string; code?: string; is_active: boolean };
 type Intake = {
   id: number; name: string; entry_mode: string; academic_term_id?: number;
-  opens_on?: string; closes_on?: string; is_open: boolean;
+  opens_on?: string; closes_on?: string; is_open: boolean; is_accepting?: boolean;
   applications_count?: number;
   application_fee_amount?: number | string;
   acceptance_fee_amount?: number | string;
@@ -289,8 +289,9 @@ export function CollegesPage() {
     { title: 'College', dataIndex: 'name', key: 'name' },
     { title: 'Code', dataIndex: 'code', key: 'code', width: 100, render: (v) => v || '—' },
     { title: 'Campus', key: 'campus', render: (_, r) => r.campus?.name || '—' },
+    { title: 'JUPEB centre', key: 'jupeb', width: 130, render: (_, r) => (r.is_jupeb_centre ? 'Yes' : 'No') },
     actionColumn(
-      (row) => crud.openEdit(row, { name: row.name, code: row.code, campus_id: row.campus_id ?? row.campus?.id }),
+      (row) => crud.openEdit(row, { name: row.name, code: row.code, campus_id: row.campus_id ?? row.campus?.id, is_jupeb_centre: !!row.is_jupeb_centre }),
       (row) => crud.remove(`/api/faculties/${row.id}`, reload),
     ),
   ];
@@ -303,10 +304,10 @@ export function CollegesPage() {
   return (
     <ResourceShell
       title="Colleges"
-      description="Academic colleges (faculties) within each campus."
+      description="Academic colleges (faculties) within each campus. Mark a college as a JUPEB centre so JUPEB applicants can select its programmes."
       loading={loading}
       onRefresh={reload}
-      onAdd={() => crud.openCreate()}
+      onAdd={() => crud.openCreate({ is_jupeb_centre: false })}
       canAdd={campuses.length > 0}
       stats={(
         <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
@@ -319,7 +320,7 @@ export function CollegesPage() {
         templateUrl="/api/academic/faculties/import-template"
         templateFilename="college-import-template.xlsx"
         importUrl="/api/academic/faculties/import"
-        description="Upload Excel with columns: name, campus_id, plus optional code. Matching codes (or the same name on the same campus) are skipped. Copy campus_id from the Campuses lookup sheet. Import colleges before departments."
+        description="Upload Excel with columns: name, campus_id, plus optional code and is_jupeb_centre (yes/no). Matching codes (or the same name on the same campus) are skipped. Copy campus_id from the Campuses lookup sheet. Import colleges before departments."
         onImported={reload}
       />
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 700 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No colleges yet.' }} />
@@ -329,6 +330,7 @@ export function CollegesPage() {
         </Form.Item>
         <Form.Item name="name" label="College name" rules={[{ required: true }]}><Input placeholder="College of Engineering" /></Form.Item>
         <Form.Item name="code" label="Code"><Input placeholder="COE" /></Form.Item>
+        <Form.Item name="is_jupeb_centre" label="JUPEB centre" valuePropName="checked"><Switch /></Form.Item>
       </CrudModal>
     </ResourceShell>
   );
@@ -1375,6 +1377,10 @@ export function IntakesPage() {
   const { rows, loading, reload } = useResourceList<Intake>('/api/academic/intakes');
   const { rows: terms } = useResourceList<Term>('/api/academic/terms');
   const crud = useCrudModal<Intake>();
+  const [openingForm] = Form.useForm();
+  const [togglingId, setTogglingId] = useState<number | null>(null);
+  const [openingRow, setOpeningRow] = useState<Intake | null>(null);
+  const [openingSaving, setOpeningSaving] = useState(false);
   const sessionOptions = useMemo(() => sessionTermOptions(terms), [terms]);
   const usedModes = useMemo(() => new Set(rows.map((row) => row.entry_mode)), [rows]);
   const missingModes = useMemo(
@@ -1382,6 +1388,48 @@ export function IntakesPage() {
     [usedModes],
   );
   const canAdd = terms.length > 0 && missingModes.length > 0;
+  const acceptingCount = rows.filter((row) => row.is_accepting).length;
+
+  const toggleAccepting = async (row: Intake, checked: boolean) => {
+    if (checked) {
+      openingForm.setFieldsValue({
+        academic_term_id: canonicalSessionTermId(terms, row.academic_term_id ?? row.term?.id),
+        opens_on: toDateValue(row.opens_on),
+        closes_on: toDateValue(row.closes_on),
+      });
+      setOpeningRow(row);
+      return;
+    }
+    setTogglingId(row.id);
+    try {
+      await patchResource(`/api/intakes/${row.id}`, { is_open: false });
+      reload();
+    } catch {
+      /* patchResource already toasts */
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const confirmAccepting = async () => {
+    if (!openingRow) return;
+    const values = await openingForm.validateFields();
+    setOpeningSaving(true);
+    try {
+      await patchResource(`/api/intakes/${openingRow.id}`, {
+        academic_term_id: values.academic_term_id,
+        opens_on: fromDateValue(values.opens_on),
+        closes_on: fromDateValue(values.closes_on),
+        is_open: true,
+      });
+      setOpeningRow(null);
+      reload();
+    } catch {
+      /* patchResource already toasts */
+    } finally {
+      setOpeningSaving(false);
+    }
+  };
 
   const columns: ColumnsType<Intake> = [
     { title: 'Name', dataIndex: 'name', key: 'name' },
@@ -1401,7 +1449,34 @@ export function IntakesPage() {
       width: 150,
       render: (_, row) => formatNaira(row.resolved_acceptance_fee_amount ?? row.acceptance_fee_amount, 'Fee items'),
     },
-    { title: 'Open', dataIndex: 'is_open', key: 'is_open', width: 90, render: (v) => <Tag color={v ? 'success' : 'default'}>{v ? 'Open' : 'Closed'}</Tag> },
+    {
+      title: 'Accepting',
+      key: 'is_open',
+      width: 170,
+      render: (_, row) => {
+        const outsideWindow = row.is_open && row.is_accepting === false;
+        const switchEl = (
+          <Switch
+            checked={!!row.is_open}
+            loading={togglingId === row.id}
+            checkedChildren="Accepting"
+            unCheckedChildren="Stopped"
+            onChange={(checked) => toggleAccepting(row, checked)}
+          />
+        );
+        if (!outsideWindow) {
+          return switchEl;
+        }
+        return (
+          <Tooltip title="The switch is on, but today's date is outside the open/close window, so applicants cannot start or submit.">
+            <span className="inline-flex items-center gap-2">
+              {switchEl}
+              <Tag className="!m-0">Dates closed</Tag>
+            </span>
+          </Tooltip>
+        );
+      },
+    },
     {
       title: 'Actions',
       key: 'actions',
@@ -1444,7 +1519,7 @@ export function IntakesPage() {
   return (
     <ResourceShell
       title="Application sessions"
-      description="Each admission category (UTME, Direct Entry, JUPEB, Transfer, Postgraduate) is created once. For a new year, stop accepting, then edit the same row: pick the new academic session and dates. Application and acceptance fees stay under Fees & payments → Fee items, per category."
+      description="Each admission category (UTME, Direct Entry, JUPEB, Transfer, Postgraduate) is created once. Stop accepting, then turn it back on and pick the new academic session and dates. Application and acceptance fees stay under Fees & payments → Fee items, per category — the same catalog lines are reused; do not create new fee items for the new session."
       loading={loading}
       onRefresh={reload}
       onAdd={() => crud.openCreate({
@@ -1453,11 +1528,15 @@ export function IntakesPage() {
         name: missingModes[0]?.label,
       })}
       canAdd={canAdd}
-      count={rows.length}
-      countLabel="Categories"
       eyebrow="Application setup"
+      stats={(
+        <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+          <StatCard label="Categories" value={rows.length} hint="Admission categories" icon={BookOpen} />
+          <StatCard label="Accepting now" value={acceptingCount} hint="Open for new applications" icon={BookOpen} />
+        </div>
+      )}
     >
-      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1100 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No admission categories yet.' }} />
+      <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1180 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No admission categories yet.' }} />
       <CrudModal title="admission category" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit}>
         <Form.Item name="academic_term_id" label="Session" rules={[{ required: true }]} extra={crud.isEdit ? 'Stop accepting before moving this category to a new academic session.' : undefined}>
           <Select placeholder="Select session" options={sessionOptions} />
@@ -1468,8 +1547,39 @@ export function IntakesPage() {
         </Form.Item>
         <Form.Item name="opens_on" label="Application opens" rules={[{ required: true }]}><DatePicker className="w-full" /></Form.Item>
         <Form.Item name="closes_on" label="Application closes" rules={[{ required: true }]}><DatePicker className="w-full" /></Form.Item>
-        <Form.Item name="is_open" label="Accepting applications" valuePropName="checked"><Switch /></Form.Item>
+        <Form.Item
+          name="is_open"
+          label="Accepting applications"
+          valuePropName="checked"
+          extra="Turn off to stop new signups and submissions for this category immediately, even if the close date has not been reached."
+        >
+          <Switch checkedChildren="Accepting" unCheckedChildren="Stopped" />
+        </Form.Item>
       </CrudModal>
+      <Modal
+        title={openingRow ? `Accept ${openingRow.name || entryModeLabel(openingRow.entry_mode)} applications` : 'Accept applications'}
+        open={openingRow != null}
+        onCancel={() => setOpeningRow(null)}
+        onOk={confirmAccepting}
+        confirmLoading={openingSaving}
+        okText="Start accepting"
+        destroyOnHidden
+      >
+        <p className="mb-3 text-sm text-slate-500">
+          Choose the academic session this category will accept applications for. You can move a stopped category to the next session here.
+        </p>
+        <Form form={openingForm} layout="vertical">
+          <Form.Item name="academic_term_id" label="Session" rules={[{ required: true, message: 'Select a session' }]}>
+            <Select placeholder="Select session" options={sessionOptions} />
+          </Form.Item>
+          <Form.Item name="opens_on" label="Application opens" rules={[{ required: true }]}>
+            <DatePicker className="w-full" />
+          </Form.Item>
+          <Form.Item name="closes_on" label="Application closes" rules={[{ required: true }]}>
+            <DatePicker className="w-full" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </ResourceShell>
   );
 }

@@ -5,6 +5,7 @@ import {
   Building2,
   ClipboardCheck,
   Clock,
+  FileText,
   GraduationCap,
   Mail,
   Phone,
@@ -52,6 +53,10 @@ type SecuritySettings = {
   transcript_delivery_generated_pdf: boolean;
   transcript_delivery_uploaded_pdf: boolean;
   transcript_collect_instructions: string;
+  pg_research_interest_min_words: number;
+  pg_research_interest_max_words: number;
+  pg_statement_of_purpose_min_words: number;
+  pg_statement_of_purpose_max_words: number;
 };
 
 const DEFAULT_EXAM_CLEARANCE: ExamClearanceSettings = {
@@ -96,6 +101,10 @@ const EMPTY_SETTINGS: SecuritySettings = {
   transcript_delivery_uploaded_pdf: true,
   transcript_collect_instructions:
     'Please collect your official transcript from the Registry during office hours. Bring a valid ID and your request reference.',
+  pg_research_interest_min_words: 0,
+  pg_research_interest_max_words: 150,
+  pg_statement_of_purpose_min_words: 0,
+  pg_statement_of_purpose_max_words: 500,
 };
 
 function normalizeSettings(data: Partial<SecuritySettings> = {}): SecuritySettings {
@@ -116,6 +125,10 @@ function normalizeSettings(data: Partial<SecuritySettings> = {}): SecuritySettin
     transcript_collect_instructions:
       data.transcript_collect_instructions
       || EMPTY_SETTINGS.transcript_collect_instructions,
+    pg_research_interest_min_words: Number(data.pg_research_interest_min_words ?? EMPTY_SETTINGS.pg_research_interest_min_words),
+    pg_research_interest_max_words: Number(data.pg_research_interest_max_words ?? EMPTY_SETTINGS.pg_research_interest_max_words),
+    pg_statement_of_purpose_min_words: Number(data.pg_statement_of_purpose_min_words ?? EMPTY_SETTINGS.pg_statement_of_purpose_min_words),
+    pg_statement_of_purpose_max_words: Number(data.pg_statement_of_purpose_max_words ?? EMPTY_SETTINGS.pg_statement_of_purpose_max_words),
   };
 }
 
@@ -293,7 +306,7 @@ export default function ApplicationSettings() {
       <WorkspaceHero
         eyebrow="System"
         title="Application settings"
-        description="Policies that apply across staff security, login contact cards, studentship, and exam clearance."
+        description="Policies that apply across staff security, login contact cards, studentship, postgraduate essay length, and exam clearance."
         icon={Settings}
       >
         {saveButton('hero')}
@@ -467,6 +480,70 @@ export default function ApplicationSettings() {
             </div>
           </Card>
       </div>
+
+      <Card
+        title="Postgraduate research and purpose"
+        description="Word limits for postgraduate applicants on Research interest and Statement of purpose. Minimum 0 means no floor. Maximum 0 means no word cap (character limits still apply)."
+      >
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-sky-600" aria-hidden />
+              <h3 className="text-sm font-semibold text-slate-800">Research interest</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Minimum words">
+                <InputNumber
+                  className="w-full"
+                  size="large"
+                  min={0}
+                  max={5000}
+                  value={settings.pg_research_interest_min_words}
+                  onChange={(value) => setSettings((s) => ({ ...s, pg_research_interest_min_words: Number(value || 0) }))}
+                />
+              </Field>
+              <Field label="Maximum words">
+                <InputNumber
+                  className="w-full"
+                  size="large"
+                  min={0}
+                  max={5000}
+                  value={settings.pg_research_interest_max_words}
+                  onChange={(value) => setSettings((s) => ({ ...s, pg_research_interest_max_words: Number(value || 0) }))}
+                />
+              </Field>
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-sky-600" aria-hidden />
+              <h3 className="text-sm font-semibold text-slate-800">Statement of purpose</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Minimum words">
+                <InputNumber
+                  className="w-full"
+                  size="large"
+                  min={0}
+                  max={5000}
+                  value={settings.pg_statement_of_purpose_min_words}
+                  onChange={(value) => setSettings((s) => ({ ...s, pg_statement_of_purpose_min_words: Number(value || 0) }))}
+                />
+              </Field>
+              <Field label="Maximum words">
+                <InputNumber
+                  className="w-full"
+                  size="large"
+                  min={0}
+                  max={5000}
+                  value={settings.pg_statement_of_purpose_max_words}
+                  onChange={(value) => setSettings((s) => ({ ...s, pg_statement_of_purpose_max_words: Number(value || 0) }))}
+                />
+              </Field>
+            </div>
+          </div>
+        </div>
+      </Card>
 
       <Card
         title="Official transcript requests"

@@ -53,7 +53,7 @@ export default function Wizard() {
 
   const submit = async () => {
     await save();
-    await api.post(`/api/applications/${app.id}/submit`);
+    await api.post(`/api/applications/${app.id}/submit`, { submission_notice_accepted: true });
     await refresh();
     setMsg('Submitted for screening');
   };
@@ -122,7 +122,15 @@ export default function Wizard() {
         )}
         <div className="flex gap-2">
           <button onClick={save} className="bg-sky-500 text-white px-4 py-2 rounded-lg">Save progress</button>
-          {idx === steps.length - 1 && <button onClick={submit} className="bg-green-700 text-white px-4 py-2 rounded-lg">Final submit</button>}
+          {idx === steps.length - 1 && (
+            <button
+              onClick={submit}
+              disabled={app.application_window_open === false}
+              className="bg-green-700 text-white px-4 py-2 rounded-lg disabled:opacity-50"
+            >
+              Final submit
+            </button>
+          )}
         </div>
       </div>
     </div>

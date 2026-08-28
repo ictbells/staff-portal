@@ -10,6 +10,7 @@ import {
 } from '../../components/ui';
 import { formatNaira } from '../../lib/money';
 import { SessionLevelFilters } from '../../components/SessionLevelFilters';
+import { ReceiptPreview, fetchReceiptHtml, receiptErrorMessage } from '../../components/ReceiptPreview';
 
 type PageMeta = {
   page: number;
@@ -161,6 +162,25 @@ export function Invoices() {
   const rebateValue = Form.useWatch('value', rebateForm);
   const invoicesReq = useRef(0);
   const paymentsReq = useRef(0);
+  const [receiptHtml, setReceiptHtml] = useState<string | null>(null);
+  const [receiptTitle, setReceiptTitle] = useState('Receipt');
+  const [receiptLoading, setReceiptLoading] = useState(false);
+
+  const openReceipt = async (target: { invoiceId?: number; paymentId?: number; receiptNo?: string | number }) => {
+    setReceiptLoading(true);
+    setReceiptHtml(null);
+    setReceiptTitle(`Receipt ${target.receiptNo || target.invoiceId || target.paymentId || ''}`.trim());
+    try {
+      const { html, title } = await fetchReceiptHtml(target);
+      setReceiptHtml(html);
+      setReceiptTitle(title);
+    } catch (err) {
+      setReceiptHtml(null);
+      message.error(receiptErrorMessage(err));
+    } finally {
+      setReceiptLoading(false);
+    }
+  };
 
   const loadCatalog = () => {
     setCatalogLoading(true);
@@ -594,7 +614,7 @@ export function Invoices() {
       <WorkspaceHero
         eyebrow="Fees & payments"
         title="Invoices"
-        description="Review invoices, disable unpaid invoices, and view recent payments. Students pay from the student portal."
+        description="Review invoices, open receipts for paid invoices, and view recent payments. Students pay from the student portal."
         icon={Receipt}
       >
         <RefreshButton onClick={refresh} loading={pageLoading} />
@@ -825,6 +845,18 @@ export function Invoices() {
                   </td>
                   <td className={`${tdClass} text-right whitespace-nowrap`}>
                     <div className="flex justify-end gap-3">
+                      {invoice.status === 'paid' ? (
+                        <button
+                          type="button"
+                          className="text-sm text-sky-700 hover:underline"
+                          onClick={() => openReceipt({
+                            invoiceId: invoice.id,
+                            receiptNo: invoice.payments?.[0]?.receipt_no || invoice.number,
+                          })}
+                        >
+                          View receipt
+                        </button>
+                      ) : null}
                       {canRebate(invoice) ? (
                         <button
                           type="button"
@@ -853,9 +885,9 @@ export function Invoices() {
                         >
                           Enable
                         </button>
-                      ) : !canRebate(invoice) ? (
+                      ) : invoice.status === 'paid' || canRebate(invoice) ? null : (
                         <span className="text-slate-400">—</span>
-                      ) : null}
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -878,7 +910,7 @@ export function Invoices() {
         <DataTable
           empty={!payments.length}
           emptyMessage="No payments recorded."
-          colSpan={7}
+          colSpan={8}
           loading={paymentsLoading}
           loadingLabel="Loading payments…"
         >
@@ -891,6 +923,7 @@ export function Invoices() {
               <th className={thClass}>Amount</th>
               <th className={thClass}>Status</th>
               <th className={thClass}>Timestamp</th>
+              <th className={`${thClass} text-right`}>Actions</th>
             </tr>
           </thead>
           {!payments.length ? null : (
@@ -905,6 +938,21 @@ export function Invoices() {
                   <td className={tdClass}><Badge variant={stageBadge(p.status)}>{p.status}</Badge></td>
                   <td className={`${tdClass} whitespace-nowrap font-mono text-xs`}>
                     {formatTimestamp(p.created_at)}
+                  </td>
+                  <td className={`${tdClass} text-right whitespace-nowrap`}>
+                    {p.status === 'successful' && (p.invoice_id || p.purpose === 'wallet_topup') ? (
+                      <button
+                        type="button"
+                        className="text-sm text-sky-700 hover:underline"
+                        onClick={() => openReceipt(
+                          p.invoice_id
+                            ? { invoiceId: p.invoice_id, receiptNo: p.receipt_no || p.reference }
+                            : { paymentId: p.id, receiptNo: p.receipt_no || p.reference },
+                        )}
+                      >
+                        View receipt
+                      </button>
+                    ) : <span className="text-slate-400">—</span>}
                   </td>
                 </tr>
               ))}
@@ -1065,6 +1113,12 @@ export function Invoices() {
           <p className="text-sm text-slate-500">This invoice can no longer receive a new rebate. Reverse an existing rebate if it is still the last settlement.</p>
         )}
       </Modal>
+      <ReceiptPreview
+        html={receiptHtml}
+        title={receiptTitle}
+        loading={receiptLoading}
+        onClose={() => { setReceiptHtml(null); setReceiptLoading(false); }}
+      />
     </div>
   );
 }

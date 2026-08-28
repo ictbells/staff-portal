@@ -353,8 +353,8 @@ export function FeeCatalog() {
                 </select>
                 <p className="mt-1 text-xs text-slate-500">
                   {feeForm.category === 'acceptance_fee'
-                    ? 'Admitted students in this category pay this amount. Create a separate line for each entry mode.'
-                    : 'Applicants in this category pay this amount. Create a separate line for each entry mode.'}
+                    ? 'Admitted students in this category pay this amount. One line per entry mode is reused for every application session. Do not create a new line when you open a new year.'
+                    : 'Applicants in this category pay this amount. One line per entry mode is reused for every application session. Do not create a new line when you open a new year.'}
                 </p>
               </label>
             )}

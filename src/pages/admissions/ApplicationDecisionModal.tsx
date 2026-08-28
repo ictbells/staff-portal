@@ -82,6 +82,7 @@ function stageTagColor(stage: string): string {
     approved: 'success',
     offer_issued: 'success',
     awaiting_acceptance_fee: 'warning',
+    acceptance_paid: 'cyan',
     rejected: 'error',
     matriculated: 'success',
   };
@@ -115,6 +116,8 @@ export function ApplicationDecisionModal({
   onUpdate,
   onRevert,
   onOpenFile,
+  canClear,
+  onClear,
 }: {
   open: boolean;
   row: DecisionApplication | null;
@@ -125,6 +128,8 @@ export function ApplicationDecisionModal({
   onUpdate: (payload: DecisionPayload) => Promise<boolean> | boolean;
   onRevert?: (payload: RevertPayload) => Promise<boolean> | boolean;
   onOpenFile?: () => void;
+  canClear?: boolean;
+  onClear?: () => Promise<boolean> | boolean;
 }) {
   const next = row ? nextFor(row) : undefined;
   const options = useMemo(() => {
@@ -193,6 +198,19 @@ export function ApplicationDecisionModal({
         <Button key="close" onClick={onClose}>Close</Button>,
         onOpenFile ? (
           <Button key="file" onClick={onOpenFile}>Open file</Button>
+        ) : undefined,
+        canClear && onClear ? (
+          <Button
+            key="clear"
+            type="primary"
+            loading={saving}
+            onClick={async () => {
+              const ok = await onClear();
+              if (ok) onClose();
+            }}
+          >
+            Clear applicant
+          </Button>
         ) : undefined,
         options.length > 0 ? (
           <Button

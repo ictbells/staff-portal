@@ -53,3 +53,17 @@ export const ADMISSIONS_CHANNELS: AdmissionsChannel[] = [
 export function admissionsChannelByKey(key: string): AdmissionsChannel | undefined {
   return ADMISSIONS_CHANNELS.find((c) => c.key === key);
 }
+
+export type ClearanceChannel = AdmissionsChannel;
+
+export const CLEARANCE_CHANNELS: ClearanceChannel[] = ADMISSIONS_CHANNELS.map((channel) => ({
+  ...channel,
+  navKey: `admissions-clearance-${channel.key}`,
+  path: `/applications/clearance/${channel.key}`,
+  title: `${channel.label} physical clearance`,
+  description: `Clear ${channel.label} applicants who have paid acceptance and come for physical verification.`,
+}));
+
+export function clearanceChannelByKey(key: string): ClearanceChannel | undefined {
+  return CLEARANCE_CHANNELS.find((channel) => channel.key === key);
+}

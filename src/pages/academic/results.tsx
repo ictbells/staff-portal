@@ -24,6 +24,26 @@ type Faculty = { id: number; name: string };
 type Department = { id: number; name: string; faculty_id?: number };
 type LevelOption = { id: number; name: string; code?: string | null };
 
+const GRADE_STATUS_LABELS: Record<string, string> = {
+  draft: 'Draft',
+  submitted: 'College submitted',
+  faculty_approved: 'Deans approved',
+  board_ready: 'Awaiting Senate',
+  correction_required: 'Correction required',
+  board_cleared: 'Senate cleared',
+  released: 'Released',
+  published: 'Released',
+};
+
+function gradeStatusLabel(status?: string | null) {
+  const key = String(status || '');
+  return GRADE_STATUS_LABELS[key] || key.replace(/_/g, ' ') || '—';
+}
+
+function statusOptions(values: string[]) {
+  return values.map((value) => ({ value, label: gradeStatusLabel(value) }));
+}
+
 function academicSessionsFromTerms(terms: Term[]) {
   const map = new Map<number, { id: number; label: string; is_current: boolean }>();
   for (const term of terms) {
@@ -256,11 +276,11 @@ async function downloadSubmissionList(
     return;
   }
   if (extra?.requireDepartment && !params.department_id) {
-    message.warning('Select a department to download the department list.');
+    message.warning('Select a department to download the list.');
     return;
   }
   if (extra?.requireFaculty && !params.faculty_id) {
-    message.warning('Select a faculty to download the faculty list.');
+    message.warning('Select a college to download the college list.');
     return;
   }
   try {
@@ -322,19 +342,19 @@ export function ResultsDashboardPage() {
   useEffect(() => { load(); }, [load]);
   const counts = data?.counts || {};
   return (
-    <ResourceShell title="Results" description="Result processing overview by workflow status." loading={loading} onRefresh={load}>
+    <ResourceShell title="Results" description="Result processing: College → Committee of Deans → Senate → Release." loading={loading} onRefresh={load}>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {Object.entries(counts).map(([status, total]) => (
-          <StatCard key={status} label={String(status).replace(/_/g, ' ')} value={String(total)} icon={ClipboardList} />
+          <StatCard key={status} label={gradeStatusLabel(status)} value={String(total)} icon={ClipboardList} />
         ))}
       </div>
       <div className="flex flex-wrap gap-2 pt-2">
         <Link to="/academic/results/students"><Button type="primary">Enter results</Button></Link>
-        <Link to="/academic/results/department"><Button>Department uploads</Button></Link>
+        <Link to="/academic/results/department"><Button>College</Button></Link>
         {(has('results.faculty_approve') || has('results.submit')) && (
-          <Link to="/academic/results/approvals"><Button>Faculty Approval</Button></Link>
+          <Link to="/academic/results/approvals"><Button>Committee of Deans</Button></Link>
         )}
-        {has('results.board') && <Link to="/academic/results/board"><Button>Board</Button></Link>}
+        {has('results.board') && <Link to="/academic/results/board"><Button>Senate</Button></Link>}
         {has('results.release') && <Link to="/academic/results/release"><Button>Release</Button></Link>}
       </div>
     </ResourceShell>
@@ -470,7 +490,7 @@ export function ResultsStudentDetailPage() {
       title: 'Status',
       render: (_, r) => (
         <Space size={4} wrap>
-          <Tag>{String(r.status || '').replace(/_/g, ' ')}</Tag>
+          <Tag>{gradeStatusLabel(r.status)}</Tag>
           {r.registration_held ? <Tag color="orange">Held</Tag> : null}
         </Space>
       ),
@@ -575,7 +595,7 @@ export function ResultsStudentDetailPage() {
                       disabled={!selected.length}
                       onClick={() => submitIds(selected)}
                     >
-                      Submit selected
+                      Submit to Committee of Deans
                     </Button>
                   </div>
                 )}
@@ -702,7 +722,7 @@ export function ResultsImportPage() {
 
   return (
     <ResourceShell
-      title="CSV import"
+      title="Upload Score"
       description="Download the template, fill one row per student (registration is optional), then upload the file or paste CSV."
       loading={false}
       onRefresh={() => {}}
@@ -812,13 +832,13 @@ export function ResultsDepartmentUploadsPage() {
     { title: 'Exam', dataIndex: 'exam_score', width: 70 },
     { title: 'Score', dataIndex: 'score', width: 70 },
     letterColumn,
-    { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{String(v || '').replace(/_/g, ' ')}</Tag> },
+    { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{gradeStatusLabel(v)}</Tag> },
   ];
 
   return (
     <ResourceShell
-      title="Department uploads"
-      description="Review department scores. Grade is the A–F letter from the total (you do not type it). Choose a semester, department, and level, then download the department list."
+      title="College"
+      description="Review college scores, then submit them to the Committee of Deans. Grade is the A–F letter from the total (you do not type it). Choose a semester, college, and level, then download the college list."
       loading={loading}
       onRefresh={load}
       extra={(
@@ -834,7 +854,7 @@ export function ResultsDepartmentUploadsPage() {
             placeholder="Status"
             style={{ width: 180 }}
             value={filters.status}
-            options={['draft', 'submitted', 'correction_required', 'board_ready'].map((s) => ({ value: s, label: s.replace(/_/g, ' ') }))}
+            options={statusOptions(['draft', 'submitted', 'correction_required', 'board_ready'])}
             onChange={(v) => setFilters((f) => ({ ...f, status: v }))}
           />
           <Select
@@ -846,7 +866,7 @@ export function ResultsDepartmentUploadsPage() {
             onChange={(v) => setFilters((f) => ({ ...f, sitting: v }))}
           />
           <Select
-            placeholder="Faculty"
+            placeholder="College"
             allowClear
             style={{ width: 180 }}
             value={filters.faculty_id}
@@ -869,7 +889,7 @@ export function ResultsDepartmentUploadsPage() {
           />
           {has('results.submit') && (
             <Button type="primary" onClick={() => act('/api/academic/results/submit', { ids: selected })} disabled={!selected.length}>
-              Submit selected
+              Submit to Committee of Deans
             </Button>
           )}
           <Dropdown
@@ -888,27 +908,34 @@ export function ResultsDepartmentUploadsPage() {
                   sitting: filters.sitting,
                 };
                 const term = terms.find((t) => t.id === filters.academic_term_id);
-                const filename = `department-results-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}-${filters.sitting === 'supplementary' ? 'supplementary' : 'main'}`;
+                const filename = `college-results-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}-${filters.sitting === 'supplementary' ? 'supplementary' : 'main'}`;
                 if (format === 'html') {
-                  if (!params.department_id) {
-                    message.warning('Select a department to download the department list.');
+                  if (!params.department_id && !params.faculty_id) {
+                    message.warning('Select a college to download the college list.');
                     return;
                   }
-                  openPrintable('/api/academic/results/reports/submission-list/department', params);
+                  openPrintable(
+                    params.department_id
+                      ? '/api/academic/results/reports/submission-list/department'
+                      : '/api/academic/results/reports/submission-list/faculty',
+                    params,
+                  );
                   return;
                 }
                 void downloadSubmissionList(
-                  '/api/academic/results/reports/submission-list/department',
+                  params.department_id
+                    ? '/api/academic/results/reports/submission-list/department'
+                    : '/api/academic/results/reports/submission-list/faculty',
                   params,
                   format,
                   filename,
-                  { requireDepartment: true },
+                  params.department_id ? { requireDepartment: true } : { requireFaculty: true },
                 );
               }),
             }}
             trigger={['click']}
           >
-            <Button icon={<Download size={14} />}>Department list</Button>
+            <Button icon={<Download size={14} />}>College list</Button>
           </Dropdown>
         </Space>
       )}
@@ -966,7 +993,7 @@ export function ResultsApprovalsPage() {
     setLoading(true);
     api.get('/api/academic/results/grades', { params: { ...filters, per_page: QUEUE_PAGE_SIZE } })
       .then((r) => setRows(r.data?.data || []))
-      .catch(() => message.error('Could not load faculty approval queue'))
+      .catch(() => message.error('Could not load Committee of Deans queue'))
       .finally(() => setLoading(false));
   }, [filters]);
   useEffect(() => { load(); }, [load]);
@@ -991,13 +1018,13 @@ export function ResultsApprovalsPage() {
     { title: 'Course', render: (_, r) => gradeCourse(r).code },
     { title: 'Score', dataIndex: 'score' },
     letterColumn,
-    { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{String(v || '').replace(/_/g, ' ')}</Tag> },
+    { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{gradeStatusLabel(v)}</Tag> },
   ];
 
   return (
     <ResourceShell
-      title="Faculty Approval"
-      description="Approve or return department submissions. Print the faculty list from this page."
+      title="Committee of Deans"
+      description="Approve college submissions for Senate, or return them with a note. Print the committee list from this page."
       loading={loading}
       onRefresh={load}
       extra={(
@@ -1013,7 +1040,7 @@ export function ResultsApprovalsPage() {
             placeholder="Status"
             style={{ width: 160 }}
             value={filters.status}
-            options={['submitted', 'board_ready', 'correction_required'].map((s) => ({ value: s, label: s.replace(/_/g, ' ') }))}
+            options={statusOptions(['submitted', 'board_ready', 'correction_required'])}
             onChange={(v) => setFilters((f) => ({ ...f, status: v }))}
           />
           <Select
@@ -1032,7 +1059,7 @@ export function ResultsApprovalsPage() {
                 onChange={(e) => setReturnNote(e.target.value)}
                 style={{ width: 200 }}
               />
-              <Button type="primary" onClick={() => act('/api/academic/results/faculty-approve', { ids: selected })} disabled={!selected.length}>Approve</Button>
+              <Button type="primary" onClick={() => act('/api/academic/results/faculty-approve', { ids: selected })} disabled={!selected.length}>Approve for Senate</Button>
               <Button danger onClick={() => act('/api/academic/results/faculty-return', { ids: selected, note: returnNote.trim() || 'Returned for correction' })} disabled={!selected.length}>Return</Button>
             </>
           )}
@@ -1050,7 +1077,7 @@ export function ResultsApprovalsPage() {
                   sitting: filters.sitting,
                 };
                 const term = terms.find((t) => t.id === filters.academic_term_id);
-                const filename = `faculty-results-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}-${filters.sitting === 'supplementary' ? 'supplementary' : 'main'}`;
+                const filename = `deans-results-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}-${filters.sitting === 'supplementary' ? 'supplementary' : 'main'}`;
                 if (format === 'html') {
                   openPrintable('/api/academic/results/reports/submission-list/faculty', params);
                   return;
@@ -1066,14 +1093,14 @@ export function ResultsApprovalsPage() {
             }}
             trigger={['click']}
           >
-            <Button icon={<Download size={14} />}>Faculty list</Button>
+            <Button icon={<Download size={14} />}>Committee list</Button>
           </Dropdown>
         </Space>
       )}
     >
       <Space className="mb-3" wrap>
         <Select
-          placeholder="Faculty"
+          placeholder="College"
           allowClear
           style={{ width: 180 }}
           value={filters.faculty_id}
@@ -1129,7 +1156,7 @@ const gradeQueueColumns: ColumnsType = [
   { title: 'Exam', dataIndex: 'exam_score', width: 70 },
   { title: 'Score', dataIndex: 'score', width: 70 },
   letterColumn,
-  { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{String(v || '').replace(/_/g, ' ')}</Tag> },
+  { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{gradeStatusLabel(v)}</Tag> },
 ];
 
 export function ResultsBoardPage() {
@@ -1156,7 +1183,7 @@ export function ResultsBoardPage() {
     setLoading(true);
     api.get('/api/academic/results/grades', { params: { ...filters, per_page: QUEUE_PAGE_SIZE } })
       .then((r) => setRows(r.data?.data || []))
-      .catch(() => message.error('Could not load board records'))
+      .catch(() => message.error('Could not load Senate records'))
       .finally(() => setLoading(false));
   }, [filters]);
   useEffect(() => { load(); }, [load]);
@@ -1166,7 +1193,7 @@ export function ResultsBoardPage() {
 
   const run = async (path: string) => {
     if (!canAct) {
-      message.warning('Review the student list before taking a board action.');
+      message.warning('Review the student list before taking a Senate action.');
       return;
     }
     try {
@@ -1185,14 +1212,14 @@ export function ResultsBoardPage() {
       setSelected([]);
       load();
     } catch (e: any) {
-      message.error(e.response?.data?.message || 'Board action failed');
+      message.error(e.response?.data?.message || 'Senate action failed');
     }
   };
 
   return (
     <ResourceShell
-      title="Board"
-      description="Review the student list first, then clear the board or request corrections. Print the board list when needed."
+      title="Senate"
+      description="Review the student list first, then clear for release or request corrections. Print the Senate list when needed."
       loading={loading}
       onRefresh={load}
       extra={(
@@ -1209,9 +1236,9 @@ export function ResultsBoardPage() {
             style={{ width: 180 }}
             value={filters.status}
             options={[
-              { value: 'board_ready', label: 'board ready' },
-              { value: 'board_cleared', label: 'board cleared' },
-              { value: 'correction_required', label: 'correction required' },
+              { value: 'board_ready', label: gradeStatusLabel('board_ready') },
+              { value: 'board_cleared', label: gradeStatusLabel('board_cleared') },
+              { value: 'correction_required', label: gradeStatusLabel('correction_required') },
             ]}
             onChange={(v) => setFilters((f) => ({ ...f, status: v }))}
           />
@@ -1224,7 +1251,7 @@ export function ResultsBoardPage() {
             onChange={(v) => setFilters((f) => ({ ...f, sitting: v }))}
           />
           <Button type="primary" onClick={() => run('/api/academic/results/board-scopes/clear')} disabled={!canAct}>
-            Board clear
+            Senate clear
           </Button>
           <Button danger onClick={() => run('/api/academic/results/board-scopes/request-corrections')} disabled={!canAct}>
             Request corrections
@@ -1257,14 +1284,14 @@ export function ResultsBoardPage() {
             }}
             trigger={['click']}
           >
-            <Button icon={<Download size={14} />}>Board list</Button>
+            <Button icon={<Download size={14} />}>Senate list</Button>
           </Dropdown>
         </Space>
       )}
     >
       <Space className="mb-3" wrap>
         <Select
-          placeholder="Faculty"
+          placeholder="College"
           allowClear
           style={{ width: 180 }}
           value={filters.faculty_id}
@@ -1300,7 +1327,7 @@ export function ResultsBoardPage() {
           onChange={(e) => setFilters((f) => ({ ...f, course: e.target.value || undefined }))}
         />
         <Input.TextArea
-          placeholder="Board note"
+          placeholder="Senate note"
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={1}
@@ -1378,7 +1405,7 @@ export function ResultsReleasePage() {
   return (
     <ResourceShell
       title="Release results"
-      description="Review board-cleared students first, then release them to the student portal."
+      description="Review Senate-cleared students first, then release them to the student portal."
       loading={loading}
       onRefresh={load}
       extra={(
@@ -1395,9 +1422,9 @@ export function ResultsReleasePage() {
             style={{ width: 180 }}
             value={filters.status}
             options={[
-              { value: 'board_cleared', label: 'board cleared' },
-              { value: 'board_ready', label: 'board ready' },
-              { value: 'released', label: 'released' },
+              { value: 'board_cleared', label: gradeStatusLabel('board_cleared') },
+              { value: 'board_ready', label: gradeStatusLabel('board_ready') },
+              { value: 'released', label: gradeStatusLabel('released') },
             ]}
             onChange={(v) => setFilters((f) => ({ ...f, status: v }))}
           />
@@ -1417,7 +1444,7 @@ export function ResultsReleasePage() {
     >
       <Space className="mb-3" wrap>
         <Select
-          placeholder="Faculty"
+          placeholder="College"
           allowClear
           style={{ width: 180 }}
           value={filters.faculty_id}

@@ -41,6 +41,9 @@ export function hasAcademicResourcePermission(
   if (resource.key === 'import-students' && has('students.manage')) {
     return true;
   }
+  if (resource.key === 'jupeb-matric' && has('students.manage')) {
+    return true;
+  }
 
   return false;
 }

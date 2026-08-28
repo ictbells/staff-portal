@@ -173,7 +173,7 @@ export function ImportStudentsPage() {
       <WorkspaceHero
         eyebrow="Admission Setup"
         title="Import students"
-        description="Create continuing students with a supplied matric number, a historical application file, and portal login. Import invoices and wallet history first. Pending invoices match matric, old application number, or JAMB."
+        description="Create continuing students with a supplied matric number, a historical application file, and portal login. They do not re-apply. NIN is optional for legacy rows; students must verify NIN when they first sign in. Import invoices and wallet history first. Pending invoices match matric, old application number, or JAMB."
         icon={GraduationCap}
       >
         <RefreshButton onClick={loadOptions} />
@@ -192,7 +192,8 @@ export function ImportStudentsPage() {
           Download the template, fill one row per student on the Students sheet, then upload. Login uses the supplied matric number.
           The workbook also includes Campuses, Colleges, Departments, Programmes, and Levels so you can copy codes and IDs.
           Copy programme_id from Programmes and current_level from Levels.
-          Required columns: email, phone, nin, first_name, last_name, programme_id, matric_number, current_level.
+          Required columns: email, phone, first_name, last_name, programme_id, matric_number, current_level.
+          NIN is optional — leave it blank for legacy records. Imported students do not re-apply; they must verify NIN after they sign in. If a NIN is present it must be 11 digits.
           Fill old_application_number and jamb_registration when those ids were used to pay application fee. Application stage is matriculated. Students appear under Registrations only when tuition invoices show at least 25% paid.
         </p>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 md:items-end">
@@ -228,14 +229,14 @@ export function ImportStudentsPage() {
         </div>
         <div className="flex flex-col gap-2">
           <Checkbox checked={verifyNin} onChange={(e) => setVerifyNin(e.target.checked)}>
-            Verify NIN during upload (Prembly is called for every row)
+            Verify NIN during upload (Prembly runs only for rows that include a NIN)
           </Checkbox>
           <Checkbox checked={sendCredentials} onChange={(e) => setSendCredentials(e.target.checked)}>
             Email portal passwords (login ID is the matric number)
           </Checkbox>
         </div>
         {verifyNin && (
-          <Alert type="warning" showIcon message="NIN verification calls Prembly for each row. Large files are queued so the request does not time out." />
+          <Alert type="warning" showIcon message="NIN verification calls Prembly for each row that has a NIN. Rows without a NIN are imported anyway. Large files are queued so the request does not time out." />
         )}
         {result?.queued && (result.status === 'queued' || result.status === 'processing') && (
           <Alert type="info" showIcon message="Import is running in the background. This summary will update when it finishes." />

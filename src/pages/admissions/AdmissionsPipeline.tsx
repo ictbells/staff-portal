@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Button, Dropdown, Input, Modal, Select, Space, Table, Tag, message,
+  Button, Dropdown, Input, Modal, Popconfirm, Select, Space, Table, Tag, message,
 } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { MenuProps } from 'antd';
@@ -20,7 +20,7 @@ import {
   Search,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import api from '../../api';
+import api, { isPendingApproval } from '../../api';
 import { useAuth } from '../../auth';
 import { RefreshButton } from '../../components/RefreshButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
@@ -66,6 +66,7 @@ const PG_STAGE_OPTIONS = [
   { value: 'admission', label: 'Admission' },
   { value: 'offer_issued', label: 'Offer issued' },
   { value: 'awaiting_acceptance_fee', label: 'Awaiting acceptance fee' },
+  { value: 'acceptance_paid', label: 'Awaiting clearance' },
   { value: 'rejected', label: 'Rejected' },
 ];
 
@@ -91,6 +92,7 @@ const STAGE_OPTIONS = [
   { value: 'approved', label: 'Approved' },
   { value: 'offer_issued', label: 'Offer issued' },
   { value: 'awaiting_acceptance_fee', label: 'Awaiting acceptance fee' },
+  { value: 'acceptance_paid', label: 'Awaiting clearance' },
   { value: 'rejected', label: 'Rejected' },
 ];
 
@@ -102,6 +104,7 @@ const FEE_OPTIONS = [
 
 const REVIEW_STAGES = ['submitted', 'screening', 'verification', 'credit_assessment', 'shortlisting', 'recommended', 'proposal_review', 'supervisor', 'panel', 'recommendation'];
 const OFFER_STAGES = ['approved', 'approval', 'offer_issued', 'admission', 'awaiting_acceptance_fee'];
+const CLEARANCE_STAGES = ['acceptance_paid'];
 const REJECTED_STAGES = ['rejected'];
 
 const CHANNEL_ICON: Record<AdmissionsChannelKey, LucideIcon> = {
@@ -183,6 +186,7 @@ function stageTagColor(stage: string): string {
     approved: 'success',
     offer_issued: 'success',
     awaiting_acceptance_fee: 'warning',
+    acceptance_paid: 'cyan',
     rejected: 'error',
     matriculated: 'success',
   };
@@ -438,6 +442,24 @@ export function AdmissionsPipeline({ channel }: Props) {
       return true;
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to update application.');
+      return false;
+    } finally {
+      setMoving(false);
+    }
+  }, [load, pagination.current]);
+
+  const clearApplicant = useCallback(async (id: number) => {
+    setMoving(true);
+    try {
+      const res = await api.post(`/api/applications/${id}/clear`);
+      if (isPendingApproval(res)) {
+        return true;
+      }
+      message.success(res.data.message || 'Applicant cleared.');
+      await load(pagination.current);
+      return true;
+    } catch (err: any) {
+      message.error(err.response?.data?.message || 'Unable to clear this applicant.');
       return false;
     } finally {
       setMoving(false);
@@ -743,13 +765,30 @@ export function AdmissionsPipeline({ channel }: Props) {
                 Letter
               </Button>
             )}
+            {has('admissions.clear') && row.stage === 'acceptance_paid' && (
+              <Popconfirm
+                title="Clear this applicant?"
+                description="Confirm original documents were presented. This creates the student record."
+                okText="Clear"
+                onConfirm={() => clearApplicant(row.id)}
+              >
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<BadgeCheck size={14} />}
+                  loading={moving}
+                >
+                  Clear
+                </Button>
+              </Popconfirm>
+            )}
           </Space>
         ),
       },
     );
 
     return cols;
-  }, [channel.referenceColumn, channel.showEntryMode, has, openDocument, printingId]);
+  }, [channel.referenceColumn, channel.showEntryMode, clearApplicant, has, moving, openDocument, printingId]);
 
   const onTableChange = (next: TablePaginationConfig) => {
     const page = next.current ?? 1;
@@ -764,6 +803,7 @@ export function AdmissionsPipeline({ channel }: Props) {
 
   const inReviewCount = countStages(summary?.by_stage, REVIEW_STAGES);
   const offerCount = countStages(summary?.by_stage, OFFER_STAGES);
+  const clearanceCount = countStages(summary?.by_stage, CLEARANCE_STAGES);
   const rejectedCount = countStages(summary?.by_stage, REJECTED_STAGES);
   const pipelineTotal = summary?.total ?? pagination.total;
   const stageSelectValue = STAGE_OPTIONS.some((option) => option.value === stageFilter)
@@ -790,7 +830,7 @@ export function AdmissionsPipeline({ channel }: Props) {
         <RefreshButton onClick={() => load(pagination.current)} loading={loading} />
       </WorkspaceHero>
 
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
         <StatCard
           label="In pipeline"
           value={pipelineTotal}
@@ -817,6 +857,15 @@ export function AdmissionsPipeline({ channel }: Props) {
           tone="emerald"
           active={isStageGroupActive(stageFilter, OFFER_STAGES)}
           onClick={() => toggleStageGroup(OFFER_STAGES)}
+        />
+        <StatCard
+          label="Awaiting clearance"
+          value={clearanceCount}
+          hint="Acceptance paid, come for clearance"
+          icon={ClipboardList}
+          tone="amber"
+          active={isStageGroupActive(stageFilter, CLEARANCE_STAGES)}
+          onClick={() => toggleStageGroup(CLEARANCE_STAGES)}
         />
         <StatCard
           label="Rejected"
@@ -999,6 +1048,11 @@ export function AdmissionsPipeline({ channel }: Props) {
         onUpdate={async ({ to, decision, reason, acceptanceFeeAmount }) => {
           if (!decisionRow) return false;
           return move(decisionRow.id, to, decision, acceptanceFeeAmount, reason);
+        }}
+        canClear={Boolean(decisionRow && has('admissions.clear') && decisionRow.stage === 'acceptance_paid')}
+        onClear={async () => {
+          if (!decisionRow) return false;
+          return clearApplicant(decisionRow.id);
         }}
         onRevert={async ({ reason }) => {
           if (!decisionRow) return false;

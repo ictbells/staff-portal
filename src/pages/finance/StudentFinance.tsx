@@ -11,6 +11,7 @@ import {
   StatCard, WorkspaceHero, stageBadge, TablePager, tdClass, thClass, trClass,
 } from '../../components/ui';
 import { formatNaira } from '../../lib/money';
+import { ReceiptPreview, fetchReceiptHtml, receiptErrorMessage } from '../../components/ReceiptPreview';
 
 type PageMeta = {
   page: number;
@@ -70,7 +71,26 @@ export function StudentFinance() {
   const [clearanceFilter, setClearanceFilter] = useState<string | undefined>();
   const [detail, setDetail] = useState<any | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [receiptHtml, setReceiptHtml] = useState<string | null>(null);
+  const [receiptTitle, setReceiptTitle] = useState('Receipt');
+  const [receiptLoading, setReceiptLoading] = useState(false);
   const listReq = useRef(0);
+
+  const openReceipt = async (target: { invoiceId?: number; paymentId?: number; receiptNo?: string | number }) => {
+    setReceiptLoading(true);
+    setReceiptHtml(null);
+    setReceiptTitle(`Receipt ${target.receiptNo || target.invoiceId || target.paymentId || ''}`.trim());
+    try {
+      const { html, title } = await fetchReceiptHtml(target);
+      setReceiptHtml(html);
+      setReceiptTitle(title);
+    } catch (err) {
+      setReceiptHtml(null);
+      message.error(receiptErrorMessage(err));
+    } finally {
+      setReceiptLoading(false);
+    }
+  };
 
   const listParams = () => ({
     academic_session_id: sessionId === undefined ? undefined : sessionId,
@@ -295,7 +315,7 @@ export function StudentFinance() {
           </div>
         ) : null}
         <Card title="Invoices" description="Charges billed to this student. Paid and balance are calculated from receipts, not a stored status alone.">
-          <DataTable empty={!invoices.length} emptyMessage="No invoices on this record." colSpan={8} loading={detailLoading}>
+          <DataTable empty={!invoices.length} emptyMessage="No invoices on this record." colSpan={9} loading={detailLoading}>
             <thead>
               <tr>
                 <th className={thClass}>Invoice</th>
@@ -306,13 +326,26 @@ export function StudentFinance() {
                 <th className={thClass}>Balance</th>
                 <th className={thClass}>Status</th>
                 <th className={thClass}>Date</th>
+                <th className={`${thClass} text-right`}>Receipt</th>
               </tr>
             </thead>
             {!invoices.length ? null : (
               <tbody>
                 {invoices.map((row: any) => (
                   <tr key={row.id} className={trClass}>
-                    <td className={`${tdClass} font-medium`}>{row.number}</td>
+                    <td className={`${tdClass} font-medium`}>
+                      {row.number}
+                      {asRows(row.items).length > 0 ? (
+                        <ul className="mt-1.5 space-y-0.5 text-xs font-normal text-slate-500">
+                          {asRows(row.items).map((item: any) => (
+                            <li key={item.id || item.description} className="flex justify-between gap-3">
+                              <span>{item.description}</span>
+                              <span className="whitespace-nowrap">{formatNaira(item.amount)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </td>
                     <td className={`${tdClass} capitalize`}>
                       {String(row.category || '').replaceAll('_', ' ')}
                       {row.installment_percent ? (
@@ -329,6 +362,20 @@ export function StudentFinance() {
                       </Badge>
                     </td>
                     <td className={tdClass}>{formatDate(row.created_at)}</td>
+                    <td className={`${tdClass} text-right`}>
+                      {row.status === 'paid' ? (
+                        <button
+                          type="button"
+                          className="text-sm text-sky-700 hover:underline"
+                          onClick={() => openReceipt({
+                            invoiceId: row.id,
+                            receiptNo: asRows(row.payments)[0]?.receipt_no || row.number,
+                          })}
+                        >
+                          View
+                        </button>
+                      ) : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -337,13 +384,14 @@ export function StudentFinance() {
         </Card>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card title="Successful payments" description="Receipts that settled these invoices. Wallet top-ups are in the wallet ledger.">
-            <DataTable empty={!payments.length} emptyMessage="No successful invoice payments yet." colSpan={4}>
+            <DataTable empty={!payments.length} emptyMessage="No successful invoice payments yet." colSpan={5}>
               <thead>
                 <tr>
                   <th className={thClass}>Reference</th>
                   <th className={thClass}>Method</th>
                   <th className={thClass}>Amount</th>
                   <th className={thClass}>Date</th>
+                  <th className={`${thClass} text-right`}>Receipt</th>
                 </tr>
               </thead>
               {!payments.length ? null : (
@@ -357,12 +405,25 @@ export function StudentFinance() {
                       <td className={`${tdClass} capitalize`}>{String(row.method || '—').replaceAll('_', ' ')}</td>
                       <td className={tdClass}>{formatNaira(row.amount)}</td>
                       <td className={tdClass}>{formatDate(row.created_at)}</td>
+                      <td className={`${tdClass} text-right`}>
+                        <button
+                          type="button"
+                          className="text-sm text-sky-700 hover:underline"
+                          onClick={() => openReceipt(
+                            row.invoice_id
+                              ? { invoiceId: row.invoice_id, receiptNo: row.receipt_no || row.reference }
+                              : { paymentId: row.id, receiptNo: row.receipt_no || row.reference },
+                          )}
+                        >
+                          View
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   <tr className="border-t border-slate-200 bg-slate-50">
                     <td className={`${tdClass} font-semibold`} colSpan={2}>Total (matches Paid)</td>
                     <td className={`${tdClass} font-semibold`}>{formatNaira(paymentTotal)}</td>
-                    <td className={tdClass}></td>
+                    <td className={tdClass} colSpan={2}></td>
                   </tr>
                 </tbody>
               )}
@@ -393,6 +454,12 @@ export function StudentFinance() {
             </DataTable>
           </Card>
         </div>
+        <ReceiptPreview
+          html={receiptHtml}
+          title={receiptTitle}
+          loading={receiptLoading}
+          onClose={() => { setReceiptHtml(null); setReceiptLoading(false); }}
+        />
       </div>
     );
   }

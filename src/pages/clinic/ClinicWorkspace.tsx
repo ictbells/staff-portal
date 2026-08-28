@@ -988,7 +988,7 @@ export default function ClinicWorkspace() {
                   <Form form={profileForm} layout="vertical" disabled={!canManage} className="grid grid-cols-1 md:grid-cols-2 gap-x-4">
                     <Form.Item name="blood_type" label="Blood type"><Input /></Form.Item>
                     <Form.Item name="genotype" label="Genotype">
-                      <Select options={['AA', 'AS', 'AC', 'SS', 'SC', 'CC'].map((v) => ({ value: v, label: v }))} allowClear />
+                      <Select options={['AA', 'AS', 'AC', 'SS', 'SC', 'CC', 'Other'].map((v) => ({ value: v, label: v }))} allowClear />
                     </Form.Item>
                     <Form.Item name="allergies" label="Allergies" className="md:col-span-2"><Input.TextArea rows={2} /></Form.Item>
                     <Form.Item name="conditions" label="Conditions" className="md:col-span-2"><Input.TextArea rows={2} /></Form.Item>

@@ -47,6 +47,7 @@ export const ADMISSION_SETUP_RESOURCES: AcademicResource[] = [
   { key: 'levels', path: '/academic/levels', label: 'Levels', perm: 'academic.levels.manage' },
   { key: 'graduation', path: '/academic/graduation', label: 'Graduation', perm: 'academic.graduate' },
   { key: 'import-students', path: '/academic/import-students', label: 'Import students', perm: 'students.import' },
+  { key: 'jupeb-matric', path: '/academic/jupeb-matric', label: 'JUPEB matric numbers', perm: 'admissions.matriculate' },
 ];
 
 /** Application sessions, programmes, O'level, candidate data, import applicants */
@@ -72,10 +73,10 @@ export const COURSES_RESOURCES: AcademicResource[] = [
 export const RESULTS_RESOURCES: AcademicResource[] = [
   { key: 'results', path: '/academic/results', label: 'Results dashboard', perm: 'results.read' },
   { key: 'results-students', path: '/academic/results/students', label: 'Result entry', perm: 'results.read' },
-  { key: 'results-import', path: '/academic/results/import', label: 'CSV import', perm: 'results.import' },
-  { key: 'results-department', path: '/academic/results/department', label: 'Department uploads', perm: 'results.submit' },
-  { key: 'results-approvals', path: '/academic/results/approvals', label: 'Faculty Approval', perm: 'results.faculty_approve' },
-  { key: 'results-board', path: '/academic/results/board', label: 'Board', perm: 'results.board' },
+  { key: 'results-import', path: '/academic/results/import', label: 'Upload Score', perm: 'results.import' },
+  { key: 'results-department', path: '/academic/results/department', label: 'College', perm: 'results.submit' },
+  { key: 'results-approvals', path: '/academic/results/approvals', label: 'Committee of Deans', perm: 'results.faculty_approve' },
+  { key: 'results-board', path: '/academic/results/board', label: 'Senate', perm: 'results.board' },
   { key: 'results-release', path: '/academic/results/release', label: 'Release', perm: 'results.release' },
   { key: 'results-grading-scale', path: '/academic/results/grading-scale', label: 'Grading scale', perm: 'scales.manage' },
 ];
