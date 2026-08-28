@@ -13,9 +13,97 @@ import api, { isPendingApproval } from '../../api';
 import { useAuth } from '../../auth';
 import { SessionLevelFilters } from '../../components/SessionLevelFilters';
 
-type Term = { id: number; name: string; session_label?: string; is_current?: boolean; academic_session_id?: number };
+type Term = {
+  id: number;
+  name: string;
+  session_label?: string;
+  is_current?: boolean;
+  academic_session_id?: number;
+  session?: { id?: number; label?: string };
+};
 type Faculty = { id: number; name: string };
 type Department = { id: number; name: string; faculty_id?: number };
+
+function academicSessionsFromTerms(terms: Term[]) {
+  const map = new Map<number, { id: number; label: string; is_current: boolean }>();
+  for (const term of terms) {
+    const id = term.academic_session_id;
+    if (!id) continue;
+    const label = term.session?.label || term.session_label || '';
+    if (!label) continue;
+    const previous = map.get(id);
+    map.set(id, {
+      id,
+      label: previous?.label || label,
+      is_current: !!(previous?.is_current || term.is_current),
+    });
+  }
+  return [...map.values()];
+}
+
+function semesterOptions(terms: Term[], sessionId?: number) {
+  return terms
+    .filter((term) => !sessionId || term.academic_session_id === sessionId)
+    .map((term) => ({
+      value: term.id,
+      label: term.is_current ? `${term.name} (current)` : term.name,
+    }));
+}
+
+function termInSession(terms: Term[], sessionId?: number, termId?: number) {
+  if (!sessionId) return undefined;
+  const current = terms.find((term) => term.id === termId && term.academic_session_id === sessionId);
+  if (current) return current.id;
+  return (
+    terms.find((term) => term.academic_session_id === sessionId && term.is_current)?.id
+    || terms.find((term) => term.academic_session_id === sessionId)?.id
+  );
+}
+
+function AcademicSessionSemesterFilters({
+  terms,
+  sessionId,
+  termId,
+  onChange,
+}: {
+  terms: Term[];
+  sessionId?: number;
+  termId?: number;
+  onChange: (next: { academic_session_id?: number; academic_term_id?: number }) => void;
+}) {
+  return (
+    <>
+      <Select
+        allowClear
+        placeholder="Session"
+        style={{ width: 160 }}
+        value={sessionId}
+        options={academicSessionsFromTerms(terms).map((session) => ({
+          value: session.id,
+          label: session.is_current ? `${session.label} (current)` : session.label,
+        }))}
+        onChange={(value) => onChange({
+          academic_session_id: value,
+          academic_term_id: value ? termInSession(terms, value, termId) : undefined,
+        })}
+      />
+      <Select
+        allowClear
+        placeholder="Semester"
+        style={{ width: 160 }}
+        value={termId}
+        options={semesterOptions(terms, sessionId)}
+        onChange={(value) => {
+          const term = terms.find((row) => row.id === value);
+          onChange({
+            academic_term_id: value,
+            academic_session_id: term?.academic_session_id ?? (value ? sessionId : undefined),
+          });
+        }}
+      />
+    </>
+  );
+}
 
 function ResourceShell({
   title, description, loading, onRefresh, children, extra,
@@ -45,10 +133,6 @@ function useTermsFaculties() {
     api.get('/api/academic/departments').then((r) => setDepartments(Array.isArray(r.data) ? r.data : r.data?.data || [])).catch(() => {});
   }, []);
   return { terms, faculties, departments };
-}
-
-function currentTermId(terms: Term[]) {
-  return terms.find((term) => term.is_current)?.id;
 }
 
 const QUEUE_PAGE_SIZE = 5000;
@@ -230,16 +314,15 @@ export function ResultsDashboardPage() {
 export function ResultsStudentsPage() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const [sessionId, setSessionId] = useState<number | undefined>();
   const [level, setLevel] = useState<string | undefined>();
   const [rows, setRows] = useState<any[]>([]);
   const load = useCallback(() => {
     setLoading(true);
-    api.get('/api/academic/results/students', { params: { search, academic_session_id: sessionId, level } })
+    api.get('/api/academic/results/students', { params: { search, level } })
       .then((r) => setRows(r.data?.data || r.data || []))
       .catch(() => message.error('Could not search students'))
       .finally(() => setLoading(false));
-  }, [search, sessionId, level]);
+  }, [search, level]);
   useEffect(() => { load(); }, [load]);
   const columns: ColumnsType = [
     { title: 'Matric', dataIndex: 'matric_number' },
@@ -255,7 +338,7 @@ export function ResultsStudentsPage() {
     <ResourceShell title="Result entry" description="Search students and enter CA/exam scores." loading={loading} onRefresh={load}
       extra={(
         <Space wrap>
-          <SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />
+          <SessionLevelFilters showSession={false} level={level} onLevelChange={setLevel} />
           <Input.Search placeholder="Matric or name" allowClear onSearch={setSearch} style={{ width: 260 }} />
           <Button onClick={load}>Search</Button>
         </Space>
@@ -658,9 +741,13 @@ export function ResultsDepartmentUploadsPage() {
   });
 
   useEffect(() => {
-    const termId = currentTermId(terms);
-    if (!termId) return;
-    setFilters((current) => (current.academic_term_id ? current : { ...current, academic_term_id: termId }));
+    const term = terms.find((row) => row.is_current);
+    if (!term) return;
+    setFilters((current) => ({
+      ...current,
+      academic_term_id: current.academic_term_id ?? term.id,
+      academic_session_id: current.academic_session_id ?? term.academic_session_id,
+    }));
   }, [terms]);
 
   const load = useCallback(() => {
@@ -705,19 +792,12 @@ export function ResultsDepartmentUploadsPage() {
       onRefresh={load}
       extra={(
         <Space wrap>
-          <SessionLevelFilters
+          <SessionLevelFilters showSession={false} level={filters.level} onLevelChange={(v) => setFilters((f) => ({ ...f, level: v }))} />
+          <AcademicSessionSemesterFilters
+            terms={terms}
             sessionId={filters.academic_session_id}
-            level={filters.level}
-            onSessionChange={(v) => setFilters((f) => ({ ...f, academic_session_id: v }))}
-            onLevelChange={(v) => setFilters((f) => ({ ...f, level: v }))}
-          />
-          <Select
-            placeholder="Semester"
-            allowClear
-            style={{ width: 180 }}
-            value={filters.academic_term_id}
-            options={terms.map((t) => ({ value: t.id, label: `${t.session_label || ''} ${t.name}`.trim() }))}
-            onChange={(v) => setFilters((f) => ({ ...f, academic_term_id: v }))}
+            termId={filters.academic_term_id}
+            onChange={(next) => setFilters((f) => ({ ...f, ...next }))}
           />
           <Select
             placeholder="Status"
@@ -842,9 +922,13 @@ export function ResultsApprovalsPage() {
   const [returnNote, setReturnNote] = useState('');
 
   useEffect(() => {
-    const termId = currentTermId(terms);
-    if (!termId) return;
-    setFilters((current) => (current.academic_term_id ? current : { ...current, academic_term_id: termId }));
+    const term = terms.find((row) => row.is_current);
+    if (!term) return;
+    setFilters((current) => ({
+      ...current,
+      academic_term_id: current.academic_term_id ?? term.id,
+      academic_session_id: current.academic_session_id ?? term.academic_session_id,
+    }));
   }, [terms]);
 
   const load = useCallback(() => {
@@ -887,19 +971,12 @@ export function ResultsApprovalsPage() {
       onRefresh={load}
       extra={(
         <Space wrap>
-          <SessionLevelFilters
+          <SessionLevelFilters showSession={false} level={filters.level} onLevelChange={(v) => setFilters((f) => ({ ...f, level: v }))} />
+          <AcademicSessionSemesterFilters
+            terms={terms}
             sessionId={filters.academic_session_id}
-            level={filters.level}
-            onSessionChange={(v) => setFilters((f) => ({ ...f, academic_session_id: v }))}
-            onLevelChange={(v) => setFilters((f) => ({ ...f, level: v }))}
-          />
-          <Select
-            placeholder="Semester"
-            allowClear
-            style={{ width: 180 }}
-            value={filters.academic_term_id}
-            options={terms.map((t) => ({ value: t.id, label: `${t.session_label || ''} ${t.name}`.trim() }))}
-            onChange={(v) => setFilters((f) => ({ ...f, academic_term_id: v }))}
+            termId={filters.academic_term_id}
+            onChange={(next) => setFilters((f) => ({ ...f, ...next }))}
           />
           <Select
             placeholder="Status"
@@ -1024,9 +1101,7 @@ export function ResultsBoardPage() {
   const [sitting, setSitting] = useState<string | undefined>();
   const [matric, setMatric] = useState<string | undefined>();
   const [course, setCourse] = useState<string | undefined>();
-  const termOptions = terms
-    .filter((t) => !sessionId || t.academic_session_id === sessionId || !t.academic_session_id)
-    .map((t) => ({ value: t.id, label: `${t.session_label || ''} ${t.name}`.trim() }));
+  const termOptions = semesterOptions(terms, sessionId);
 
   const load = useCallback(async () => {
     const values = form.getFieldsValue();
@@ -1086,7 +1161,27 @@ export function ResultsBoardPage() {
       description="Review board-ready grades, clear them, or request corrections. Print the board list when needed."
       loading={loading}
       onRefresh={load}
-      extra={<SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />}
+      extra={(
+        <Space wrap>
+          <SessionLevelFilters showSession={false} level={level} onLevelChange={setLevel} />
+          <Select
+            allowClear
+            placeholder="Session"
+            style={{ width: 160 }}
+            value={sessionId}
+            options={academicSessionsFromTerms(terms).map((session) => ({
+              value: session.id,
+              label: session.is_current ? `${session.label} (current)` : session.label,
+            }))}
+            onChange={(value) => {
+              setSessionId(value);
+              form.setFieldsValue({
+                academic_term_id: value ? termInSession(terms, value, form.getFieldValue('academic_term_id')) : undefined,
+              });
+            }}
+          />
+        </Space>
+      )}
     >
       <Form
         form={form}
@@ -1097,8 +1192,8 @@ export function ResultsBoardPage() {
         }}
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          <Form.Item name="academic_term_id" label="Term" rules={[{ required: true }]}>
-            <Select options={termOptions} placeholder="Select term" />
+          <Form.Item name="academic_term_id" label="Semester" rules={[{ required: true }]}>
+            <Select options={termOptions} placeholder="Select semester" />
           </Form.Item>
           <Form.Item label="Status">
             <Select
@@ -1187,9 +1282,7 @@ export function ResultsReleasePage() {
   const [form] = Form.useForm();
   const [sessionId, setSessionId] = useState<number | undefined>();
   const [level, setLevel] = useState<string | undefined>();
-  const termOptions = terms
-    .filter((t) => !sessionId || t.academic_session_id === sessionId || !t.academic_session_id)
-    .map((t) => ({ value: t.id, label: `${t.session_label || ''} ${t.name}`.trim() }));
+  const termOptions = semesterOptions(terms, sessionId);
   const release = async () => {
     try {
       const values = await form.validateFields();
@@ -1205,11 +1298,31 @@ export function ResultsReleasePage() {
   };
   return (
     <ResourceShell title="Release results" description="Release board-cleared grades to the student portal." loading={false} onRefresh={() => {}}
-      extra={<SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />}
+      extra={(
+        <Space wrap>
+          <SessionLevelFilters showSession={false} level={level} onLevelChange={setLevel} />
+          <Select
+            allowClear
+            placeholder="Session"
+            style={{ width: 160 }}
+            value={sessionId}
+            options={academicSessionsFromTerms(terms).map((session) => ({
+              value: session.id,
+              label: session.is_current ? `${session.label} (current)` : session.label,
+            }))}
+            onChange={(value) => {
+              setSessionId(value);
+              form.setFieldsValue({
+                academic_term_id: value ? termInSession(terms, value, form.getFieldValue('academic_term_id')) : undefined,
+              });
+            }}
+          />
+        </Space>
+      )}
     >
       <Form form={form} layout="vertical" className="max-w-lg" onFinish={release}>
-        <Form.Item name="academic_term_id" label="Term" rules={[{ required: true }]}>
-          <Select options={termOptions} />
+        <Form.Item name="academic_term_id" label="Semester" rules={[{ required: true }]}>
+          <Select options={termOptions} placeholder="Select semester" />
         </Form.Item>
         <Form.Item name="faculty_id" label="Faculty">
           <Select allowClear options={faculties.map((f) => ({ value: f.id, label: f.name }))} />
