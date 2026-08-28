@@ -61,6 +61,24 @@ function gradeCourse(row: any) {
   return row?.offering?.course || row?.enrollment?.offering?.course || row?.course || {};
 }
 
+function gradeDepartmentId(row: any): number | undefined {
+  const id = row?.department_id
+    || row?.offering?.course?.department_id
+    || row?.enrollment?.offering?.course?.department_id;
+  return id ? Number(id) : undefined;
+}
+
+function uniqueNumericId(values: Array<number | undefined>): number | undefined {
+  const ids = [...new Set(values.filter((value): value is number => Number.isFinite(value)))];
+  return ids.length === 1 ? ids[0] : undefined;
+}
+
+function departmentOptions(departments: Department[], facultyId?: number) {
+  return departments
+    .filter((d) => !facultyId || d.faculty_id === facultyId)
+    .map((d) => ({ value: d.id, label: d.name }));
+}
+
 const letterColumn = {
   title: (
     <Tooltip title="Letter grade (A–F) from the total score and the university grading scale. Staff do not type this.">
@@ -682,7 +700,7 @@ export function ResultsDepartmentUploadsPage() {
   return (
     <ResourceShell
       title="Department uploads"
-      description="Review department scores. Grade is the A–F letter from the total (you do not type it). Choose a semester, then print the department list."
+      description="Review department scores. Grade is the A–F letter from the total (you do not type it). Choose a semester, department, and level, then download the department list."
       loading={loading}
       onRefresh={load}
       extra={(
@@ -716,6 +734,28 @@ export function ResultsDepartmentUploadsPage() {
             options={[{ value: 'main', label: 'Main' }, { value: 'supplementary', label: 'Supplementary' }]}
             onChange={(v) => setFilters((f) => ({ ...f, sitting: v }))}
           />
+          <Select
+            placeholder="Faculty"
+            allowClear
+            style={{ width: 180 }}
+            value={filters.faculty_id}
+            options={faculties.map((f) => ({ value: f.id, label: f.name }))}
+            onChange={(v) => setFilters((f) => ({
+              ...f,
+              faculty_id: v,
+              department_id: !v || departments.find((d) => d.id === f.department_id)?.faculty_id === v
+                ? f.department_id
+                : undefined,
+            }))}
+          />
+          <Select
+            placeholder="Department"
+            allowClear
+            style={{ width: 200 }}
+            value={filters.department_id}
+            options={departmentOptions(departments, filters.faculty_id)}
+            onChange={(v) => setFilters((f) => ({ ...f, department_id: v }))}
+          />
           {has('results.submit') && (
             <Button type="primary" onClick={() => act('/api/academic/results/submit', { ids: selected })} disabled={!selected.length}>
               Submit selected
@@ -724,11 +764,14 @@ export function ResultsDepartmentUploadsPage() {
           <Dropdown
             menu={{
               items: listDownloadItems((format) => {
+                const departmentId = filters.department_id || uniqueNumericId(rows.map(gradeDepartmentId));
+                const facultyId = filters.faculty_id
+                  || departments.find((d) => d.id === departmentId)?.faculty_id;
                 const params = {
                   academic_term_id: filters.academic_term_id,
                   academic_session_id: filters.academic_session_id,
-                  department_id: filters.department_id,
-                  faculty_id: filters.faculty_id,
+                  department_id: departmentId,
+                  faculty_id: facultyId,
                   status: filters.status,
                   level: filters.level,
                   sitting: filters.sitting,
@@ -736,6 +779,10 @@ export function ResultsDepartmentUploadsPage() {
                 const term = terms.find((t) => t.id === filters.academic_term_id);
                 const filename = `department-results-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}-${filters.sitting === 'supplementary' ? 'supplementary' : 'main'}`;
                 if (format === 'html') {
+                  if (!params.department_id) {
+                    message.warning('Select a department to download the department list.');
+                    return;
+                  }
                   openPrintable('/api/academic/results/reports/submission-list/department', params);
                   return;
                 }
@@ -756,20 +803,6 @@ export function ResultsDepartmentUploadsPage() {
       )}
     >
       <Space className="mb-3" wrap>
-        <Select
-          placeholder="Faculty"
-          allowClear
-          style={{ width: 180 }}
-          options={faculties.map((f) => ({ value: f.id, label: f.name }))}
-          onChange={(v) => setFilters((f) => ({ ...f, faculty_id: v }))}
-        />
-        <Select
-          placeholder="Department"
-          allowClear
-          style={{ width: 180 }}
-          options={departments.map((d) => ({ value: d.id, label: d.name }))}
-          onChange={(v) => setFilters((f) => ({ ...f, department_id: v }))}
-        />
         <Input
           placeholder="Matric"
           allowClear
@@ -935,14 +968,22 @@ export function ResultsApprovalsPage() {
           placeholder="Faculty"
           allowClear
           style={{ width: 180 }}
+          value={filters.faculty_id}
           options={faculties.map((f) => ({ value: f.id, label: f.name }))}
-          onChange={(v) => setFilters((f) => ({ ...f, faculty_id: v }))}
+          onChange={(v) => setFilters((f) => ({
+            ...f,
+            faculty_id: v,
+            department_id: !v || departments.find((d) => d.id === f.department_id)?.faculty_id === v
+              ? f.department_id
+              : undefined,
+          }))}
         />
         <Select
           placeholder="Department"
           allowClear
           style={{ width: 180 }}
-          options={departments.map((d) => ({ value: d.id, label: d.name }))}
+          value={filters.department_id}
+          options={departmentOptions(departments, filters.faculty_id)}
           onChange={(v) => setFilters((f) => ({ ...f, department_id: v }))}
         />
         <Input
