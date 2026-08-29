@@ -64,7 +64,7 @@ import ReportRun from './pages/reports/ReportRun';
 import PaymentCallback from './pages/PaymentCallback';
 import NotFound from './pages/NotFound';
 
-const STUDENT_PORTAL = import.meta.env.VITE_STUDENT_URL || 'http://localhost:5174/student';
+const STUDENT_PORTAL = import.meta.env.VITE_STUDENT_URL || '/student';
 
 function Guard({ children }: { children: React.ReactNode }) {
   const { auth, loading } = useAuth();

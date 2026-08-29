@@ -105,7 +105,7 @@ export default function Resources() {
           type="button"
           variant="secondary"
           className="inline-flex items-center gap-1.5"
-          onClick={() => window.open(apiUrl('/api/docs', 'http://localhost:8000'), '_blank', 'noopener,noreferrer')}
+          onClick={() => window.open(apiUrl('/api/docs'), '_blank', 'noopener,noreferrer')}
         >
           Open API docs
         </Btn>

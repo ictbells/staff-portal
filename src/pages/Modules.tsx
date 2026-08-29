@@ -12,7 +12,7 @@ import {
 import { formatNaira } from '../lib/money';
 import { SessionLevelFilters } from '../components/SessionLevelFilters';
 
-const API_DOCS_URL = apiUrl('/api/docs', 'http://localhost:8000');
+const API_DOCS_URL = apiUrl('/api/docs');
 
 const ONLINE_ONLY_FEE_CATEGORIES = ['application_fee', 'acceptance_fee', 'transcript'];
 
