@@ -73,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading,
       setAuth,
       refresh,
-      has: (key: string) => !!auth?.permissions?.includes(key) || auth?.roles?.some((r) => r.slug === 'super-admin'),
+      has: (key: string) => Boolean(auth?.permissions?.includes(key) || auth?.roles?.some((r) => r.slug === 'super-admin')),
     }),
     [auth, loading],
   );

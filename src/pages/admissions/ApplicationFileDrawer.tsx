@@ -846,7 +846,7 @@ export function ApplicationFileDrawer({
   const nin = pick(biodata, 'nin');
   const photoPath = pick(biodata, 'photo_path');
   const checklist = useMemo(
-    () => requiredDocumentsFor(app?.entry_mode, stepPayload(app || { steps: [] }, 'pg_background').nysc_status)
+    () => requiredDocumentsFor(app?.entry_mode, stepPayload(app ?? null, 'pg_background').nysc_status)
       .filter((doc) => !(doc.key === 'olevel_second_sitting' && form?.first_sitting.exam_type === 'NABTEB')),
     [app, form?.first_sitting.exam_type],
   );
