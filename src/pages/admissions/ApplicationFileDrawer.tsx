@@ -3,7 +3,7 @@ import { Alert, Button, Drawer, Input, Select, Space, Tag, message } from 'antd'
 import { Eye, FileText, Printer, RefreshCw, Save } from 'lucide-react';
 import api from '../../api';
 import { useAuth } from '../../auth';
-import { isValidPhone, PHONE_ERROR, PHONE_HINT } from '../../lib/phone';
+import { isValidPhone, PHONE_ERROR, PHONE_HINT, phoneIssue } from '../../lib/phone';
 import { requiredDocumentsFor } from './requiredDocuments';
 
 type Step = { step_key?: string; payload?: Record<string, any> };
@@ -946,6 +946,21 @@ export function ApplicationFileDrawer({
       message.error(PHONE_ERROR);
       return;
     }
+    const kinPhoneIssue = phoneIssue(form.next_of_kin_phone);
+    if (kinPhoneIssue) {
+      message.error(kinPhoneIssue);
+      return;
+    }
+    const sponsorPhoneIssue = phoneIssue(form.sponsor_phone);
+    if (sponsorPhoneIssue) {
+      message.error(sponsorPhoneIssue);
+      return;
+    }
+    const refereePhoneIssue = form.referees.map((row) => phoneIssue(row.phone)).find(Boolean);
+    if (refereePhoneIssue) {
+      message.error(refereePhoneIssue);
+      return;
+    }
     {
       const utme = asUtme(form.utme);
       const scoresFilled = utme.subjects.filter((row) => String(row.score).trim() !== '').length;
@@ -1333,7 +1348,7 @@ export function ApplicationFileDrawer({
             <div className="grid grid-cols-2 gap-3">
               <Field label="Name"><Input value={form.next_of_kin} onChange={(e) => setField('next_of_kin', e.target.value)} /></Field>
               <Field label="Relationship"><Input value={form.next_of_kin_relationship} onChange={(e) => setField('next_of_kin_relationship', e.target.value)} /></Field>
-              <Field label="Phone"><Input value={form.next_of_kin_phone} onChange={(e) => setField('next_of_kin_phone', e.target.value)} /></Field>
+              <Field label="Phone" hint={PHONE_HINT}><Input value={form.next_of_kin_phone} onChange={(e) => setField('next_of_kin_phone', e.target.value)} /></Field>
               <Field label="Email"><Input value={form.next_of_kin_email} onChange={(e) => setField('next_of_kin_email', e.target.value)} /></Field>
               <Field label="Address"><Input.TextArea rows={2} value={form.next_of_kin_address} onChange={(e) => setField('next_of_kin_address', e.target.value)} /></Field>
             </div>
@@ -1343,7 +1358,7 @@ export function ApplicationFileDrawer({
             <div className="grid grid-cols-2 gap-3">
               <Field label="Name"><Input value={form.sponsor_name} onChange={(e) => setField('sponsor_name', e.target.value)} /></Field>
               <Field label="Relationship"><Input value={form.sponsor_relationship} onChange={(e) => setField('sponsor_relationship', e.target.value)} /></Field>
-              <Field label="Phone"><Input value={form.sponsor_phone} onChange={(e) => setField('sponsor_phone', e.target.value)} /></Field>
+              <Field label="Phone" hint={PHONE_HINT}><Input value={form.sponsor_phone} onChange={(e) => setField('sponsor_phone', e.target.value)} /></Field>
               <Field label="Email"><Input value={form.sponsor_email} onChange={(e) => setField('sponsor_email', e.target.value)} /></Field>
               <Field label="Address"><Input.TextArea rows={2} value={form.sponsor_address} onChange={(e) => setField('sponsor_address', e.target.value)} /></Field>
             </div>
@@ -1686,6 +1701,10 @@ export function ApplicationFileDrawer({
                       }} /></Field>
                       <Field label="Position"><Input value={row.position} onChange={(e) => {
                         const referees = form.referees.map((item, i) => i === index ? { ...item, position: e.target.value } : item);
+                        setField('referees', referees);
+                      }} /></Field>
+                      <Field label="Phone" hint={PHONE_HINT}><Input value={row.phone || ''} onChange={(e) => {
+                        const referees = form.referees.map((item, i) => i === index ? { ...item, phone: e.target.value } : item);
                         setField('referees', referees);
                       }} /></Field>
                     </div>
