@@ -456,23 +456,21 @@ function sittingForSave(sitting: Sitting): Sitting | null {
 }
 
 function facultyIdOf(program?: ProgramOption) {
-  const id = program?.department?.faculty?.id;
+  const id = program?.department?.faculty?.id ?? (program?.department as { faculty_id?: number } | undefined)?.faculty_id;
   return id ? Number(id) : '';
 }
 
 function departmentIdOf(program?: ProgramOption) {
-  const id = program?.department?.id;
+  const id = (program as { department_id?: number } | undefined)?.department_id ?? program?.department?.id;
   return id ? Number(id) : '';
 }
 
-function uniqueOptions(items: { value: number; label: string }[]) {
-  const map = new Map<number, string>();
-  items.forEach(({ value, label }) => {
-    if (value && label) map.set(value, label);
-  });
-  return [...map.entries()]
-    .map(([value, label]) => ({ value, label }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+function collegeNameOf(program?: ProgramOption) {
+  return program?.department?.faculty?.name || '';
+}
+
+function departmentNameOf(program?: ProgramOption) {
+  return program?.department?.name || '';
 }
 
 function programmeLevel(level: number | string | undefined) {
@@ -797,30 +795,43 @@ export function ApplicationFileDrawer({
       .catch(() => setLgas([]));
   }, [form?.state_id]);
 
-  const collegeOptions = useMemo(
-    () => uniqueOptions(programs.map((program) => ({
-      value: Number(facultyIdOf(program) || 0),
-      label: program.department?.faculty?.name || '',
-    }))),
-    [programs],
-  );
-
-  const departmentsFor = (collegeId: number | '') => uniqueOptions(
-    programs
-      .filter((program) => !collegeId || facultyIdOf(program) === Number(collegeId))
-      .map((program) => ({
-        value: Number(departmentIdOf(program) || 0),
-        label: program.department?.name || '',
-      })),
-  );
-
-  const programsFor = (departmentId: number | '', excludeId?: number) => programs
-    .filter((program) => !departmentId || departmentIdOf(program) === Number(departmentId))
+  const programSelectOptions = (excludeId?: number) => programs
     .filter((program) => !excludeId || program.id !== excludeId)
-    .map((program) => ({
-      value: program.id,
-      label: program.code ? `${program.code} — ${program.name}` : (program.name || `#${program.id}`),
-    }));
+    .map((program) => {
+      const title = program.code ? `${program.code} — ${program.name}` : (program.name || `#${program.id}`);
+      const hint = [collegeNameOf(program), departmentNameOf(program)].filter(Boolean).join(' · ');
+      return {
+        value: program.id,
+        label: hint ? `${title} · ${hint}` : title,
+      };
+    });
+
+  const applyProgrammeChoice = (which: 'first' | 'second', programId: number | '' | undefined) => {
+    const program = programs.find((row) => row.id === Number(programId));
+    setForm((prev) => {
+      if (!prev) return prev;
+      if (which === 'first') {
+        const next = {
+          ...prev,
+          first_choice_program_id: program?.id || ('' as const),
+          first_choice_college_id: facultyIdOf(program) || ('' as const),
+          first_choice_department_id: departmentIdOf(program) || ('' as const),
+        };
+        if (program && Number(prev.second_choice_program_id) === Number(program.id)) {
+          next.second_choice_program_id = '';
+          next.second_choice_college_id = '';
+          next.second_choice_department_id = '';
+        }
+        return next;
+      }
+      return {
+        ...prev,
+        second_choice_program_id: program?.id || ('' as const),
+        second_choice_college_id: facultyIdOf(program) || ('' as const),
+        second_choice_department_id: departmentIdOf(program) || ('' as const),
+      };
+    });
+  };
 
   const studentLevel = programmeLevel(app?.student?.current_level);
   const canChangeProgramme = !app?.student || (studentLevel >= 100 && studentLevel <= 300);
@@ -968,11 +979,11 @@ export function ApplicationFileDrawer({
         ...form,
         state_id: form.state_id || null,
         lga_id: form.lga_id || null,
-        first_choice_college_id: form.first_choice_college_id || null,
-        first_choice_department_id: form.first_choice_department_id || null,
+        first_choice_college_id: facultyIdOf(toProgram) || null,
+        first_choice_department_id: departmentIdOf(toProgram) || null,
         first_choice_program_id: form.first_choice_program_id,
-        second_choice_college_id: app.entry_mode === 'jupeb' ? null : (form.second_choice_college_id || null),
-        second_choice_department_id: app.entry_mode === 'jupeb' ? null : (form.second_choice_department_id || null),
+        second_choice_college_id: app.entry_mode === 'jupeb' ? null : (facultyIdOf(programs.find((program) => program.id === Number(form.second_choice_program_id))) || null),
+        second_choice_department_id: app.entry_mode === 'jupeb' ? null : (departmentIdOf(programs.find((program) => program.id === Number(form.second_choice_program_id))) || null),
         second_choice_program_id: app.entry_mode === 'jupeb' ? null : (form.second_choice_program_id || null),
         first_sitting: sittingForSave(form.first_sitting),
         second_sitting: form.first_sitting.exam_type === 'NABTEB' || form.second_sitting.exam_type === 'NABTEB'
@@ -1159,97 +1170,58 @@ export function ApplicationFileDrawer({
                   : `Changing programme will set the student level to ${nextLevel}L${studentLevel === 100 ? ' (100L remains 100L). The transcript and CGPA will not keep the old 100L.' : ` (currently ${studentLevel}L). The transcript and CGPA will keep only old-programme courses below ${nextLevel}L, then add the new programme.`}`}
               </p>
             )}
+            <p className="text-xs text-slate-500">
+              {app.student
+                ? 'Pick a programme. College and department are filled from that programme.'
+                : 'New applicants pick a programme only. College and department are filled from that programme and cannot be edited.'}
+            </p>
             <p className="text-xs font-medium text-slate-500">{app.entry_mode === 'jupeb' ? 'Programme' : 'First choice'}</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Field label="College">
-                <Select
-                  className="w-full"
-                  showSearch
-                  optionFilterProp="label"
-                  disabled={!!app.student && !canChangeProgramme}
-                  value={form.first_choice_college_id || undefined}
-                  options={collegeOptions}
-                  onChange={(value) => setForm((prev) => prev ? {
-                    ...prev,
-                    first_choice_college_id: value,
-                    first_choice_department_id: '',
-                    first_choice_program_id: '',
-                  } : prev)}
-                />
-              </Field>
-              <Field label="Department">
-                <Select
-                  className="w-full"
-                  showSearch
-                  optionFilterProp="label"
-                  disabled={!form.first_choice_college_id || (!!app.student && !canChangeProgramme)}
-                  value={form.first_choice_department_id || undefined}
-                  options={departmentsFor(form.first_choice_college_id)}
-                  onChange={(value) => setForm((prev) => prev ? {
-                    ...prev,
-                    first_choice_department_id: value,
-                    first_choice_program_id: '',
-                  } : prev)}
-                />
-              </Field>
               <Field label="Programme">
                 <Select
                   className="w-full"
                   showSearch
                   optionFilterProp="label"
-                  disabled={!form.first_choice_department_id || (!!app.student && !canChangeProgramme)}
+                  disabled={!!app.student && !canChangeProgramme}
                   value={form.first_choice_program_id || undefined}
-                  options={programsFor(form.first_choice_department_id)}
-                  onChange={(value) => setField('first_choice_program_id', value)}
+                  options={programSelectOptions()}
+                  onChange={(value) => applyProgrammeChoice('first', value)}
                 />
+              </Field>
+              <Field label="College">
+                <Input disabled value={collegeNameOf(toProgram)} placeholder="Filled from programme" />
+              </Field>
+              <Field label="Department">
+                <Input disabled value={departmentNameOf(toProgram)} placeholder="Filled from programme" />
               </Field>
             </div>
             {app.entry_mode !== 'jupeb' && (
             <>
             <p className="text-xs font-medium text-slate-500 pt-2">Second choice</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Field label="College">
-                <Select
-                  className="w-full"
-                  allowClear
-                  showSearch
-                  optionFilterProp="label"
-                  value={form.second_choice_college_id || undefined}
-                  options={collegeOptions}
-                  onChange={(value) => setForm((prev) => prev ? {
-                    ...prev,
-                    second_choice_college_id: value || '',
-                    second_choice_department_id: '',
-                    second_choice_program_id: '',
-                  } : prev)}
-                />
-              </Field>
-              <Field label="Department">
-                <Select
-                  className="w-full"
-                  allowClear
-                  showSearch
-                  optionFilterProp="label"
-                  disabled={!form.second_choice_college_id}
-                  value={form.second_choice_department_id || undefined}
-                  options={departmentsFor(form.second_choice_college_id)}
-                  onChange={(value) => setForm((prev) => prev ? {
-                    ...prev,
-                    second_choice_department_id: value || '',
-                    second_choice_program_id: '',
-                  } : prev)}
-                />
-              </Field>
               <Field label="Programme">
                 <Select
                   className="w-full"
                   allowClear
                   showSearch
                   optionFilterProp="label"
-                  disabled={!form.second_choice_department_id}
                   value={form.second_choice_program_id || undefined}
-                  options={programsFor(form.second_choice_department_id, Number(form.first_choice_program_id) || undefined)}
-                  onChange={(value) => setField('second_choice_program_id', value || '')}
+                  options={programSelectOptions(Number(form.first_choice_program_id) || undefined)}
+                  onChange={(value) => applyProgrammeChoice('second', value || '')}
+                />
+              </Field>
+              <Field label="College">
+                <Input
+                  disabled
+                  value={collegeNameOf(programs.find((program) => program.id === Number(form.second_choice_program_id)))}
+                  placeholder="Filled from programme"
+                />
+              </Field>
+              <Field label="Department">
+                <Input
+                  disabled
+                  value={departmentNameOf(programs.find((program) => program.id === Number(form.second_choice_program_id)))}
+                  placeholder="Filled from programme"
                 />
               </Field>
             </div>
@@ -1620,9 +1592,14 @@ export function ApplicationFileDrawer({
                         const prior_degrees = form.prior_degrees.map((item, i) => i === index ? { ...item, field_of_study: e.target.value } : item);
                         setField('prior_degrees', prior_degrees);
                       }} /></Field>
+                      {form.prior_degrees.length > 1 && (
+                        <div className="col-span-2">
+                          <Button onClick={() => setField('prior_degrees', form.prior_degrees.filter((_, i) => i !== index))}>Remove</Button>
+                        </div>
+                      )}
                     </div>
                   ))}
-                  <Button onClick={() => setField('prior_degrees', [...form.prior_degrees, { degree_title: '', institution: '', class: 'second_lower', award_level: 'bachelor', year_awarded: '' }])}>Add degree</Button>
+                  <Button onClick={() => setField('prior_degrees', [...form.prior_degrees, { degree_title: '', institution: '', field_of_study: '', class: 'second_lower', award_level: 'bachelor', year_awarded: '', country: 'Nigeria' }])}>Add degree</Button>
                 </div>
               </Section>
               <Section title="NYSC">
@@ -1630,8 +1607,29 @@ export function ApplicationFileDrawer({
                   <Field label="Status">
                     <Select className="w-full" value={form.nysc_status} options={NYSC_OPTIONS} onChange={(value) => setField('nysc_status', value)} />
                   </Field>
-                  <Field label="Number"><Input value={form.nysc_number} onChange={(e) => setField('nysc_number', e.target.value)} /></Field>
-                  <Field label="Year"><Input value={form.nysc_year} onChange={(e) => setField('nysc_year', e.target.value)} /></Field>
+                  <Field label="Number">
+                    <Input
+                      maxLength={12}
+                      placeholder="Max 12 characters"
+                      value={form.nysc_number}
+                      onChange={(e) => setField('nysc_number', e.target.value.slice(0, 12))}
+                    />
+                  </Field>
+                  <Field label="Year">
+                    <Select
+                      className="w-full"
+                      allowClear
+                      placeholder="Select year"
+                      value={form.nysc_year || undefined}
+                      options={[
+                        ...(form.nysc_year && !OLEVEL_YEARS.includes(form.nysc_year)
+                          ? [{ value: form.nysc_year, label: form.nysc_year }]
+                          : []),
+                        ...OLEVEL_YEARS.map((value) => ({ value, label: value })),
+                      ]}
+                      onChange={(value) => setField('nysc_year', value || '')}
+                    />
+                  </Field>
                   <Field label="Exemption / N/A reason"><Input value={form.nysc_exemption_reason} onChange={(e) => setField('nysc_exemption_reason', e.target.value)} /></Field>
                 </div>
               </Section>
