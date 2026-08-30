@@ -76,13 +76,24 @@ jobs:
           export VITE_API_URL="${VITE_API_FROM_VAR:-$VITE_API_FROM_SECRET}"
           export VITE_STUDENT_URL="${VITE_STUDENT_FROM_VAR:-${VITE_STUDENT_FROM_SECRET:-}}"
           if [[ -z "$VITE_API_URL" ]]; then
-            echo "Set VITE_API_URL on the GitHub environment." >&2
+            echo "Set VITE_API_URL on GitHub environment '$GH_ENV' (Settings → Environments → Variables)." >&2
             exit 1
           fi
           if [[ -z "$VITE_STUDENT_URL" ]]; then
-            echo "Set VITE_STUDENT_URL on the GitHub environment." >&2
+            api_host="${VITE_API_URL#http://}"
+            api_host="${api_host#https://}"
+            api_host="${api_host%%/*}"
+            case "$api_host" in
+              bells-api.*) VITE_STUDENT_URL="https://student.${api_host#bells-api.}" ;;
+              api.*)       VITE_STUDENT_URL="https://student.${api_host#api.}" ;;
+            esac
+            export VITE_STUDENT_URL
+          fi
+          if [[ -z "$VITE_STUDENT_URL" ]]; then
+            echo "Set VITE_STUDENT_URL on GitHub environment '$GH_ENV' (Settings → Environments → Variables), e.g. https://student.example.com" >&2
             exit 1
           fi
+          echo "Building with VITE_API_URL=$VITE_API_URL VITE_STUDENT_URL=$VITE_STUDENT_URL"
           if [[ -f package-lock.json ]]; then npm ci; else npm install; fi
           npm run typecheck
           npm run build
