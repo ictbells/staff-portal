@@ -10,6 +10,7 @@ import {
   PageHeader, StatCard, WorkspaceHero, stageBadge, tdClass, thClass, trClass,
 } from '../components/ui';
 import { formatNaira } from '../lib/money';
+import { paymentVerifyPath, startOnlineCheckout } from '../lib/onlinePayment';
 import { SessionLevelFilters } from '../components/SessionLevelFilters';
 
 const API_DOCS_URL = apiUrl('/api/docs');
@@ -31,14 +32,51 @@ export function Students() {
   const [conferDate, setConferDate] = useState(dayjs());
   const [conferring, setConferring] = useState(false);
   const canGraduate = has('academic.graduate');
+  const canSanction = has('students.manage') || has('academic.graduate');
+  const [sanction, setSanction] = useState<{ id: number; name: string } | null>(null);
+  const [sanctionType, setSanctionType] = useState<string>('rusticated');
+  const [sanctionTermId, setSanctionTermId] = useState<number | undefined>();
+  const [sanctionTerms, setSanctionTerms] = useState<Array<{ id: number; name?: string; session_label?: string; is_current?: boolean }>>([]);
+  const [sanctioning, setSanctioning] = useState(false);
   const load = () => {
     setLoading(true);
     api.get('/api/students', { params: { status: statusFilter, academic_session_id: sessionId, level } }).then((r) => setRows(r.data)).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, [statusFilter, sessionId, level]);
+  useEffect(() => {
+    if (!canSanction) return;
+    api.get('/api/students/term-meta').then((r) => {
+      const terms = r.data?.terms || [];
+      setSanctionTerms(terms);
+      const current = terms.find((t: any) => t.is_current) || terms[0];
+      if (current) setSanctionTermId(current.id);
+    }).catch(() => {});
+  }, [canSanction]);
   const list = rows?.data || (rows?.id ? [rows] : rows) || [];
   const items = Array.isArray(list) ? list : [];
   const withMatric = items.filter((s: any) => s.matric_number).length;
+
+  const confirmSanction = async () => {
+    if (!sanction || !sanctionTermId) return;
+    setSanctioning(true);
+    try {
+      const { data } = await api.post(`/api/students/${sanction.id}/term-sanctions`, {
+        academic_term_id: sanctionTermId,
+        type: sanctionType,
+      });
+      if (data?.status === 'pending_approval') {
+        message.info('Sanction is waiting for office approval.');
+      } else {
+        message.success('Term sanction recorded.');
+      }
+      setSanction(null);
+      load();
+    } catch (err: any) {
+      message.error(err.response?.data?.message || 'Could not record sanction.');
+    } finally {
+      setSanctioning(false);
+    }
+  };
 
   const confirmConfer = async () => {
     if (!confer) return;
@@ -90,7 +128,7 @@ export function Students() {
         />
         <SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />
       </div>
-      <DataTable empty={!items.length} emptyMessage="No student records found." colSpan={canGraduate ? 7 : 6}>
+      <DataTable empty={!items.length} emptyMessage="No student records found." colSpan={canGraduate || canSanction ? 7 : 6}>
         <thead>
           <tr>
             <th className={thClass}>Name</th>
@@ -99,7 +137,7 @@ export function Students() {
             <th className={thClass}>Status</th>
             <th className={thClass}>Graduated</th>
             <th className={thClass}>Studentship ends</th>
-            {canGraduate && <th className={thClass}>Actions</th>}
+            {(canGraduate || canSanction) && <th className={thClass}>Actions</th>}
           </tr>
         </thead>
         {!items.length ? null : (
@@ -120,13 +158,20 @@ export function Students() {
                 </td>
                 <td className={tdClass}>{s.graduated_at || '—'}</td>
                 <td className={tdClass}>{s.studentship_expires_at || '—'}</td>
-                {canGraduate && (
+                {(canGraduate || canSanction) && (
                   <td className={tdClass}>
-                    {s.status === 'active' && (
-                      <Button type="link" size="small" className="!px-0" onClick={() => { setConfer({ id: s.id, name: `${s.first_name} ${s.last_name}` }); setConferDate(dayjs()); }}>
-                        Confer
-                      </Button>
-                    )}
+                    <div className="flex flex-wrap gap-2">
+                      {canGraduate && s.status === 'active' && (
+                        <Button type="link" size="small" className="!px-0" onClick={() => { setConfer({ id: s.id, name: `${s.first_name} ${s.last_name}` }); setConferDate(dayjs()); }}>
+                          Confer
+                        </Button>
+                      )}
+                      {canSanction && (
+                        <Button type="link" size="small" className="!px-0" onClick={() => setSanction({ id: s.id, name: `${s.first_name} ${s.last_name}` })}>
+                          Sanction
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 )}
               </tr>
@@ -144,6 +189,38 @@ export function Students() {
       >
         <p className="text-sm text-slate-600 mb-3">Late senate lists can confer a student who is not on the final-year candidate list.</p>
         <DatePicker className="w-full" value={conferDate} onChange={(value) => value && setConferDate(value)} />
+      </Modal>
+      <Modal
+        title={`Term sanction — ${sanction?.name || ''}`}
+        open={!!sanction}
+        onCancel={() => setSanction(null)}
+        onOk={confirmSanction}
+        confirmLoading={sanctioning}
+        okText="Record"
+      >
+        <p className="text-sm text-slate-600 mb-3">Applies to one semester result sheet (rustication, expulsion, suspension, or withdrawal).</p>
+        <div className="space-y-3">
+          <Select
+            className="w-full"
+            value={sanctionTermId}
+            options={sanctionTerms.map((term) => ({
+              value: term.id,
+              label: `${term.session_label || ''} ${term.name || ''}`.trim() || `Term ${term.id}`,
+            }))}
+            onChange={(value) => setSanctionTermId(value)}
+          />
+          <Select
+            className="w-full"
+            value={sanctionType}
+            options={[
+              { value: 'rusticated', label: 'Rusticated' },
+              { value: 'expelled', label: 'Expelled' },
+              { value: 'suspended', label: 'Suspended' },
+              { value: 'withdrawn', label: 'Withdrawn' },
+            ]}
+            onChange={(value) => setSanctionType(value)}
+          />
+        </div>
       </Modal>
     </div>
   );
@@ -182,11 +259,15 @@ export function WalletPage() {
   const load = () => api.get('/api/wallet').then((r) => setW(r.data)).catch(() => setW(null));
   useEffect(() => { load(); }, []);
   const fund = async () => {
-    const { data } = await api.post('/api/wallet/topup', { amount: Number(amount), portal: 'staff' });
-    if (data.demo) {
-      await api.get(`/api/payments/paystack/verify/${data.reference}`);
-      load();
-    } else if (data.authorization_url) window.location.href = data.authorization_url;
+    try {
+      const { data } = await api.post('/api/wallet/topup', { amount: Number(amount), portal: 'staff' });
+      const outcome = await startOnlineCheckout(data, {
+        verifyDemo: (reference) => api.get(paymentVerifyPath(reference)),
+      });
+      if (outcome === 'demo') load();
+    } catch (e: any) {
+      message.error(e.response?.data?.message || e.message || 'Could not start wallet funding.');
+    }
   };
   if (!w) return <p className="text-slate-500">Wallet opens after student creation.</p>;
   return (
@@ -195,7 +276,7 @@ export function WalletPage() {
       <div className="text-3xl font-semibold text-sky-600">{formatNaira(w.balance)}</div>
       <div className="flex flex-wrap gap-2">
         <input className={`${inputClass} max-w-[160px]`} value={amount} onChange={(e) => setAmount(e.target.value)} />
-        <Btn onClick={fund}>Fund with Paystack</Btn>
+        <Btn onClick={fund}>Fund wallet</Btn>
       </div>
       <Card title="Ledger">
         <DataTable empty={!w.transactions?.length} emptyMessage="No transactions yet." colSpan={3}>

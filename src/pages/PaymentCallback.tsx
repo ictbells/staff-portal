@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api';
+import { paymentVerifyPath } from '../lib/onlinePayment';
 
 const STUDENT_PORTAL = (import.meta.env.VITE_STUDENT_URL || 'http://localhost:5174/student').replace(/\/$/, '');
 
@@ -18,12 +19,13 @@ export default function PaymentCallback() {
     }
 
     const reference = params.get('reference') || params.get('trxref');
+    const transactionId = params.get('transactionId') || params.get('transaction_id');
     if (!reference) {
       setError('Payment reference was not returned.');
       return;
     }
 
-    api.get(`/api/payments/paystack/verify/${encodeURIComponent(reference)}`)
+    api.get(paymentVerifyPath(reference, transactionId))
       .then((res) => {
         const purpose = res.data?.purpose || res.data?.invoice?.category;
         nav(purpose === 'wallet_topup' ? '/finance/invoices' : '/finance/invoices', { replace: true });

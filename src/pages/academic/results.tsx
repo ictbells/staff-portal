@@ -214,6 +214,25 @@ function departmentOptions(departments: Department[], facultyId?: number) {
     .map((d) => ({ value: d.id, label: d.name }));
 }
 
+const EXAM_REMARK_OPTIONS = [
+  { value: 'abs_p', label: 'ABS_P — Absent with permission' },
+  { value: 'abs_np', label: 'ABS_NP — Absent without permission' },
+  { value: 'sick', label: 'SICK' },
+  { value: 'ar', label: 'AR — Awaiting result' },
+];
+
+const TERM_SANCTION_OPTIONS = [
+  { value: 'rusticated', label: 'Rusticated (RUS)' },
+  { value: 'expelled', label: 'Expelled (EXP)' },
+  { value: 'suspended', label: 'Suspended (SUS)' },
+  { value: 'withdrawn', label: 'Withdrawn (WD)' },
+];
+
+function examRemarkLabel(value?: string | null) {
+  if (!value) return '—';
+  return EXAM_REMARK_OPTIONS.find((option) => option.value === value)?.label.split(' — ')[0] || value.toUpperCase();
+}
+
 const letterColumn = {
   title: (
     <Tooltip title="Letter grade (A–F) from the total score and the university grading scale. Staff do not type this.">
@@ -233,6 +252,7 @@ const gradeQueueColumns: ColumnsType = [
   { title: 'Exam', dataIndex: 'exam_score', width: 70 },
   { title: 'Score', dataIndex: 'score', width: 70 },
   letterColumn,
+  { title: 'Remark', dataIndex: 'exam_remark', width: 80, render: (v: string | null) => examRemarkLabel(v) },
   { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{gradeStatusLabel(v)}</Tag> },
 ];
 
@@ -428,6 +448,9 @@ export function ResultsStudentDetailPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
   const [form] = Form.useForm();
+  const [sanctionType, setSanctionType] = useState<string | undefined>();
+  const examRemark = Form.useWatch('exam_remark', form);
+  const canSanction = has('students.manage') || has('academic.graduate');
 
   const load = useCallback(() => {
     if (!id) return;
@@ -447,12 +470,14 @@ export function ResultsStudentDetailPage() {
   const save = async () => {
     try {
       const values = await form.validateFields();
+      const remark = values.exam_remark || null;
       const body = {
         student_id: Number(id),
         course_offering_id: values.course_offering_id,
-        ca_score: values.ca_score,
-        exam_score: values.exam_score,
-        score: values.score,
+        ca_score: remark ? null : values.ca_score,
+        exam_score: remark ? null : values.exam_score,
+        score: remark ? null : values.score,
+        exam_remark: remark,
         sitting: values.sitting || 'main',
       };
       const res = editingId
@@ -495,6 +520,40 @@ export function ResultsStudentDetailPage() {
     }
   };
 
+  const applySanction = async () => {
+    if (!id || !termId || !sanctionType) {
+      message.warning('Choose a term and a sanction first.');
+      return;
+    }
+    try {
+      const res = await api.post(`/api/students/${id}/term-sanctions`, {
+        academic_term_id: termId,
+        type: sanctionType,
+      });
+      if (!isPendingApproval(res)) {
+        message.success('Sanction recorded for this term.');
+      }
+      setSanctionType(undefined);
+      load();
+    } catch (e: any) {
+      message.error(e.response?.data?.message || 'Could not record sanction');
+    }
+  };
+
+  const liftSanction = async () => {
+    const sanctionId = payload?.term_sanction?.id;
+    if (!id || !sanctionId) return;
+    try {
+      const res = await api.delete(`/api/students/${id}/term-sanctions/${sanctionId}`);
+      if (!isPendingApproval(res)) {
+        message.success('Sanction lifted.');
+      }
+      load();
+    } catch (e: any) {
+      message.error(e.response?.data?.message || 'Could not lift sanction');
+    }
+  };
+
   const grades = payload?.grades || [];
   const columns: ColumnsType = [
     { title: 'Course', render: (_, r) => gradeCourse(r).code || '—' },
@@ -503,6 +562,7 @@ export function ResultsStudentDetailPage() {
     { title: 'Exam', dataIndex: 'exam_score' },
     { title: 'Total', dataIndex: 'score' },
     letterColumn,
+    { title: 'Remark', dataIndex: 'exam_remark', render: (v: string | null) => examRemarkLabel(v) },
     {
       title: 'Status',
       render: (_, r) => (
@@ -528,6 +588,7 @@ export function ResultsStudentDetailPage() {
                     ca_score: r.ca_score,
                     exam_score: r.exam_score,
                     score: r.score,
+                    exam_remark: r.exam_remark || undefined,
                     sitting: r.sitting || 'main',
                   });
                 }}
@@ -571,9 +632,28 @@ export function ResultsStudentDetailPage() {
           />
           <Tag>GPA {payload?.gpa ?? '—'}</Tag>
           <Tag>CGPA {payload?.cgpa ?? payload?.transcript?.cgpa ?? '—'}</Tag>
+          {payload?.term_sanction ? (
+            <Tag color="red">{String(payload.term_sanction.type || '').toUpperCase()} this term</Tag>
+          ) : null}
           {payload?.transcript?.cgpa_note ? (
             <span className="text-xs text-slate-500 max-w-md">{payload.transcript.cgpa_note}</span>
           ) : null}
+          {canSanction && (
+            <>
+              <Select
+                allowClear
+                placeholder="Term sanction"
+                style={{ width: 180 }}
+                value={sanctionType}
+                options={TERM_SANCTION_OPTIONS}
+                onChange={(v) => setSanctionType(v)}
+              />
+              <Button onClick={applySanction} disabled={!termId || !sanctionType}>Record</Button>
+              {payload?.term_sanction?.id ? (
+                <Button danger onClick={liftSanction}>Lift</Button>
+              ) : null}
+            </>
+          )}
           <Link to="/academic/results/students"><Button>Back</Button></Link>
         </Space>
       )}
@@ -592,9 +672,17 @@ export function ResultsStudentDetailPage() {
               }))}
             />
           </Form.Item>
-          <Form.Item name="ca_score" label="CA"><InputNumber min={0} max={100} /></Form.Item>
-          <Form.Item name="exam_score" label="Exam"><InputNumber min={0} max={100} /></Form.Item>
-          <Form.Item name="score" label="Total"><InputNumber min={0} max={100} /></Form.Item>
+          <Form.Item name="ca_score" label="CA"><InputNumber min={0} max={100} disabled={!!examRemark} /></Form.Item>
+          <Form.Item name="exam_score" label="Exam"><InputNumber min={0} max={100} disabled={!!examRemark} /></Form.Item>
+          <Form.Item name="score" label="Total"><InputNumber min={0} max={100} disabled={!!examRemark} /></Form.Item>
+          <Form.Item name="exam_remark" label="Remark">
+            <Select
+              allowClear
+              placeholder="Scored"
+              style={{ width: 220 }}
+              options={EXAM_REMARK_OPTIONS}
+            />
+          </Form.Item>
           <Form.Item name="sitting" initialValue="main" label="Sitting">
             <Select options={[{ value: 'main', label: 'Main' }, { value: 'supplementary', label: 'Supplementary' }]} style={{ width: 140 }} />
           </Form.Item>
@@ -800,7 +888,7 @@ export function ResultsImportPage() {
           </Upload>
         </Form.Item>
         <Form.Item name="csv" label="CSV text" extra="Optional if you upload the template file.">
-          <Input.TextArea rows={8} placeholder={'matric,ca,exam,score\nBUT/2024/001,28,44,'} />
+          <Input.TextArea rows={8} placeholder={'matric,ca,exam,score,remark\nBUT/2024/001,28,44,\nBUT/2024/003,,,,ABS_P'} />
         </Form.Item>
         <Button type="primary" htmlType="submit" loading={uploading}>Import</Button>
       </Form>
@@ -925,6 +1013,7 @@ export function ResultsDepartmentUploadsPage() {
                   status: filters.status,
                   level: filters.level,
                   sitting: filters.sitting,
+                  step: 'department',
                 };
                 const term = terms.find((t) => t.id === filters.academic_term_id);
                 const filename = `department-results-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}-${filters.sitting === 'supplementary' ? 'supplementary' : 'main'}`;
@@ -1106,6 +1195,7 @@ export function ResultsCollegeUploadsPage() {
                   status: filters.status,
                   level: filters.level,
                   sitting: filters.sitting,
+                  step: 'college',
                 };
                 const term = terms.find((t) => t.id === filters.academic_term_id);
                 const filename = `college-results-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}-${filters.sitting === 'supplementary' ? 'supplementary' : 'main'}`;
@@ -1275,6 +1365,7 @@ export function ResultsApprovalsPage() {
                   status: filters.status,
                   level: filters.level,
                   sitting: filters.sitting,
+                  step: 'deans',
                 };
                 const term = terms.find((t) => t.id === filters.academic_term_id);
                 const filename = `deans-results-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}-${filters.sitting === 'supplementary' ? 'supplementary' : 'main'}`;

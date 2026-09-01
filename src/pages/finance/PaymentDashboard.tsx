@@ -218,7 +218,7 @@ export function PaymentDashboard() {
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         <StatCard label="Today" value={formatNaira(data?.today.collected)} hint={`${data?.today.payments ?? 0} fee payments`} icon={TrendingUp} tone="emerald" />
         <StatCard label="This month" value={formatNaira(data?.this_month.collected)} hint={`${data?.this_month.payments ?? 0} fee payments`} icon={TrendingUp} />
-        <StatCard label="Cash received" value={formatNaira(totals?.cash_received)} hint="Paystack, import, bank" icon={Landmark} />
+        <StatCard label="Cash received" value={formatNaira(totals?.cash_received)} hint="Paystack, Wema, import, bank" icon={Landmark} />
         <StatCard label="Wallet top-ups" value={formatNaira(totals?.wallet_inflows)} hint="Not counted as fee income" icon={Wallet} tone="amber" />
       </div>
 
@@ -228,7 +228,7 @@ export function PaymentDashboard() {
             rows={[
               ['Fee collections', totals?.collected],
               ['Wallet top-ups', totals?.wallet_inflows],
-              ['Cash received (Paystack / import / bank)', totals?.cash_received],
+              ['Cash received (Paystack / Wema / import / bank)', totals?.cash_received],
               ['Wallet applied to invoices', totals?.wallet_applied],
             ]}
             totalLabel="Total receipts"

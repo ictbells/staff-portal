@@ -1,5 +1,5 @@
 import { FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
-import { Button, InputNumber, Select, Switch, message } from 'antd';
+import { Button, InputNumber, Radio, Select, Switch, message } from 'antd';
 import type { LucideIcon } from 'lucide-react';
 import {
   Building2,
@@ -37,6 +37,14 @@ type ExamClearanceSettings = {
   clinic_bills_cleared: boolean;
 };
 
+type PaymentGatewayKey = 'paystack' | 'wema';
+
+type PaymentGatewayInfo = {
+  key: PaymentGatewayKey;
+  label: string;
+  configured: boolean;
+};
+
 type SecuritySettings = {
   two_factor_enabled: boolean;
   password_rotation_days: number;
@@ -57,6 +65,8 @@ type SecuritySettings = {
   pg_research_interest_max_words: number;
   pg_statement_of_purpose_min_words: number;
   pg_statement_of_purpose_max_words: number;
+  payment_gateway: PaymentGatewayKey;
+  payment_gateways: Record<PaymentGatewayKey, PaymentGatewayInfo>;
 };
 
 const DEFAULT_EXAM_CLEARANCE: ExamClearanceSettings = {
@@ -105,6 +115,11 @@ const EMPTY_SETTINGS: SecuritySettings = {
   pg_research_interest_max_words: 150,
   pg_statement_of_purpose_min_words: 0,
   pg_statement_of_purpose_max_words: 500,
+  payment_gateway: 'paystack',
+  payment_gateways: {
+    paystack: { key: 'paystack', label: 'Paystack', configured: false },
+    wema: { key: 'wema', label: 'Wema Bank', configured: false },
+  },
 };
 
 function normalizeSettings(data: Partial<SecuritySettings> = {}): SecuritySettings {
@@ -129,6 +144,17 @@ function normalizeSettings(data: Partial<SecuritySettings> = {}): SecuritySettin
     pg_research_interest_max_words: Number(data.pg_research_interest_max_words ?? EMPTY_SETTINGS.pg_research_interest_max_words),
     pg_statement_of_purpose_min_words: Number(data.pg_statement_of_purpose_min_words ?? EMPTY_SETTINGS.pg_statement_of_purpose_min_words),
     pg_statement_of_purpose_max_words: Number(data.pg_statement_of_purpose_max_words ?? EMPTY_SETTINGS.pg_statement_of_purpose_max_words),
+    payment_gateway: data.payment_gateway === 'wema' ? 'wema' : 'paystack',
+    payment_gateways: {
+      paystack: {
+        ...EMPTY_SETTINGS.payment_gateways.paystack,
+        ...(data.payment_gateways?.paystack || {}),
+      },
+      wema: {
+        ...EMPTY_SETTINGS.payment_gateways.wema,
+        ...(data.payment_gateways?.wema || {}),
+      },
+    },
   };
 }
 
@@ -306,7 +332,7 @@ export default function ApplicationSettings() {
       <WorkspaceHero
         eyebrow="System"
         title="Application settings"
-        description="Policies that apply across staff security, login contact cards, studentship, postgraduate essay length, and exam clearance."
+        description="Policies that apply across staff security, login contact cards, studentship, online payments, postgraduate essay length, and exam clearance."
         icon={Settings}
       >
         {saveButton('hero')}
@@ -546,13 +572,59 @@ export default function ApplicationSettings() {
       </Card>
 
       <Card
+        title="Online payments"
+        description="Only the selected gateway is used for new application, acceptance, transcript, and wallet payments. Keys stay in the server environment."
+      >
+        <Radio.Group
+          className="w-full"
+          value={settings.payment_gateway}
+          onChange={(e) => setSettings((s) => ({ ...s, payment_gateway: e.target.value as PaymentGatewayKey }))}
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            {(['paystack', 'wema'] as const).map((key) => {
+              const meta = settings.payment_gateways[key];
+              const selected = settings.payment_gateway === key;
+              const blocked = key === 'wema' && !meta.configured;
+              return (
+                <label
+                  key={key}
+                  className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3.5 transition ${
+                    selected ? 'border-sky-200 bg-sky-50/50' : 'border-slate-200 bg-white'
+                  } ${blocked ? 'cursor-not-allowed opacity-70' : ''}`}
+                >
+                  <Radio value={key} disabled={blocked} className="mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-slate-800">{meta.label}</span>
+                      <Badge variant={meta.configured ? 'success' : 'default'}>
+                        {meta.configured ? 'Configured' : 'Missing keys'}
+                      </Badge>
+                    </div>
+                    <p className="mt-0.5 text-sm text-slate-500">
+                      {key === 'paystack'
+                        ? 'Card and transfer checkout via Paystack.'
+                        : 'ALATPay checkout (Wema Bank). Add public key, secret key, and business ID in .env.'}
+                    </p>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        </Radio.Group>
+        <p className={`${fieldHelpClass} mt-3`}>
+          Active gateway: {settings.payment_gateways[settings.payment_gateway]?.label || 'Paystack'}.
+          Pending payments still confirm with the provider that started them.
+        </p>
+      </Card>
+
+      <Card
         title="Official transcript requests"
         description="Public school-website form on the student portal. Finance sets the fee under Fee items (category Official transcript). Registry processes paid requests."
       >
         <div className="space-y-3">
           <ToggleRow
             title="Accept public transcript requests"
-            description="When on, /transcript-request on the student portal accepts matric + email requests and Paystack payment."
+            description="When on, /transcript-request on the student portal accepts matric + email requests and online payment."
             checked={settings.transcript_requests_enabled}
             onChange={(checked) => setSettings((s) => ({ ...s, transcript_requests_enabled: checked }))}
           />
