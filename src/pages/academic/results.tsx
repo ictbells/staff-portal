@@ -214,13 +214,6 @@ function departmentOptions(departments: Department[], facultyId?: number) {
     .map((d) => ({ value: d.id, label: d.name }));
 }
 
-const EXAM_REMARK_OPTIONS = [
-  { value: 'abs_p', label: 'ABS_P — Absent with permission' },
-  { value: 'abs_np', label: 'ABS_NP — Absent without permission' },
-  { value: 'sick', label: 'SICK' },
-  { value: 'ar', label: 'AR — Awaiting result' },
-];
-
 const TERM_SANCTION_OPTIONS = [
   { value: 'rusticated', label: 'Rusticated (RUS)' },
   { value: 'expelled', label: 'Expelled (EXP)' },
@@ -228,9 +221,9 @@ const TERM_SANCTION_OPTIONS = [
   { value: 'withdrawn', label: 'Withdrawn (WD)' },
 ];
 
-function examRemarkLabel(value?: string | null) {
-  if (!value) return '—';
-  return EXAM_REMARK_OPTIONS.find((option) => option.value === value)?.label.split(' — ')[0] || value.toUpperCase();
+function termRemarkLabel(value?: string | null) {
+  if (!value) return '';
+  return String(value).replace(/-/g, '_').toUpperCase();
 }
 
 const letterColumn = {
@@ -252,7 +245,6 @@ const gradeQueueColumns: ColumnsType = [
   { title: 'Exam', dataIndex: 'exam_score', width: 70 },
   { title: 'Score', dataIndex: 'score', width: 70 },
   letterColumn,
-  { title: 'Remark', dataIndex: 'exam_remark', width: 80, render: (v: string | null) => examRemarkLabel(v) },
   { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{gradeStatusLabel(v)}</Tag> },
 ];
 
@@ -449,7 +441,6 @@ export function ResultsStudentDetailPage() {
   const [selected, setSelected] = useState<number[]>([]);
   const [form] = Form.useForm();
   const [sanctionType, setSanctionType] = useState<string | undefined>();
-  const examRemark = Form.useWatch('exam_remark', form);
   const canSanction = has('students.manage') || has('academic.graduate');
 
   const load = useCallback(() => {
@@ -470,14 +461,12 @@ export function ResultsStudentDetailPage() {
   const save = async () => {
     try {
       const values = await form.validateFields();
-      const remark = values.exam_remark || null;
       const body = {
         student_id: Number(id),
         course_offering_id: values.course_offering_id,
-        ca_score: remark ? null : values.ca_score,
-        exam_score: remark ? null : values.exam_score,
-        score: remark ? null : values.score,
-        exam_remark: remark,
+        ca_score: values.ca_score,
+        exam_score: values.exam_score,
+        score: values.score,
         sitting: values.sitting || 'main',
       };
       const res = editingId
@@ -562,7 +551,6 @@ export function ResultsStudentDetailPage() {
     { title: 'Exam', dataIndex: 'exam_score' },
     { title: 'Total', dataIndex: 'score' },
     letterColumn,
-    { title: 'Remark', dataIndex: 'exam_remark', render: (v: string | null) => examRemarkLabel(v) },
     {
       title: 'Status',
       render: (_, r) => (
@@ -588,7 +576,6 @@ export function ResultsStudentDetailPage() {
                     ca_score: r.ca_score,
                     exam_score: r.exam_score,
                     score: r.score,
-                    exam_remark: r.exam_remark || undefined,
                     sitting: r.sitting || 'main',
                   });
                 }}
@@ -632,6 +619,9 @@ export function ResultsStudentDetailPage() {
           />
           <Tag>GPA {payload?.gpa ?? '—'}</Tag>
           <Tag>CGPA {payload?.cgpa ?? payload?.transcript?.cgpa ?? '—'}</Tag>
+          {payload?.term_remark ? (
+            <Tag color="orange">{termRemarkLabel(payload.term_remark.type)} this term</Tag>
+          ) : null}
           {payload?.term_sanction ? (
             <Tag color="red">{String(payload.term_sanction.type || '').toUpperCase()} this term</Tag>
           ) : null}
@@ -672,17 +662,9 @@ export function ResultsStudentDetailPage() {
               }))}
             />
           </Form.Item>
-          <Form.Item name="ca_score" label="CA"><InputNumber min={0} max={100} disabled={!!examRemark} /></Form.Item>
-          <Form.Item name="exam_score" label="Exam"><InputNumber min={0} max={100} disabled={!!examRemark} /></Form.Item>
-          <Form.Item name="score" label="Total"><InputNumber min={0} max={100} disabled={!!examRemark} /></Form.Item>
-          <Form.Item name="exam_remark" label="Remark">
-            <Select
-              allowClear
-              placeholder="Scored"
-              style={{ width: 220 }}
-              options={EXAM_REMARK_OPTIONS}
-            />
-          </Form.Item>
+          <Form.Item name="ca_score" label="CA"><InputNumber min={0} max={100} /></Form.Item>
+          <Form.Item name="exam_score" label="Exam"><InputNumber min={0} max={100} /></Form.Item>
+          <Form.Item name="score" label="Total"><InputNumber min={0} max={100} /></Form.Item>
           <Form.Item name="sitting" initialValue="main" label="Sitting">
             <Select options={[{ value: 'main', label: 'Main' }, { value: 'supplementary', label: 'Supplementary' }]} style={{ width: 140 }} />
           </Form.Item>
@@ -888,7 +870,7 @@ export function ResultsImportPage() {
           </Upload>
         </Form.Item>
         <Form.Item name="csv" label="CSV text" extra="Optional if you upload the template file.">
-          <Input.TextArea rows={8} placeholder={'matric,ca,exam,score,remark\nBUT/2024/001,28,44,\nBUT/2024/003,,,,ABS_P'} />
+          <Input.TextArea rows={8} placeholder={'matric,ca,exam,score\nBUT/2024/001,28,44,\nBUT/2024/002,,,72'} />
         </Form.Item>
         <Button type="primary" htmlType="submit" loading={uploading}>Import</Button>
       </Form>

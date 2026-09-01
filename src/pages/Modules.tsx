@@ -38,6 +38,10 @@ export function Students() {
   const [sanctionTermId, setSanctionTermId] = useState<number | undefined>();
   const [sanctionTerms, setSanctionTerms] = useState<Array<{ id: number; name?: string; session_label?: string; is_current?: boolean }>>([]);
   const [sanctioning, setSanctioning] = useState(false);
+  const [remark, setRemark] = useState<{ id: number; name: string } | null>(null);
+  const [remarkType, setRemarkType] = useState<string>('abs_p');
+  const [remarkTermId, setRemarkTermId] = useState<number | undefined>();
+  const [remarking, setRemarking] = useState(false);
   const load = () => {
     setLoading(true);
     api.get('/api/students', { params: { status: statusFilter, academic_session_id: sessionId, level } }).then((r) => setRows(r.data)).finally(() => setLoading(false));
@@ -49,12 +53,37 @@ export function Students() {
       const terms = r.data?.terms || [];
       setSanctionTerms(terms);
       const current = terms.find((t: any) => t.is_current) || terms[0];
-      if (current) setSanctionTermId(current.id);
+      if (current) {
+        setSanctionTermId(current.id);
+        setRemarkTermId(current.id);
+      }
     }).catch(() => {});
   }, [canSanction]);
   const list = rows?.data || (rows?.id ? [rows] : rows) || [];
   const items = Array.isArray(list) ? list : [];
   const withMatric = items.filter((s: any) => s.matric_number).length;
+
+  const confirmRemark = async () => {
+    if (!remark || !remarkTermId) return;
+    setRemarking(true);
+    try {
+      const { data } = await api.post(`/api/students/${remark.id}/term-remarks`, {
+        academic_term_id: remarkTermId,
+        type: remarkType,
+      });
+      if (data?.status === 'pending_approval') {
+        message.info('Remark is waiting for office approval.');
+      } else {
+        message.success('Term remark recorded.');
+      }
+      setRemark(null);
+      load();
+    } catch (err: any) {
+      message.error(err.response?.data?.message || 'Could not record remark.');
+    } finally {
+      setRemarking(false);
+    }
+  };
 
   const confirmSanction = async () => {
     if (!sanction || !sanctionTermId) return;
@@ -167,9 +196,14 @@ export function Students() {
                         </Button>
                       )}
                       {canSanction && (
-                        <Button type="link" size="small" className="!px-0" onClick={() => setSanction({ id: s.id, name: `${s.first_name} ${s.last_name}` })}>
-                          Sanction
-                        </Button>
+                        <>
+                          <Button type="link" size="small" className="!px-0" onClick={() => setRemark({ id: s.id, name: `${s.first_name} ${s.last_name}` })}>
+                            Remark
+                          </Button>
+                          <Button type="link" size="small" className="!px-0" onClick={() => setSanction({ id: s.id, name: `${s.first_name} ${s.last_name}` })}>
+                            Sanction
+                          </Button>
+                        </>
                       )}
                     </div>
                   </td>
@@ -189,6 +223,37 @@ export function Students() {
       >
         <p className="text-sm text-slate-600 mb-3">Late senate lists can confer a student who is not on the final-year candidate list.</p>
         <DatePicker className="w-full" value={conferDate} onChange={(value) => value && setConferDate(value)} />
+      </Modal>
+      <Modal
+        title={`Term remark — ${remark?.name || ''}`}
+        open={!!remark}
+        onCancel={() => setRemark(null)}
+        onOk={confirmRemark}
+        confirmLoading={remarking}
+        okText="Record"
+      >
+        <p className="text-sm text-slate-600 mb-3">Admin-level semester remark for the result sheet (absence with or without permission, or sick). Registered courses with no score are marked AR automatically.</p>
+        <div className="space-y-3">
+          <Select
+            className="w-full"
+            value={remarkTermId}
+            options={sanctionTerms.map((term) => ({
+              value: term.id,
+              label: `${term.session_label || ''} ${term.name || ''}`.trim() || `Term ${term.id}`,
+            }))}
+            onChange={(value) => setRemarkTermId(value)}
+          />
+          <Select
+            className="w-full"
+            value={remarkType}
+            options={[
+              { value: 'abs_p', label: 'ABS_P — Absent with permission' },
+              { value: 'abs_np', label: 'ABS_NP — Absent without permission' },
+              { value: 'sick', label: 'SICK' },
+            ]}
+            onChange={(value) => setRemarkType(value)}
+          />
+        </div>
       </Modal>
       <Modal
         title={`Term sanction — ${sanction?.name || ''}`}

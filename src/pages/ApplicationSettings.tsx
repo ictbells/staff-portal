@@ -8,6 +8,7 @@ import {
   FileText,
   GraduationCap,
   Mail,
+  PenLine,
   Phone,
   Save,
   Settings,
@@ -61,6 +62,8 @@ type SecuritySettings = {
   transcript_delivery_generated_pdf: boolean;
   transcript_delivery_uploaded_pdf: boolean;
   transcript_collect_instructions: string;
+  registrar_name: string;
+  registrar_title: string;
   pg_research_interest_min_words: number;
   pg_research_interest_max_words: number;
   pg_statement_of_purpose_min_words: number;
@@ -111,6 +114,8 @@ const EMPTY_SETTINGS: SecuritySettings = {
   transcript_delivery_uploaded_pdf: true,
   transcript_collect_instructions:
     'Please collect your official transcript from the Registry during office hours. Bring a valid ID and your request reference.',
+  registrar_name: '',
+  registrar_title: 'Registrar',
   pg_research_interest_min_words: 0,
   pg_research_interest_max_words: 150,
   pg_statement_of_purpose_min_words: 0,
@@ -140,6 +145,8 @@ function normalizeSettings(data: Partial<SecuritySettings> = {}): SecuritySettin
     transcript_collect_instructions:
       data.transcript_collect_instructions
       || EMPTY_SETTINGS.transcript_collect_instructions,
+    registrar_name: data.registrar_name || '',
+    registrar_title: data.registrar_title || EMPTY_SETTINGS.registrar_title,
     pg_research_interest_min_words: Number(data.pg_research_interest_min_words ?? EMPTY_SETTINGS.pg_research_interest_min_words),
     pg_research_interest_max_words: Number(data.pg_research_interest_max_words ?? EMPTY_SETTINGS.pg_research_interest_max_words),
     pg_statement_of_purpose_min_words: Number(data.pg_statement_of_purpose_min_words ?? EMPTY_SETTINGS.pg_statement_of_purpose_min_words),
@@ -624,7 +631,7 @@ export default function ApplicationSettings() {
         <div className="space-y-3">
           <ToggleRow
             title="Accept public transcript requests"
-            description="When on, /transcript-request on the student portal accepts matric + email requests and online payment."
+            description="When on, /transcript-request on the student portal accepts NIN requests and online payment."
             checked={settings.transcript_requests_enabled}
             onChange={(checked) => setSettings((s) => ({ ...s, transcript_requests_enabled: checked }))}
           />
@@ -646,6 +653,26 @@ export default function ApplicationSettings() {
             checked={settings.transcript_delivery_uploaded_pdf}
             onChange={(checked) => setSettings((s) => ({ ...s, transcript_delivery_uploaded_pdf: checked }))}
           />
+          <Field
+            label="Registrar name"
+            icon={PenLine}
+            hint="Printed on system-generated official transcripts. Leave blank to use the officer who marks the request ready."
+          >
+            <input
+              className={`${inputClass} pl-10`}
+              value={settings.registrar_name}
+              onChange={(e) => setSettings((s) => ({ ...s, registrar_name: e.target.value }))}
+              placeholder="Lamidi S. Tafa (Mr.)"
+            />
+          </Field>
+          <Field label="Signatory title" hint="Appears under the registrar name on the transcript.">
+            <input
+              className={inputClass}
+              value={settings.registrar_title}
+              onChange={(e) => setSettings((s) => ({ ...s, registrar_title: e.target.value }))}
+              placeholder="Registrar"
+            />
+          </Field>
           <Field label="Collection instructions" hint="Included in ready emails when delivery is collect at Registry.">
             <textarea
               className={`${inputClass} min-h-[96px]`}
