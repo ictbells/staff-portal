@@ -221,6 +221,12 @@ const TERM_SANCTION_OPTIONS = [
   { value: 'withdrawn', label: 'Withdrawn (WD)' },
 ];
 
+const TERM_REMARK_OPTIONS = [
+  { value: 'abs_p', label: 'ABS_P — Absent with permission' },
+  { value: 'abs_np', label: 'ABS_NP — Absent without permission' },
+  { value: 'sick', label: 'SICK' },
+];
+
 function termRemarkLabel(value?: string | null) {
   if (!value) return '';
   return String(value).replace(/-/g, '_').toUpperCase();
@@ -441,7 +447,9 @@ export function ResultsStudentDetailPage() {
   const [selected, setSelected] = useState<number[]>([]);
   const [form] = Form.useForm();
   const [sanctionType, setSanctionType] = useState<string | undefined>();
+  const [remarkType, setRemarkType] = useState<string | undefined>();
   const canSanction = has('students.manage') || has('academic.graduate');
+  const canRemark = has('results.write') || has('students.manage') || has('academic.graduate');
 
   const load = useCallback(() => {
     if (!id) return;
@@ -452,6 +460,11 @@ export function ResultsStudentDetailPage() {
       .finally(() => setLoading(false));
   }, [id, termId]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (termId || !terms.length) return;
+    const current = terms.find((t) => t.is_current) || terms[0];
+    if (current) setTermId(current.id);
+  }, [terms, termId]);
   useEffect(() => {
     api.get('/api/academic/results/offerings', { params: { academic_term_id: termId } })
       .then((r) => setOfferings(Array.isArray(r.data) ? r.data : r.data?.data || []))
@@ -543,6 +556,40 @@ export function ResultsStudentDetailPage() {
     }
   };
 
+  const applyRemark = async () => {
+    if (!id || !termId || !remarkType) {
+      message.warning('Choose a term and a remark first.');
+      return;
+    }
+    try {
+      const res = await api.post(`/api/students/${id}/term-remarks`, {
+        academic_term_id: termId,
+        type: remarkType,
+      });
+      if (!isPendingApproval(res)) {
+        message.success('Sitting remark recorded.');
+      }
+      setRemarkType(undefined);
+      load();
+    } catch (e: any) {
+      message.error(e.response?.data?.message || 'Could not record remark');
+    }
+  };
+
+  const liftRemark = async () => {
+    const remarkId = payload?.term_remark?.id;
+    if (!id || !remarkId) return;
+    try {
+      const res = await api.delete(`/api/students/${id}/term-remarks/${remarkId}`);
+      if (!isPendingApproval(res)) {
+        message.success('Remark lifted.');
+      }
+      load();
+    } catch (e: any) {
+      message.error(e.response?.data?.message || 'Could not lift remark');
+    }
+  };
+
   const grades = payload?.grades || [];
   const columns: ColumnsType = [
     { title: 'Course', render: (_, r) => gradeCourse(r).code || '—' },
@@ -604,7 +651,7 @@ export function ResultsStudentDetailPage() {
   return (
     <ResourceShell
       title={payload?.student ? `${payload.student.matric_number} · ${payload.student.first_name} ${payload.student.last_name}` : 'Student results'}
-      description="Enter CA/exam scores by course offering. Drafts can be saved before the student registers; held rows cannot be submitted until registration."
+      description="Enter CA/exam scores by course. Registered papers with no score are AR. Record ABS_P, ABS_NP, or SICK here for this semester — that is a department sitting remark, not a Students-list task."
       loading={loading}
       onRefresh={load}
       extra={(
@@ -628,6 +675,22 @@ export function ResultsStudentDetailPage() {
           {payload?.transcript?.cgpa_note ? (
             <span className="text-xs text-slate-500 max-w-md">{payload.transcript.cgpa_note}</span>
           ) : null}
+          {canRemark && (
+            <>
+              <Select
+                allowClear
+                placeholder="Sitting remark"
+                style={{ width: 220 }}
+                value={remarkType}
+                options={TERM_REMARK_OPTIONS}
+                onChange={(v) => setRemarkType(v)}
+              />
+              <Button onClick={applyRemark} disabled={!termId || !remarkType}>Record remark</Button>
+              {payload?.term_remark?.id ? (
+                <Button danger onClick={liftRemark}>Lift remark</Button>
+              ) : null}
+            </>
+          )}
           {canSanction && (
             <>
               <Select
