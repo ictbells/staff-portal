@@ -192,10 +192,11 @@ export function ImportApplicantsPage() {
         <h2 className="text-sm font-semibold text-slate-800">Upload spreadsheet</h2>
         <p className="text-sm text-slate-600">
           Download the template for the selected category, fill one row per applicant on the Applicants sheet, then upload.
-          Copy ids from this workbook’s lookup sheets for programme, state, LGA, and O-level subjects. Do not paste names from the old portal — spellings will not match. Country is Nigeria or Non-Nigeria. Do not enter college or department on the Applicants sheet — those sheets are reference only. Maximum two O-level sittings (sitting 2 optional). UTME subject scores must add up to the aggregate.
+          Copy ids from this workbook’s lookup sheets for programme (optional), state, LGA, and O-level subjects. Do not paste names from the old portal — spellings will not match. Country is Nigeria or Non-Nigeria. Do not enter college or department on the Applicants sheet — those sheets are reference only. Maximum two O-level sittings (sitting 2 optional). UTME subject scores must add up to the aggregate.
           Documents cannot travel in Excel; import never submits the application. Applicants must upload required documents and submit after they sign in.
           Leave password blank to generate a new password and email it.
-          Required columns: email, phone, first_name, last_name, first_choice_programme_id, plus jamb_registration for UTME and Direct Entry.
+          Required columns: email, first_name, last_name, plus jamb_registration for UTME and Direct Entry.
+          phone and first_choice_programme_id are optional — leave them blank if the applicant will enter them after sign-in (phone from NIN, programme on the form). If you fill them, they must be a valid phone and a Programmes lookup id.
           NIN is optional — leave it blank for legacy records. Applicants verify NIN themselves after they sign in. If a NIN is present it must be 11 digits.
           If application fee was already paid, import those invoices first (category application_fee, application_number or JAMB); this step posts them and marks the fee paid. If none match, an unpaid fee is generated when a catalog or session amount exists. Import still succeeds without a fee — the student portal will ask the applicant to pay.
         </p>

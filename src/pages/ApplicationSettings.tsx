@@ -44,6 +44,7 @@ type PaymentGatewayInfo = {
   key: PaymentGatewayKey;
   label: string;
   configured: boolean;
+  missing?: string[];
 };
 
 type SecuritySettings = {
@@ -122,8 +123,8 @@ const EMPTY_SETTINGS: SecuritySettings = {
   pg_statement_of_purpose_max_words: 500,
   payment_gateway: 'paystack',
   payment_gateways: {
-    paystack: { key: 'paystack', label: 'Paystack', configured: false },
-    wema: { key: 'wema', label: 'Wema Bank', configured: false },
+    paystack: { key: 'paystack', label: 'Paystack', configured: false, missing: [] },
+    wema: { key: 'wema', label: 'Wema Bank', configured: false, missing: [] },
   },
 };
 
@@ -156,10 +157,12 @@ function normalizeSettings(data: Partial<SecuritySettings> = {}): SecuritySettin
       paystack: {
         ...EMPTY_SETTINGS.payment_gateways.paystack,
         ...(data.payment_gateways?.paystack || {}),
+        missing: data.payment_gateways?.paystack?.missing || [],
       },
       wema: {
         ...EMPTY_SETTINGS.payment_gateways.wema,
         ...(data.payment_gateways?.wema || {}),
+        missing: data.payment_gateways?.wema?.missing || [],
       },
     },
   };
@@ -610,8 +613,13 @@ export default function ApplicationSettings() {
                     <p className="mt-0.5 text-sm text-slate-500">
                       {key === 'paystack'
                         ? 'Card and transfer checkout via Paystack.'
-                        : 'ALATPay checkout (Wema Bank). Add public key, secret key, and business ID in .env.'}
+                        : 'ALATPay checkout (Wema Bank). The popup needs public key, secret key, and business ID from the ALATPay dashboard (Settings → Business).'}
                     </p>
+                    {!meta.configured && (meta.missing?.length ?? 0) > 0 ? (
+                      <p className="mt-1.5 font-mono text-xs text-amber-800 break-all">
+                        Missing: {meta.missing!.join(', ')}
+                      </p>
+                    ) : null}
                   </div>
                 </label>
               );
