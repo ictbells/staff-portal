@@ -254,6 +254,7 @@ export function stageBadge(stage: string): BadgeVariant {
     rejected: 'danger',
     paid: 'success',
     pending: 'warning',
+    abandoned: 'default',
     partial: 'warning',
     overdue: 'danger',
   };

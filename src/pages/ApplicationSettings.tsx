@@ -38,7 +38,7 @@ type ExamClearanceSettings = {
   clinic_bills_cleared: boolean;
 };
 
-type PaymentGatewayKey = 'paystack' | 'wema';
+type PaymentGatewayKey = 'paystack' | 'wema' | 'paygate';
 
 type PaymentGatewayInfo = {
   key: PaymentGatewayKey;
@@ -125,6 +125,7 @@ const EMPTY_SETTINGS: SecuritySettings = {
   payment_gateways: {
     paystack: { key: 'paystack', label: 'Paystack', configured: false, missing: [] },
     wema: { key: 'wema', label: 'Wema Bank', configured: false, missing: [] },
+    paygate: { key: 'paygate', label: 'PayGate (Upperlink)', configured: false, missing: [] },
   },
 };
 
@@ -152,7 +153,9 @@ function normalizeSettings(data: Partial<SecuritySettings> = {}): SecuritySettin
     pg_research_interest_max_words: Number(data.pg_research_interest_max_words ?? EMPTY_SETTINGS.pg_research_interest_max_words),
     pg_statement_of_purpose_min_words: Number(data.pg_statement_of_purpose_min_words ?? EMPTY_SETTINGS.pg_statement_of_purpose_min_words),
     pg_statement_of_purpose_max_words: Number(data.pg_statement_of_purpose_max_words ?? EMPTY_SETTINGS.pg_statement_of_purpose_max_words),
-    payment_gateway: data.payment_gateway === 'wema' ? 'wema' : 'paystack',
+    payment_gateway: data.payment_gateway === 'wema' || data.payment_gateway === 'paygate'
+      ? data.payment_gateway
+      : 'paystack',
     payment_gateways: {
       paystack: {
         ...EMPTY_SETTINGS.payment_gateways.paystack,
@@ -163,6 +166,11 @@ function normalizeSettings(data: Partial<SecuritySettings> = {}): SecuritySettin
         ...EMPTY_SETTINGS.payment_gateways.wema,
         ...(data.payment_gateways?.wema || {}),
         missing: data.payment_gateways?.wema?.missing || [],
+      },
+      paygate: {
+        ...EMPTY_SETTINGS.payment_gateways.paygate,
+        ...(data.payment_gateways?.paygate || {}),
+        missing: data.payment_gateways?.paygate?.missing || [],
       },
     },
   };
@@ -590,11 +598,11 @@ export default function ApplicationSettings() {
           value={settings.payment_gateway}
           onChange={(e) => setSettings((s) => ({ ...s, payment_gateway: e.target.value as PaymentGatewayKey }))}
         >
-          <div className="grid gap-3 sm:grid-cols-2">
-            {(['paystack', 'wema'] as const).map((key) => {
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {(['paystack', 'wema', 'paygate'] as const).map((key) => {
               const meta = settings.payment_gateways[key];
               const selected = settings.payment_gateway === key;
-              const blocked = key === 'wema' && !meta.configured;
+              const blocked = (key === 'wema' || key === 'paygate') && !meta.configured;
               return (
                 <label
                   key={key}
@@ -613,7 +621,9 @@ export default function ApplicationSettings() {
                     <p className="mt-0.5 text-sm text-slate-500">
                       {key === 'paystack'
                         ? 'Card and transfer checkout via Paystack.'
-                        : 'ALATPay checkout (Wema Bank). The popup needs public key, secret key, and business ID from the ALATPay dashboard (Settings → Business).'}
+                        : key === 'wema'
+                          ? 'ALATPay checkout (Wema Bank). The popup needs public key, secret key, and business ID from the ALATPay dashboard (Settings → Business).'
+                          : 'Upperlink PayGate hosted checkout. Needs merchant ID, API username/password, and secret key from paygate.upperlink.ng.'}
                     </p>
                     {!meta.configured && (meta.missing?.length ?? 0) > 0 ? (
                       <p className="mt-1.5 font-mono text-xs text-amber-800 break-all">
