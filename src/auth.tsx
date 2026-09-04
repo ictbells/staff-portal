@@ -13,6 +13,8 @@ export type SecurityPolicy = {
   password_change_required: boolean;
   password_expires_at: string | null;
   inactivity_logout_minutes: number;
+  session_max_hours?: number;
+  session_expires_at?: string | null;
 };
 
 export type AuthState = {

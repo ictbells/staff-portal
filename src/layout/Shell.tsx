@@ -16,6 +16,7 @@ import {
 } from './navConfig';
 import PasswordChangeGate from '../components/PasswordChangeGate';
 import { useInactivityLogout } from '../hooks/useInactivityLogout';
+import { useSessionMaxLogout } from '../hooks/useSessionMaxLogout';
 
 function initials(name?: string) {
   if (!name) return '?';
@@ -118,7 +119,7 @@ export default function Shell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
 
-  const logout = useCallback(async () => {
+  const logout = useCallback(async (reason?: 'timeout' | 'expired') => {
     try {
       await api.post('/api/logout');
     } catch {
@@ -126,10 +127,16 @@ export default function Shell() {
     }
     sessionStorage.removeItem('bells_token');
     setAuth(null);
-    nav('/login');
+    const query = reason === 'timeout' ? '?timeout=1' : reason === 'expired' ? '?expired=1' : '';
+    nav(`/login${query}`);
   }, [nav, setAuth]);
 
-  useInactivityLogout(logout);
+  useInactivityLogout(() => {
+    void logout('timeout');
+  });
+  useSessionMaxLogout(() => {
+    void logout('expired');
+  });
 
   const roleLabel = auth?.roles?.map((r) => r.name).join(', ') || 'Staff';
 

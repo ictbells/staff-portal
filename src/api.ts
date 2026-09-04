@@ -62,7 +62,8 @@ api.interceptors.response.use(
     const code = err.response?.data?.code;
     if (err.response?.status === 401 && !window.location.pathname.includes('/login') && !window.location.pathname.includes('/payments/callback')) {
       sessionStorage.removeItem('bells_token');
-      const message = code === 'session_timeout' ? '?timeout=1' : '';
+      const message =
+        code === 'session_timeout' ? '?timeout=1' : code === 'session_expired' ? '?expired=1' : '';
       window.location.href = `/login${message}`;
     }
     return Promise.reject(err);

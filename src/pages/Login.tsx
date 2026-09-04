@@ -18,6 +18,7 @@ export default function Login() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
   const timeoutNotice = searchParams.get('timeout') === '1';
+  const expiredNotice = searchParams.get('expired') === '1';
 
   const finishLogin = (data: any) => {
     if (data.token) sessionStorage.setItem('bells_token', data.token);
@@ -58,6 +59,11 @@ export default function Login() {
           {timeoutNotice && (
             <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
               You were signed out due to inactivity.
+            </p>
+          )}
+          {expiredNotice && (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+              Your session ended after 8 hours. Please sign in again.
             </p>
           )}
         {error && (
