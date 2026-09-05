@@ -9,8 +9,32 @@ import {
 } from '../../components/ui';
 import { formatNaira } from '../../lib/money';
 import { SessionLevelFilters } from '../../components/SessionLevelFilters';
+import { ENTRY_MODES, studyLevelLabel } from '../academic/constants';
 
 const FALLBACK_LEVEL_CODES = ['100', '200', '300', '400', '500', 'Y1', 'Y2'];
+
+const ENTRY_MODE_SHORT: Record<string, string> = {
+  utme: 'UTME',
+  de: 'DE',
+  jupeb: 'JUPEB',
+  transfer: 'Transfer',
+  pg: 'PG',
+};
+
+function entryModeLabel(mode: string) {
+  const key = mode.trim().toLowerCase();
+  return ENTRY_MODE_SHORT[key]
+    || ENTRY_MODES.find((item) => item.value === key)?.label
+    || mode.toUpperCase();
+}
+
+function entryModeBadgeVariant(mode: string): 'info' | 'warning' | 'purple' | 'success' | 'default' {
+  const key = mode.trim().toLowerCase();
+  if (key === 'jupeb') return 'warning';
+  if (key === 'pg') return 'purple';
+  if (key === 'de' || key === 'transfer') return 'success';
+  return 'info';
+}
 
 const SEMESTER_OPTIONS = [
   { value: 'both', label: 'Both' },
@@ -167,6 +191,7 @@ type ProgrammeSummary = {
   name: string;
   code?: string | null;
   study_level?: string | null;
+  entry_modes?: string[] | null;
   is_active?: boolean;
   department?: { id: number; name: string } | null;
   faculty?: { id: number; name: string } | null;
@@ -598,9 +623,25 @@ export function ProgrammeFees() {
                   <td className={tdClass}>{row.faculty?.name || '—'}</td>
                   <td className={tdClass}>{row.department?.name || '—'}</td>
                   <td className={tdClass}>
-                    <Badge variant={row.study_level === 'postgraduate' ? 'purple' : row.study_level === 'jupeb' ? 'warning' : 'info'}>
-                      {row.study_level === 'jupeb' ? 'JUPEB' : row.study_level || '—'}
-                    </Badge>
+                    {(() => {
+                      const modes = (row.entry_modes || []).map((mode) => String(mode).trim().toLowerCase()).filter(Boolean);
+                      if (modes.length) {
+                        return (
+                          <div className="flex flex-wrap gap-1">
+                            {modes.map((mode) => (
+                              <Badge key={mode} variant={entryModeBadgeVariant(mode)}>
+                                {entryModeLabel(mode)}
+                              </Badge>
+                            ))}
+                          </div>
+                        );
+                      }
+                      return (
+                        <Badge variant={row.study_level === 'postgraduate' ? 'purple' : row.study_level === 'jupeb' ? 'warning' : 'info'}>
+                          {studyLevelLabel(row.study_level)}
+                        </Badge>
+                      );
+                    })()}
                   </td>
                   <td className={tdClass}>
                     {row.line_count > 0 ? (
