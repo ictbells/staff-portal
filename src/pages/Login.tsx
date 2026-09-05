@@ -19,6 +19,7 @@ export default function Login() {
   const [searchParams] = useSearchParams();
   const timeoutNotice = searchParams.get('timeout') === '1';
   const expiredNotice = searchParams.get('expired') === '1';
+  const resetNotice = searchParams.get('reset') === '1';
 
   const finishLogin = (data: any) => {
     if (data.token) sessionStorage.setItem('bells_token', data.token);
@@ -64,6 +65,11 @@ export default function Login() {
           {expiredNotice && (
             <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
               Your session ended after 8 hours. Please sign in again.
+            </p>
+          )}
+          {resetNotice && (
+            <p className="text-sm text-green-800 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
+              Password updated. Sign in with your new password.
             </p>
           )}
         {error && (

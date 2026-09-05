@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { Lock } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import AuthLayout, { AuthLink } from '../layout/AuthLayout';
 import { Spinner } from '../components/ui';
@@ -37,7 +37,9 @@ export default function Reset() {
   const [password, setPassword] = useState('');
   const [password_confirmation, setConfirm] = useState('');
   const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const nav = useNavigate();
   const ok = useMemo(
     () => checks.every((c) => c.test(password)) && password === password_confirmation,
     [password, password_confirmation],
@@ -45,20 +47,51 @@ export default function Reset() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    setError('');
+    setMsg('');
     setLoading(true);
     try {
       const { data } = await api.post('/api/reset-password', { email, token, password, password_confirmation });
-      setMsg(data.message);
+      const success = data?.message || 'Password has been reset. You may sign in.';
+      setMsg(success);
+      window.setTimeout(() => nav('/login?reset=1'), 1200);
+    } catch (err: any) {
+      setError(
+        err.response?.data?.message
+        || err.response?.data?.errors?.email?.[0]
+        || err.response?.data?.errors?.password?.[0]
+        || 'Could not reset password. Request a new link and try again.',
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  if (!token || !email) {
+    return (
+      <AuthLayout title="Invalid link" subtitle="This reset link is missing required details.">
+        <p className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+          Request a new password reset link.
+        </p>
+        <AuthLink to="/forgot-password" className="block mt-4">
+          Forgot password
+        </AuthLink>
+      </AuthLayout>
+    );
+  }
+
   return (
     <AuthLayout title="Set a new password" subtitle="Choose a strong password for your staff account.">
       <form onSubmit={submit} className="space-y-4">
         {msg && (
-          <p className="text-sm text-green-800 bg-green-50 border border-green-100 rounded-lg px-3 py-2">{msg}</p>
+          <p className="text-sm text-green-800 bg-green-50 border border-green-100 rounded-lg px-3 py-2" role="status">
+            {msg} Redirecting to sign in…
+          </p>
+        )}
+        {error && (
+          <p className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2" role="alert">
+            {error}
+          </p>
         )}
         <label className="block text-sm font-medium text-slate-700">
           New password
@@ -70,6 +103,8 @@ export default function Reset() {
               placeholder="New password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+              disabled={loading || Boolean(msg)}
             />
           </div>
         </label>
@@ -83,16 +118,18 @@ export default function Reset() {
               placeholder="Confirm password"
               value={password_confirmation}
               onChange={(e) => setConfirm(e.target.value)}
+              autoComplete="new-password"
+              disabled={loading || Boolean(msg)}
             />
           </div>
         </label>
         <PasswordHints password={password} email={email} />
         <button
           type="submit"
-          disabled={!ok || loading}
+          disabled={!ok || loading || Boolean(msg)}
           className="w-full bg-sky-600 hover:bg-sky-700 disabled:opacity-50 disabled:hover:bg-sky-600 text-white rounded-lg py-2.5 font-medium transition-colors"
         >
-          {loading ? <Spinner label="Saving…" /> : 'Reset password'}
+          {loading ? <Spinner label="Saving…" /> : msg ? 'Password saved' : 'Reset password'}
         </button>
       </form>
       <AuthLink to="/login" className="block mt-4">
