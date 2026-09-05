@@ -196,7 +196,9 @@ export default function Shell() {
       icon: <LogOut className="h-4 w-4" aria-hidden />,
       label: 'Sign out',
       danger: true,
-      onClick: logout,
+      onClick: () => {
+        void logout();
+      },
     },
   ], [auth?.user?.email, auth?.user?.name, auth?.user?.phone, logout, roleLabel]);
 
