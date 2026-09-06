@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import api from '../api';
 
 type ReceiptTarget = {
@@ -31,6 +31,17 @@ export function ReceiptPreview({
   loading: boolean;
   onClose: () => void;
 }) {
+  const receiptUrl = useMemo(() => {
+    if (!html) return null;
+    return URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+  }, [html]);
+
+  useEffect(() => {
+    return () => {
+      if (receiptUrl) URL.revokeObjectURL(receiptUrl);
+    };
+  }, [receiptUrl]);
+
   useEffect(() => {
     if (!html && !loading) return;
     const onKey = (e: KeyboardEvent) => {
@@ -73,7 +84,7 @@ export function ReceiptPreview({
         className="w-full max-w-4xl max-h-[92dvh] flex flex-col rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-sky-900/20 px-4 py-3 bg-[#0c4a6e] text-white">
+        <div className="flex items-center justify-between gap-3 border-b border-sky-900/20 px-4 py-3 bg-[#0c4a6e] text-white shrink-0">
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-[0.14em] text-sky-200">Official Receipt</p>
             <h3 className="font-semibold truncate">{title}</h3>
@@ -94,11 +105,16 @@ export function ReceiptPreview({
             </button>
           </div>
         </div>
-        <div className="flex-1 min-h-[60vh] bg-slate-100">
-          {loading || !html ? (
-            <div className="flex items-center justify-center h-full text-slate-500 text-sm">Loading receipt…</div>
+        <div className="flex-1 min-h-0 overflow-auto bg-[#e8eef3]">
+          {loading || !receiptUrl ? (
+            <div className="flex items-center justify-center py-24 text-slate-500 text-sm">Loading receipt…</div>
           ) : (
-            <iframe id="staff-receipt-frame" title={title} srcDoc={html} className="w-full h-full border-0 bg-white" />
+            <iframe
+              id="staff-receipt-frame"
+              title={title}
+              src={receiptUrl}
+              className="block w-full h-[min(78vh,900px)] border-0 bg-[#e8eef3]"
+            />
           )}
         </div>
       </div>

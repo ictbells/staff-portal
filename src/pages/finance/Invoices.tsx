@@ -135,7 +135,7 @@ export function Invoices() {
   const [paymentPage, setPaymentPage] = useState(1);
   const [categories, setCategories] = useState<{ value: string; label: string }[]>([]);
   const [programs, setPrograms] = useState<any[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string | undefined>('unpaid');
+  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
   const [collegeFilter, setCollegeFilter] = useState<number | undefined>();
   const [departmentFilter, setDepartmentFilter] = useState<number | undefined>();
