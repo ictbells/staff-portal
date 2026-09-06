@@ -75,7 +75,7 @@ export function ReceiptPreview({
       >
         <div className="flex items-center justify-between gap-3 border-b border-sky-900/20 px-4 py-3 bg-[#0c4a6e] text-white">
           <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-[0.14em] text-sky-200">Official bursary receipt</p>
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-sky-200">Official Receipt</p>
             <h3 className="font-semibold truncate">{title}</h3>
           </div>
           <div className="flex items-center gap-2 shrink-0">
