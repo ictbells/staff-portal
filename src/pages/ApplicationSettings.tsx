@@ -1,4 +1,4 @@
-import { FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, InputNumber, Radio, Select, Switch, message } from 'antd';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -13,6 +13,8 @@ import {
   Save,
   Settings,
   ShieldCheck,
+  Trash2,
+  Upload,
   Users,
 } from 'lucide-react';
 import api, { isPendingApproval } from '../api';
@@ -65,6 +67,8 @@ type SecuritySettings = {
   transcript_collect_instructions: string;
   registrar_name: string;
   registrar_title: string;
+  registrar_has_signature: boolean;
+  registrar_signature_data_uri: string | null;
   pg_research_interest_min_words: number;
   pg_research_interest_max_words: number;
   pg_statement_of_purpose_min_words: number;
@@ -117,6 +121,8 @@ const EMPTY_SETTINGS: SecuritySettings = {
     'Please collect your official transcript from the Registry during office hours. Bring a valid ID and your request reference.',
   registrar_name: '',
   registrar_title: 'Registrar',
+  registrar_has_signature: false,
+  registrar_signature_data_uri: null,
   pg_research_interest_min_words: 0,
   pg_research_interest_max_words: 150,
   pg_statement_of_purpose_min_words: 0,
@@ -149,6 +155,8 @@ function normalizeSettings(data: Partial<SecuritySettings> = {}): SecuritySettin
       || EMPTY_SETTINGS.transcript_collect_instructions,
     registrar_name: data.registrar_name || '',
     registrar_title: data.registrar_title || EMPTY_SETTINGS.registrar_title,
+    registrar_has_signature: data.registrar_has_signature === true,
+    registrar_signature_data_uri: data.registrar_signature_data_uri || null,
     pg_research_interest_min_words: Number(data.pg_research_interest_min_words ?? EMPTY_SETTINGS.pg_research_interest_min_words),
     pg_research_interest_max_words: Number(data.pg_research_interest_max_words ?? EMPTY_SETTINGS.pg_research_interest_max_words),
     pg_statement_of_purpose_min_words: Number(data.pg_statement_of_purpose_min_words ?? EMPTY_SETTINGS.pg_statement_of_purpose_min_words),
@@ -282,6 +290,23 @@ export default function ApplicationSettings() {
   const [saved, setSaved] = useState<SecuritySettings>(EMPTY_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingSignature, setUploadingSignature] = useState(false);
+  const signatureInputRef = useRef<HTMLInputElement>(null);
+
+  const applySignature = (data: Partial<SecuritySettings>) => {
+    const hasSignature = data.registrar_has_signature === true;
+    const dataUri = data.registrar_signature_data_uri || null;
+    setSettings((current) => ({
+      ...current,
+      registrar_has_signature: hasSignature,
+      registrar_signature_data_uri: dataUri,
+    }));
+    setSaved((current) => ({
+      ...current,
+      registrar_has_signature: hasSignature,
+      registrar_signature_data_uri: dataUri,
+    }));
+  };
 
   const applyPayload = (data: Partial<SecuritySettings>) => {
     const next = normalizeSettings(data);
@@ -307,7 +332,12 @@ export default function ApplicationSettings() {
     e?.preventDefault();
     setSaving(true);
     try {
-      const res = await api.put('/api/security-settings', settings);
+      const {
+        registrar_signature_data_uri: _signature,
+        registrar_has_signature: _hasSignature,
+        ...payload
+      } = settings;
+      const res = await api.put('/api/security-settings', payload);
       if (isPendingApproval(res)) {
         return;
       }
@@ -317,6 +347,48 @@ export default function ApplicationSettings() {
       message.error(err.response?.data?.message || 'Unable to save settings.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const uploadSignature = async (file?: File | null) => {
+    if (!file) {
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    setUploadingSignature(true);
+    try {
+      const res = await api.post('/api/security-settings/registrar-signature', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (isPendingApproval(res)) {
+        return;
+      }
+      applySignature(res.data);
+      message.success('Registrar signature uploaded. It will print on admission letters.');
+    } catch (err: any) {
+      message.error(err.response?.data?.message || 'Unable to upload the registrar signature.');
+    } finally {
+      setUploadingSignature(false);
+      if (signatureInputRef.current) {
+        signatureInputRef.current.value = '';
+      }
+    }
+  };
+
+  const removeSignature = async () => {
+    setUploadingSignature(true);
+    try {
+      const res = await api.delete('/api/security-settings/registrar-signature');
+      if (isPendingApproval(res)) {
+        return;
+      }
+      applySignature(res.data);
+      message.success('Registrar signature removed.');
+    } catch (err: any) {
+      message.error(err.response?.data?.message || 'Unable to remove the registrar signature.');
+    } finally {
+      setUploadingSignature(false);
     }
   };
 
@@ -674,7 +746,7 @@ export default function ApplicationSettings() {
           <Field
             label="Registrar name"
             icon={PenLine}
-            hint="Printed on system-generated official transcripts. Leave blank to use the officer who marks the request ready."
+            hint="Printed on admission letters and system-generated official transcripts. Leave blank to use the default registrar name on letters."
           >
             <input
               className={`${inputClass} pl-10`}
@@ -683,13 +755,60 @@ export default function ApplicationSettings() {
               placeholder="Lamidi S. Tafa (Mr.)"
             />
           </Field>
-          <Field label="Signatory title" hint="Appears under the registrar name on the transcript.">
+          <Field label="Signatory title" hint="Appears under the registrar name on admission letters and transcripts.">
             <input
               className={inputClass}
               value={settings.registrar_title}
               onChange={(e) => setSettings((s) => ({ ...s, registrar_title: e.target.value }))}
               placeholder="Registrar"
             />
+          </Field>
+          <Field
+            label="Registrar signature"
+            hint="Uploaded image prints above the registrar name on admission letters, including the JUPEB foundation letter."
+          >
+            <div className="flex flex-wrap items-start gap-4">
+              <div className="flex h-24 w-44 items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-200 bg-slate-50">
+                {settings.registrar_signature_data_uri ? (
+                  <img
+                    src={settings.registrar_signature_data_uri}
+                    alt="Registrar signature preview"
+                    className="max-h-full max-w-full object-contain p-2"
+                  />
+                ) : (
+                  <span className="px-3 text-center text-xs text-slate-400">No signature uploaded</span>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <input
+                  ref={signatureInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(e) => void uploadSignature(e.target.files?.[0])}
+                />
+                <Button
+                  type="default"
+                  htmlType="button"
+                  icon={<Upload className="h-4 w-4" />}
+                  loading={uploadingSignature}
+                  onClick={() => signatureInputRef.current?.click()}
+                >
+                  {settings.registrar_has_signature ? 'Replace signature' : 'Upload signature'}
+                </Button>
+                {settings.registrar_has_signature ? (
+                  <Button
+                    danger
+                    htmlType="button"
+                    icon={<Trash2 className="h-4 w-4" />}
+                    loading={uploadingSignature}
+                    onClick={() => void removeSignature()}
+                  >
+                    Remove
+                  </Button>
+                ) : null}
+              </div>
+            </div>
           </Field>
           <Field label="Collection instructions" hint="Included in ready emails when delivery is collect at Registry.">
             <textarea
