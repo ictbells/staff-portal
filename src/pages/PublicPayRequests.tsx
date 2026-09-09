@@ -182,7 +182,7 @@ export default function PublicPayRequests() {
   }
 
   if (!canView) {
-    return <AccessDeniedPanel title="Public requests" description="You need permission to view public request & pay." />;
+    return <AccessDeniedPanel reason="missing_permission" resourceLabel="Public requests" />;
   }
 
   return (
@@ -190,10 +190,11 @@ export default function PublicPayRequests() {
       <WorkspaceHero
         title="Public requests"
         description="Inbox for services requested and paid outside the student portal login."
-        actions={<RefreshButton onClick={() => void load()} loading={loading} />}
-      />
+      >
+        <RefreshButton onClick={() => void load()} loading={loading} />
+      </WorkspaceHero>
 
-      <Card>
+      <Card title="Filters" description="Search and narrow the request inbox.">
         <div className="flex flex-wrap gap-3 items-end">
           <div className="min-w-[200px] flex-1">
             <label className={fieldLabelClass}>Search</label>
@@ -240,7 +241,7 @@ export default function PublicPayRequests() {
         </div>
       </Card>
 
-      <Card>
+      <Card title="Request queue" description="Paid and in-progress public requests for staff fulfilment.">
         {loading ? (
           <div className="flex justify-center py-12"><Spinner /></div>
         ) : (

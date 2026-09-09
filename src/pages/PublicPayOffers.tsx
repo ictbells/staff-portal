@@ -138,7 +138,7 @@ export default function PublicPayOffers() {
   }
 
   if (!canManage) {
-    return <AccessDeniedPanel title="Public pay offerings" description="You need permission to manage public request & pay offerings." />;
+    return <AccessDeniedPanel reason="missing_permission" resourceLabel="Public pay offerings" />;
   }
 
   return (
@@ -146,8 +146,9 @@ export default function PublicPayOffers() {
       <WorkspaceHero
         title="Public pay offerings"
         description="Define what alumni and students can request and pay for outside portal login. Each offer links to a fee catalog item."
-        actions={<RefreshButton onClick={() => void load()} loading={loading} />}
-      />
+      >
+        <RefreshButton onClick={() => void load()} loading={loading} />
+      </WorkspaceHero>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title={editing ? `Edit: ${editing.name}` : 'New offering'}>
