@@ -65,6 +65,8 @@ type SecuritySettings = {
   transcript_delivery_generated_pdf: boolean;
   transcript_delivery_uploaded_pdf: boolean;
   transcript_collect_instructions: string;
+  public_pay_enabled: boolean;
+  public_pay_collect_instructions: string;
   registrar_name: string;
   registrar_title: string;
   registrar_has_signature: boolean;
@@ -119,6 +121,9 @@ const EMPTY_SETTINGS: SecuritySettings = {
   transcript_delivery_uploaded_pdf: true,
   transcript_collect_instructions:
     'Please collect your official transcript from the Registry during office hours. Bring a valid ID and your request reference.',
+  public_pay_enabled: false,
+  public_pay_collect_instructions:
+    'Please collect your document from the relevant office during office hours. Bring a valid ID and your request reference.',
   registrar_name: '',
   registrar_title: 'Registrar',
   registrar_has_signature: false,
@@ -153,6 +158,10 @@ function normalizeSettings(data: Partial<SecuritySettings> = {}): SecuritySettin
     transcript_collect_instructions:
       data.transcript_collect_instructions
       || EMPTY_SETTINGS.transcript_collect_instructions,
+    public_pay_enabled: data.public_pay_enabled === true,
+    public_pay_collect_instructions:
+      data.public_pay_collect_instructions
+      || EMPTY_SETTINGS.public_pay_collect_instructions,
     registrar_name: data.registrar_name || '',
     registrar_title: data.registrar_title || EMPTY_SETTINGS.registrar_title,
     registrar_has_signature: data.registrar_has_signature === true,
@@ -815,6 +824,27 @@ export default function ApplicationSettings() {
               className={`${inputClass} min-h-[96px]`}
               value={settings.transcript_collect_instructions}
               onChange={(e) => setSettings((s) => ({ ...s, transcript_collect_instructions: e.target.value }))}
+            />
+          </Field>
+        </div>
+      </Card>
+
+      <Card
+        title="Public request & pay"
+        description="Outside-login services on the student portal (/request-pay). Staff define offerings under Public requests → Offerings and assign fee catalog items."
+      >
+        <div className="space-y-3">
+          <ToggleRow
+            title="Accept public request & pay"
+            description="When on, /request-pay accepts NIN lookup, service selection, and online payment for active offerings."
+            checked={settings.public_pay_enabled}
+            onChange={(checked) => setSettings((s) => ({ ...s, public_pay_enabled: checked }))}
+          />
+          <Field label="Collection instructions" hint="Included in ready emails when fulfilment is collect at office.">
+            <textarea
+              className={`${inputClass} min-h-[96px]`}
+              value={settings.public_pay_collect_instructions}
+              onChange={(e) => setSettings((s) => ({ ...s, public_pay_collect_instructions: e.target.value }))}
             />
           </Field>
         </div>

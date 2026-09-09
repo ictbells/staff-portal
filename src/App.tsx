@@ -51,6 +51,8 @@ import Resources from './pages/Resources';
 import ResourceView from './pages/ResourceView';
 import HostelManagement from './pages/HostelManagement';
 import TranscriptChannelPage from './pages/transcripts/TranscriptChannelPage';
+import PublicPayRequests from './pages/PublicPayRequests';
+import PublicPayOffers from './pages/PublicPayOffers';
 import {
   Documents, Finance, FeeCategories, Institution,
   GenerateInvoice, Integrations, Invoices, Medical, Notifications, ProgrammeFees, Rebates, Students, StudentFinance,
@@ -165,6 +167,8 @@ export default function App() {
         <Route path="documents" element={<Documents />} />
         <Route path="transcript-requests" element={<Navigate to="/transcript-requests/undergraduate" replace />} />
         <Route path="transcript-requests/:channel" element={<TranscriptChannelPage />} />
+        <Route path="public-pay/requests" element={<PublicPayRequests />} />
+        <Route path="public-pay/offers" element={<PublicPayOffers />} />
         <Route path="users" element={<Users />} />
         <Route path="profile" element={<Profile />} />
         <Route path="roles" element={<Roles />} />

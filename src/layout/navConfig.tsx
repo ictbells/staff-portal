@@ -225,6 +225,29 @@ export const navSections: NavSection[] = [
           icon: ScrollText,
         })),
       },
+      {
+        key: 'public-pay',
+        label: 'Public requests',
+        icon: Wallet,
+        items: [
+          {
+            key: 'public-pay-requests',
+            to: '/public-pay/requests',
+            label: 'Request inbox',
+            hint: 'Paid public requests',
+            perm: 'public_pay.view' as string | null,
+            icon: ClipboardList,
+          },
+          {
+            key: 'public-pay-offers',
+            to: '/public-pay/offers',
+            label: 'Offerings',
+            hint: 'What can be requested outside login',
+            perm: 'public_pay.offers' as string | null,
+            icon: Wallet,
+          },
+        ],
+      },
     ],
   },
   {
