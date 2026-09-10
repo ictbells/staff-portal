@@ -133,6 +133,7 @@ export function Invoices() {
   const [payments, setPayments] = useState<any[]>([]);
   const [paymentMeta, setPaymentMeta] = useState<PageMeta>(emptyMeta);
   const [paymentPage, setPaymentPage] = useState(1);
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string | undefined>(undefined);
   const [categories, setCategories] = useState<{ value: string; label: string }[]>([]);
   const [programs, setPrograms] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
@@ -259,10 +260,16 @@ export function Invoices() {
       });
   };
 
-  const loadPayments = (page = paymentPage) => {
+  const loadPayments = (page = paymentPage, status = paymentStatusFilter) => {
     const req = ++paymentsReq.current;
     setPaymentsLoading(true);
-    api.get('/api/payments', { params: { page, per_page: 20 } })
+    api.get('/api/payments', {
+      params: {
+        page,
+        per_page: 20,
+        ...(status ? { status } : {}),
+      },
+    })
       .then((res) => {
         if (req !== paymentsReq.current) return;
         setPayments(rowsFrom(res));
@@ -278,6 +285,11 @@ export function Invoices() {
       });
   };
 
+  const changePaymentStatus = (next?: string) => {
+    setPaymentStatusFilter(next);
+    setPaymentPage(1);
+  };
+
   const refresh = () => {
     loadCatalog();
     loadInvoices();
@@ -288,7 +300,7 @@ export function Invoices() {
   useEffect(() => {
     loadInvoices(invoicePage, statusFilter, categoryFilter, collegeFilter, departmentFilter, programFilter, search, fromDate, toDate);
   }, [invoicePage, statusFilter, categoryFilter, collegeFilter, departmentFilter, programFilter, search, fromDate, toDate, sessionId, level]);
-  useEffect(() => { loadPayments(paymentPage); }, [paymentPage]);
+  useEffect(() => { loadPayments(paymentPage, paymentStatusFilter); }, [paymentPage, paymentStatusFilter]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -431,6 +443,26 @@ export function Invoices() {
         }
       },
     });
+  };
+
+  const requeryInvoice = async (invoice: any) => {
+    setActingId(invoice.id);
+    try {
+      const res = await api.post(`/api/invoices/${invoice.id}/requery`);
+      const status = res.data?.status || res.data?.payment?.status;
+      if (status === 'successful') {
+        message.success(`Payment confirmed for ${invoice.number}.`);
+        loadInvoices();
+        loadPayments();
+      } else {
+        message.warning(res.data?.message || 'Payment still pending with the gateway.');
+        loadPayments();
+      }
+    } catch (e: any) {
+      message.error(e.response?.data?.message || 'Could not requery this payment.');
+    } finally {
+      setActingId(null);
+    }
   };
 
   const openRebate = (invoice: any) => {
@@ -867,6 +899,16 @@ export function Invoices() {
                           Rebate
                         </button>
                       ) : null}
+                      {invoice.status === 'unpaid' || invoice.status === 'partial' ? (
+                        <button
+                          type="button"
+                          className="text-sm text-sky-700 hover:underline disabled:opacity-50"
+                          disabled={actingId === invoice.id}
+                          onClick={() => requeryInvoice(invoice)}
+                        >
+                          {actingId === invoice.id ? 'Requerying…' : 'Requery'}
+                        </button>
+                      ) : null}
                       {invoice.status === 'unpaid' ? (
                         <button
                           type="button"
@@ -885,7 +927,7 @@ export function Invoices() {
                         >
                           Enable
                         </button>
-                      ) : invoice.status === 'paid' || canRebate(invoice) ? null : (
+                      ) : invoice.status === 'paid' || canRebate(invoice) || invoice.status === 'partial' ? null : (
                         <span className="text-slate-400">—</span>
                       )}
                     </div>
@@ -906,10 +948,25 @@ export function Invoices() {
         />
       </Card>
 
-      <Card title="Recent payments">
+      <Card
+        title="Recent payments"
+        actions={(
+          <Select
+            allowClear
+            className="w-[160px]"
+            placeholder="All statuses"
+            value={paymentStatusFilter}
+            onChange={changePaymentStatus}
+            options={[
+              { value: 'pending', label: 'Pending' },
+              { value: 'successful', label: 'Successful' },
+            ]}
+          />
+        )}
+      >
         <DataTable
           empty={!payments.length}
-          emptyMessage="No payments recorded."
+          emptyMessage={paymentStatusFilter ? `No ${paymentStatusFilter} payments.` : 'No payments recorded.'}
           colSpan={8}
           loading={paymentsLoading}
           loadingLabel="Loading payments…"
