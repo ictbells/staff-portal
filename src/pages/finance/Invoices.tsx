@@ -134,6 +134,8 @@ export function Invoices() {
   const [paymentMeta, setPaymentMeta] = useState<PageMeta>(emptyMeta);
   const [paymentPage, setPaymentPage] = useState(1);
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<string | undefined>(undefined);
+  const [paymentSearchInput, setPaymentSearchInput] = useState('');
+  const [paymentSearch, setPaymentSearch] = useState('');
   const [categories, setCategories] = useState<{ value: string; label: string }[]>([]);
   const [programs, setPrograms] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
@@ -152,6 +154,7 @@ export function Invoices() {
   const [invoicesLoading, setInvoicesLoading] = useState(false);
   const [paymentsLoading, setPaymentsLoading] = useState(false);
   const [actingId, setActingId] = useState<number | null>(null);
+  const [actingPaymentId, setActingPaymentId] = useState<number | null>(null);
   const [disableTarget, setDisableTarget] = useState<any>(null);
   const [disableForm] = Form.useForm();
   const [rebateTarget, setRebateTarget] = useState<any>(null);
@@ -260,7 +263,7 @@ export function Invoices() {
       });
   };
 
-  const loadPayments = (page = paymentPage, status = paymentStatusFilter) => {
+  const loadPayments = (page = paymentPage, status = paymentStatusFilter, query = paymentSearch) => {
     const req = ++paymentsReq.current;
     setPaymentsLoading(true);
     api.get('/api/payments', {
@@ -268,6 +271,7 @@ export function Invoices() {
         page,
         per_page: 20,
         ...(status ? { status } : {}),
+        ...(query.trim() ? { search: query.trim() } : {}),
       },
     })
       .then((res) => {
@@ -300,7 +304,7 @@ export function Invoices() {
   useEffect(() => {
     loadInvoices(invoicePage, statusFilter, categoryFilter, collegeFilter, departmentFilter, programFilter, search, fromDate, toDate);
   }, [invoicePage, statusFilter, categoryFilter, collegeFilter, departmentFilter, programFilter, search, fromDate, toDate, sessionId, level]);
-  useEffect(() => { loadPayments(paymentPage, paymentStatusFilter); }, [paymentPage, paymentStatusFilter]);
+  useEffect(() => { loadPayments(paymentPage, paymentStatusFilter, paymentSearch); }, [paymentPage, paymentStatusFilter, paymentSearch]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -311,6 +315,16 @@ export function Invoices() {
     }, 300);
     return () => window.clearTimeout(timer);
   }, [searchInput, search]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const next = paymentSearchInput.trim();
+      if (next === paymentSearch) return;
+      setPaymentSearch(next);
+      setPaymentPage(1);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [paymentSearchInput, paymentSearch]);
 
   const changeStatus = (next?: string) => {
     setStatusFilter(next);
@@ -462,6 +476,26 @@ export function Invoices() {
       message.error(e.response?.data?.message || 'Could not requery this payment.');
     } finally {
       setActingId(null);
+    }
+  };
+
+  const requeryPayment = async (payment: any) => {
+    setActingPaymentId(payment.id);
+    try {
+      const res = await api.post(`/api/payments/${payment.id}/requery`);
+      const status = res.data?.status;
+      if (status === 'successful') {
+        message.success(`Payment ${paymentReference(payment)} confirmed.`);
+        loadInvoices();
+        loadPayments();
+      } else {
+        message.warning(res.data?.message || 'Payment still pending with the gateway.');
+        loadPayments();
+      }
+    } catch (e: any) {
+      message.error(e.response?.data?.message || 'Could not requery this payment.');
+    } finally {
+      setActingPaymentId(null);
     }
   };
 
@@ -948,25 +982,44 @@ export function Invoices() {
         />
       </Card>
 
-      <Card
-        title="Recent payments"
-        actions={(
-          <Select
-            allowClear
-            className="w-[160px]"
-            placeholder="All statuses"
-            value={paymentStatusFilter}
-            onChange={changePaymentStatus}
-            options={[
-              { value: 'pending', label: 'Pending' },
-              { value: 'successful', label: 'Successful' },
-            ]}
-          />
-        )}
-      >
+      <Card title="Recent payments">
+        <div className="flex flex-wrap items-end gap-3 mb-4">
+          <label className="block min-w-[220px] flex-1">
+            <span className={fieldLabelClass}>Search</span>
+            <div className="relative">
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                className={`${inputClass} pl-9`}
+                placeholder="Reference, receipt, or gateway ID"
+                value={paymentSearchInput}
+                onChange={(e) => setPaymentSearchInput(e.target.value)}
+              />
+            </div>
+          </label>
+          <label className="block min-w-[160px]">
+            <span className={fieldLabelClass}>Status</span>
+            <Select
+              allowClear
+              className="w-full"
+              placeholder="All statuses"
+              value={paymentStatusFilter}
+              onChange={changePaymentStatus}
+              options={[
+                { value: 'pending', label: 'Pending' },
+                { value: 'successful', label: 'Successful' },
+              ]}
+            />
+          </label>
+        </div>
         <DataTable
           empty={!payments.length}
-          emptyMessage={paymentStatusFilter ? `No ${paymentStatusFilter} payments.` : 'No payments recorded.'}
+          emptyMessage={
+            paymentSearch
+              ? 'No payments match that reference.'
+              : paymentStatusFilter
+                ? `No ${paymentStatusFilter} payments.`
+                : 'No payments recorded.'
+          }
           colSpan={8}
           loading={paymentsLoading}
           loadingLabel="Loading payments…"
@@ -997,7 +1050,16 @@ export function Invoices() {
                     {formatTimestamp(p.created_at)}
                   </td>
                   <td className={`${tdClass} text-right whitespace-nowrap`}>
-                    {p.status === 'successful' && (p.invoice_id || p.purpose === 'wallet_topup') ? (
+                    {p.status === 'pending' && ['wema', 'paystack', 'paygate'].includes(String(p.method || '').toLowerCase()) ? (
+                      <button
+                        type="button"
+                        className="text-sm text-sky-700 hover:underline disabled:opacity-50"
+                        disabled={actingPaymentId === p.id}
+                        onClick={() => requeryPayment(p)}
+                      >
+                        {actingPaymentId === p.id ? 'Requerying…' : 'Requery'}
+                      </button>
+                    ) : p.status === 'successful' && (p.invoice_id || p.purpose === 'wallet_topup') ? (
                       <button
                         type="button"
                         className="text-sm text-sky-700 hover:underline"
@@ -1009,7 +1071,9 @@ export function Invoices() {
                       >
                         View receipt
                       </button>
-                    ) : <span className="text-slate-400">—</span>}
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
                   </td>
                 </tr>
               ))}
