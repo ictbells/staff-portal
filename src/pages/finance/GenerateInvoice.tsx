@@ -8,6 +8,7 @@ import {
   StatCard, WorkspaceHero, tdClass, thClass, trClass,
 } from '../../components/ui';
 import { formatNaira } from '../../lib/money';
+import { studentLevelLabel } from '../../lib/studentLevel';
 
 type CatalogFee = {
   id: number;
@@ -25,6 +26,8 @@ type FoundStudent = {
   matric_number?: string | null;
   program?: string | null;
   current_level?: string | number | null;
+  level_label?: string | null;
+  study_level?: string | null;
 };
 
 const EXCLUDED_CATEGORIES = ['application_fee', 'acceptance_fee', 'transcript', 'programme_fee'];
@@ -38,6 +41,8 @@ function studentFromStatus(payload: any): FoundStudent | null {
     matric_number: row.matric_number || row.student_number || null,
     program: row.program?.name || row.program || null,
     current_level: row.current_level ?? null,
+    level_label: row.level_label ?? null,
+    study_level: row.study_level ?? null,
   };
 }
 
@@ -189,7 +194,7 @@ export function GenerateInvoice() {
                   {student.name}
                   {student.matric_number ? ` · ${student.matric_number}` : ''}
                   {student.program ? ` · ${student.program}` : ''}
-                  {student.current_level ? ` · ${student.current_level}L` : ''}
+                  {studentLevelLabel(student, '') ? ` · ${studentLevelLabel(student, '')}` : ''}
                 </p>
               ) : studentError ? (
                 <p className="mt-1.5 text-xs text-rose-600">{studentError}</p>

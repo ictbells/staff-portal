@@ -11,6 +11,7 @@ import {
   StatCard, WorkspaceHero, stageBadge, TablePager, tdClass, thClass, trClass,
 } from '../../components/ui';
 import { formatNaira } from '../../lib/money';
+import { studentLevelLabel } from '../../lib/studentLevel';
 import { ReceiptPreview, fetchReceiptHtml, receiptErrorMessage } from '../../components/ReceiptPreview';
 
 type PageMeta = {
@@ -284,7 +285,7 @@ export function StudentFinance() {
         <WorkspaceHero
           eyebrow="Fees & payments"
           title={student.name}
-          description={[student.matric_number || student.student_number, student.program, student.current_level ? `${student.current_level}L` : null, student.email].filter(Boolean).join(' · ')}
+          description={[student.matric_number || student.student_number, student.program, studentLevelLabel(student, ''), student.email].filter(Boolean).join(' · ')}
           icon={GraduationCap}
         >
           <Btn variant="secondary" className="!text-white" onClick={closeDetail}>Back to list</Btn>
@@ -661,7 +662,7 @@ export function StudentFinance() {
                     <div>{row.program || '—'}</div>
                     {row.college ? <div className="text-xs text-slate-500">{row.college}</div> : null}
                   </td>
-                  <td className={tdClass}>{row.current_level ? `${row.current_level}L` : '—'}</td>
+                  <td className={tdClass}>{studentLevelLabel(row)}</td>
                   <td className={tdClass}>{formatNaira(row.wallet_balance)}</td>
                   <td className={tdClass}>{formatNaira(row.billed)}</td>
                   <td className={tdClass}>{formatNaira(row.paid)}</td>
