@@ -473,7 +473,8 @@ export function Invoices() {
         loadPayments();
       }
     } catch (e: any) {
-      message.error(e.response?.data?.message || 'Could not requery this payment.');
+      const data = e.response?.data;
+      message.error(data?.message || data?.alatpay?.body?.message || 'Could not requery this payment.');
     } finally {
       setActingId(null);
     }
@@ -493,7 +494,8 @@ export function Invoices() {
         loadPayments();
       }
     } catch (e: any) {
-      message.error(e.response?.data?.message || 'Could not requery this payment.');
+      const data = e.response?.data;
+      message.error(data?.message || data?.alatpay?.body?.message || 'Could not requery this payment.');
     } finally {
       setActingPaymentId(null);
     }
