@@ -114,6 +114,7 @@ type FormState = {
   first_name: string;
   middle_name: string;
   last_name: string;
+  nin: string;
   date_of_birth: string;
   gender: string;
   marital_status: string;
@@ -522,6 +523,7 @@ function formFromApp(app: FileApp, programs: ProgramOption[]): FormState {
     first_name: pick(personal, 'first_name') || '',
     middle_name: pick(personal, 'middle_name') || '',
     last_name: pick(personal, 'last_name') || '',
+    nin: pick(biodata, 'nin') || '',
     date_of_birth: String(pick(personal, 'date_of_birth') || '').slice(0, 10),
     gender: pick(personal, 'gender') || '',
     marital_status: pick(personal, 'marital_status') || '',
@@ -843,7 +845,6 @@ export function ApplicationFileDrawer({
     ? levelAfterProgrammeChange(app?.student?.current_level, sameCollegeChange)
     : app?.student?.current_level;
   const biodata = stepPayload(app, 'biodata');
-  const nin = pick(biodata, 'nin');
   const photoPath = pick(biodata, 'photo_path');
   const checklist = useMemo(
     () => requiredDocumentsFor(app?.entry_mode, stepPayload(app ?? null, 'pg_background').nysc_status)
@@ -936,6 +937,10 @@ export function ApplicationFileDrawer({
     if (!app || !form) return;
     if (!form.first_choice_program_id) {
       message.error('Select a first-choice programme.');
+      return;
+    }
+    if (form.nin && form.nin.length !== 11) {
+      message.error('NIN must be 11 digits.');
       return;
     }
     if (app.student && programmeChanging && !canChangeProgramme) {
@@ -1251,9 +1256,9 @@ export function ApplicationFileDrawer({
               </div>
             ) : null}
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-slate-500">NIN identity fields are locked. Staff with Re-verify NIN can refresh them from the NIN portal.</p>
+              <p className="text-xs text-slate-500">You can correct the NIN. Names and date of birth stay locked until staff with Re-verify NIN resyncs them from the NIN portal.</p>
               {has('identity.verify_nin') && (
-                <Button icon={<RefreshCw size={14} />} loading={resyncingNin} onClick={resyncFromNin} disabled={!nin}>
+                <Button icon={<RefreshCw size={14} />} loading={resyncingNin} onClick={resyncFromNin} disabled={!form.nin}>
                   Resync from NIN
                 </Button>
               )}
@@ -1262,7 +1267,15 @@ export function ApplicationFileDrawer({
               <Field label="First name"><Input value={form.first_name} disabled /></Field>
               <Field label="Middle name"><Input value={form.middle_name} disabled /></Field>
               <Field label="Surname"><Input value={form.last_name} disabled /></Field>
-              <Field label="NIN"><Input value={nin || ''} disabled /></Field>
+              <Field label="NIN">
+                <Input
+                  value={form.nin}
+                  placeholder="11 digits"
+                  inputMode="numeric"
+                  maxLength={11}
+                  onChange={(e) => setField('nin', e.target.value.replace(/\D/g, '').slice(0, 11))}
+                />
+              </Field>
               <Field label="Date of birth"><Input type="date" value={form.date_of_birth} disabled /></Field>
               <Field label="Gender">
                 <Select className="w-full" disabled value={form.gender || undefined} options={GENDERS.map((value) => ({ value, label: value }))} />

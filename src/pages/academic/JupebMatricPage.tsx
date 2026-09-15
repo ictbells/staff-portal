@@ -140,7 +140,7 @@ export function JupebMatricPage() {
       <WorkspaceHero
         eyebrow="Admission Setup"
         title="JUPEB matric numbers"
-        description="JUPEB students are not given an automatic matric number. Assign one student at a time, or download the template and upload a filled spreadsheet."
+        description="JUPEB students are not given an automatic matric number. Assign one student at a time, or download the template and upload a filled spreadsheet. Each student is emailed the matric number so they can sign in to the student portal."
         icon={GraduationCap}
       >
         <RefreshButton onClick={loadPending} />
@@ -155,7 +155,7 @@ export function JupebMatricPage() {
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
         <h2 className="text-sm font-semibold text-slate-800">Assign one student</h2>
-        <p className="text-sm text-slate-600">Select a pending student, enter the official JUPEB matric number, then assign.</p>
+        <p className="text-sm text-slate-600">Select a pending student, enter the official JUPEB matric number, then assign. The student is emailed the number for portal sign-in.</p>
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem_auto] md:items-end">
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Matric number</label>
@@ -198,6 +198,7 @@ export function JupebMatricPage() {
           Download the template, fill one row per student on the Matric sheet, then upload.
           Required: matric_number plus application_number, student_number, email, or NIN.
           The Pending students sheet is a lookup — copy identifiers from there.
+          Each newly assigned student is emailed the matric number.
         </p>
         <Upload
           maxCount={1}
