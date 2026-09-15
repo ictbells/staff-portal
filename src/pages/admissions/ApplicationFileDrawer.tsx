@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Drawer, Input, Select, Space, Tag, message } from 'antd';
-import { Eye, FileText, Printer, RefreshCw, Save } from 'lucide-react';
-import api from '../../api';
+import { Alert, Button, Drawer, Input, Modal, Select, Space, Tag, Tooltip, message } from 'antd';
+import { Eye, FileText, Printer, RefreshCw, Save, Trash2 } from 'lucide-react';
+import api, { isPendingApproval } from '../../api';
 import { useAuth } from '../../auth';
 import { isValidPhone, PHONE_ERROR, PHONE_HINT, phoneIssue } from '../../lib/phone';
 import { requiredDocumentsFor } from './requiredDocuments';
@@ -104,6 +104,15 @@ type FileApp = {
     pg_statement_of_purpose_min_words?: number;
     pg_statement_of_purpose_max_words?: number;
   };
+  linked_applications?: {
+    id: number;
+    application_number?: string | null;
+    entry_mode?: string;
+    entry_mode_label?: string;
+    stage?: string | null;
+  }[];
+  can_delete?: boolean;
+  delete_blocked_reason?: string | null;
 };
 
 type FormState = {
@@ -746,6 +755,9 @@ export function ApplicationFileDrawer({
   const [refereeInviteEmails, setRefereeInviteEmails] = useState<Record<number, string>>({});
   const [resendingInviteId, setResendingInviteId] = useState<number | null>(null);
   const [resyncingNin, setResyncingNin] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   const originalProgramId = app?.program?.id || app?.student?.program_id || null;
 
@@ -753,6 +765,8 @@ export function ApplicationFileDrawer({
     if (!open || !applicationId) {
       setApp(null);
       setForm(null);
+      setDeleteOpen(false);
+      setDeleteReason('');
       return;
     }
     setLoading(true);
@@ -1082,7 +1096,42 @@ export function ApplicationFileDrawer({
     }
   };
 
+  const linked = app?.linked_applications ?? [];
+  const canDeleteForm = mode === 'application' && has('admissions.delete');
+  const deleteBlocked = Boolean(app?.delete_blocked_reason) || app?.can_delete === false;
+
+  const confirmDelete = async () => {
+    if (!app?.id) return;
+    const reason = deleteReason.trim();
+    if (reason.length < 5) {
+      message.error('Enter a reason (at least 5 characters).');
+      return;
+    }
+    setDeleting(true);
+    try {
+      const res = await api.delete(`/api/applications/${app.id}`, { data: { reason } });
+      if (isPendingApproval(res)) {
+        message.success(res.data?.message || 'Submitted for approval.');
+        setDeleteOpen(false);
+        return;
+      }
+      message.success(res.data?.message || 'Application file deleted.');
+      setDeleteOpen(false);
+      onSaved?.();
+      onClose();
+    } catch (err: any) {
+      const errors = err?.response?.data?.errors;
+      const first = errors && typeof errors === 'object'
+        ? Object.values(errors).flat().find((value) => typeof value === 'string')
+        : null;
+      message.error((typeof first === 'string' ? first : err?.response?.data?.message) || 'Unable to delete this application file.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
+    <>
     <Drawer
       title={mode === 'student' ? (app?.user?.name ? `${app.user.name} — student record` : 'Student record') : (app?.user?.name || 'Application file')}
       open={open}
@@ -1095,6 +1144,20 @@ export function ApplicationFileDrawer({
           <Button icon={<Printer size={14} />} loading={printing} onClick={onPrintForm}>Form</Button>
           {onPrintLetter && app?.offer_reference && (
             <Button icon={<FileText size={14} />} loading={printing} onClick={onPrintLetter}>Letter</Button>
+          )}
+          {canDeleteForm && (
+            <Tooltip title={deleteBlocked ? (app?.delete_blocked_reason || 'This file cannot be deleted.') : undefined}>
+              <span>
+                <Button
+                  danger
+                  icon={<Trash2 size={14} />}
+                  disabled={!app || deleteBlocked}
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  Delete form
+                </Button>
+              </span>
+            </Tooltip>
           )}
         </Space>
       )}
@@ -1119,6 +1182,30 @@ export function ApplicationFileDrawer({
                     <li>{app.eligibility.requirements.notes}</li>
                   )}
                 </ul>
+              )}
+            />
+          )}
+          {linked.length > 0 && (
+            <Alert
+              type="warning"
+              showIcon
+              message="This applicant has more than one form on the same account"
+              description={(
+                <div className="text-sm">
+                  <p className="m-0 mb-1">
+                    Email, phone, and JAMB live on the shared login, so editing them here also changes the other file
+                    {linked.length === 1 ? '' : 's'}. Delete the form that was bought by mistake if only one should remain.
+                  </p>
+                  <ul className="list-disc pl-4 m-0">
+                    {linked.map((row) => (
+                      <li key={row.id}>
+                        {row.entry_mode_label || (row.entry_mode || '').toUpperCase()}
+                        {row.application_number ? ` · ${row.application_number}` : ''}
+                        {row.stage ? ` · ${String(row.stage).replace(/_/g, ' ')}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
             />
           )}
@@ -1155,7 +1242,10 @@ export function ApplicationFileDrawer({
               <Field label="Application session">
                 <Input value={app.intake?.name || app.intake?.term?.session_label || ''} disabled />
               </Field>
-              <Field label="Email">
+              <Field
+                label="Email"
+                hint={linked.length > 0 ? 'Shared with every form on this account. Changing it updates the other file too.' : undefined}
+              >
                 <Input value={form.email} onChange={(e) => setField('email', e.target.value)} />
               </Field>
               <Field label="Phone from NIN">
@@ -1814,5 +1904,28 @@ export function ApplicationFileDrawer({
         </div>
       )}
     </Drawer>
+    <Modal
+      title="Delete this application form?"
+      open={deleteOpen}
+      onCancel={() => !deleting && setDeleteOpen(false)}
+      onOk={() => void confirmDelete()}
+      okText="Delete form"
+      okButtonProps={{ danger: true, loading: deleting, disabled: deleteReason.trim().length < 5 }}
+      cancelButtonProps={{ disabled: deleting }}
+      destroyOnHidden
+    >
+      <p className="text-sm text-slate-600 m-0 mb-3">
+        This removes the {app?.entry_mode ? String(app.entry_mode).toUpperCase() : ''} file
+        {app?.application_number ? ` (${app.application_number})` : ''} only. The applicant login stays, so any other form on the same account is unchanged. Paid invoices are kept; unpaid invoices for this file are cancelled.
+      </p>
+      <Input.TextArea
+        rows={3}
+        value={deleteReason}
+        onChange={(e) => setDeleteReason(e.target.value)}
+        placeholder="Reason (required)"
+        maxLength={500}
+      />
+    </Modal>
+    </>
   );
 }

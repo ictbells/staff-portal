@@ -71,6 +71,10 @@ type SecuritySettings = {
   registrar_title: string;
   registrar_has_signature: boolean;
   registrar_signature_data_uri: string | null;
+  pg_signatory_name: string;
+  pg_signatory_title: string;
+  pg_signatory_has_signature: boolean;
+  pg_signatory_signature_data_uri: string | null;
   pg_research_interest_min_words: number;
   pg_research_interest_max_words: number;
   pg_statement_of_purpose_min_words: number;
@@ -128,6 +132,10 @@ const EMPTY_SETTINGS: SecuritySettings = {
   registrar_title: 'Registrar',
   registrar_has_signature: false,
   registrar_signature_data_uri: null,
+  pg_signatory_name: '',
+  pg_signatory_title: 'Secretary, College of Postgraduate Studies',
+  pg_signatory_has_signature: false,
+  pg_signatory_signature_data_uri: null,
   pg_research_interest_min_words: 0,
   pg_research_interest_max_words: 150,
   pg_statement_of_purpose_min_words: 0,
@@ -166,6 +174,10 @@ function normalizeSettings(data: Partial<SecuritySettings> = {}): SecuritySettin
     registrar_title: data.registrar_title || EMPTY_SETTINGS.registrar_title,
     registrar_has_signature: data.registrar_has_signature === true,
     registrar_signature_data_uri: data.registrar_signature_data_uri || null,
+    pg_signatory_name: data.pg_signatory_name || '',
+    pg_signatory_title: data.pg_signatory_title || EMPTY_SETTINGS.pg_signatory_title,
+    pg_signatory_has_signature: data.pg_signatory_has_signature === true,
+    pg_signatory_signature_data_uri: data.pg_signatory_signature_data_uri || null,
     pg_research_interest_min_words: Number(data.pg_research_interest_min_words ?? EMPTY_SETTINGS.pg_research_interest_min_words),
     pg_research_interest_max_words: Number(data.pg_research_interest_max_words ?? EMPTY_SETTINGS.pg_research_interest_max_words),
     pg_statement_of_purpose_min_words: Number(data.pg_statement_of_purpose_min_words ?? EMPTY_SETTINGS.pg_statement_of_purpose_min_words),
@@ -300,20 +312,28 @@ export default function ApplicationSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingSignature, setUploadingSignature] = useState(false);
+  const [uploadingPgSignature, setUploadingPgSignature] = useState(false);
   const signatureInputRef = useRef<HTMLInputElement>(null);
+  const pgSignatureInputRef = useRef<HTMLInputElement>(null);
 
-  const applySignature = (data: Partial<SecuritySettings>) => {
-    const hasSignature = data.registrar_has_signature === true;
-    const dataUri = data.registrar_signature_data_uri || null;
+  const applySignatures = (data: Partial<SecuritySettings>) => {
+    const registrarHasSignature = data.registrar_has_signature === true;
+    const registrarDataUri = data.registrar_signature_data_uri || null;
+    const pgHasSignature = data.pg_signatory_has_signature === true;
+    const pgDataUri = data.pg_signatory_signature_data_uri || null;
     setSettings((current) => ({
       ...current,
-      registrar_has_signature: hasSignature,
-      registrar_signature_data_uri: dataUri,
+      registrar_has_signature: registrarHasSignature,
+      registrar_signature_data_uri: registrarDataUri,
+      pg_signatory_has_signature: pgHasSignature,
+      pg_signatory_signature_data_uri: pgDataUri,
     }));
     setSaved((current) => ({
       ...current,
-      registrar_has_signature: hasSignature,
-      registrar_signature_data_uri: dataUri,
+      registrar_has_signature: registrarHasSignature,
+      registrar_signature_data_uri: registrarDataUri,
+      pg_signatory_has_signature: pgHasSignature,
+      pg_signatory_signature_data_uri: pgDataUri,
     }));
   };
 
@@ -344,6 +364,8 @@ export default function ApplicationSettings() {
       const {
         registrar_signature_data_uri: _signature,
         registrar_has_signature: _hasSignature,
+        pg_signatory_signature_data_uri: _pgSignature,
+        pg_signatory_has_signature: _pgHasSignature,
         ...payload
       } = settings;
       const res = await api.put('/api/security-settings', payload);
@@ -373,8 +395,8 @@ export default function ApplicationSettings() {
       if (isPendingApproval(res)) {
         return;
       }
-      applySignature(res.data);
-      message.success('Registrar signature uploaded. It will print on admission letters.');
+      applySignatures(res.data);
+      message.success('Registrar signature uploaded. It will print on undergraduate and JUPEB admission letters.');
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to upload the registrar signature.');
     } finally {
@@ -392,12 +414,54 @@ export default function ApplicationSettings() {
       if (isPendingApproval(res)) {
         return;
       }
-      applySignature(res.data);
+      applySignatures(res.data);
       message.success('Registrar signature removed.');
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Unable to remove the registrar signature.');
     } finally {
       setUploadingSignature(false);
+    }
+  };
+
+  const uploadPgSignature = async (file?: File | null) => {
+    if (!file) {
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    setUploadingPgSignature(true);
+    try {
+      const res = await api.post('/api/security-settings/pg-signatory-signature', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (isPendingApproval(res)) {
+        return;
+      }
+      applySignatures(res.data);
+      message.success('Postgraduate signature uploaded. It will print on postgraduate admission letters.');
+    } catch (err: any) {
+      message.error(err.response?.data?.message || 'Unable to upload the postgraduate signature.');
+    } finally {
+      setUploadingPgSignature(false);
+      if (pgSignatureInputRef.current) {
+        pgSignatureInputRef.current.value = '';
+      }
+    }
+  };
+
+  const removePgSignature = async () => {
+    setUploadingPgSignature(true);
+    try {
+      const res = await api.delete('/api/security-settings/pg-signatory-signature');
+      if (isPendingApproval(res)) {
+        return;
+      }
+      applySignatures(res.data);
+      message.success('Postgraduate signature removed.');
+    } catch (err: any) {
+      message.error(err.response?.data?.message || 'Unable to remove the postgraduate signature.');
+    } finally {
+      setUploadingPgSignature(false);
     }
   };
 
@@ -755,7 +819,7 @@ export default function ApplicationSettings() {
           <Field
             label="Registrar name"
             icon={PenLine}
-            hint="Printed on admission letters and system-generated official transcripts. Leave blank to use the default registrar name on letters."
+            hint="Printed on undergraduate and JUPEB admission letters and system-generated official transcripts. Leave blank to use the default registrar name on letters."
           >
             <input
               className={`${inputClass} pl-10`}
@@ -764,7 +828,7 @@ export default function ApplicationSettings() {
               placeholder="Lamidi S. Tafa (Mr.)"
             />
           </Field>
-          <Field label="Signatory title" hint="Appears under the registrar name on admission letters and transcripts.">
+          <Field label="Signatory title" hint="Appears under the registrar name on undergraduate and JUPEB admission letters and transcripts.">
             <input
               className={inputClass}
               value={settings.registrar_title}
@@ -774,7 +838,7 @@ export default function ApplicationSettings() {
           </Field>
           <Field
             label="Registrar signature"
-            hint="Uploaded image prints above the registrar name on admission letters, including the JUPEB foundation letter."
+            hint="Uploaded image prints above the registrar name on undergraduate and JUPEB admission letters."
           >
             <div className="flex flex-wrap items-start gap-4">
               <div className="flex h-24 w-44 items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-200 bg-slate-50">
@@ -812,6 +876,76 @@ export default function ApplicationSettings() {
                     icon={<Trash2 className="h-4 w-4" />}
                     loading={uploadingSignature}
                     onClick={() => void removeSignature()}
+                  >
+                    Remove
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </Field>
+          <Field
+            label="Postgraduate signatory name"
+            icon={PenLine}
+            hint="Printed on postgraduate admission letters. Leave blank to use the default College of Postgraduate Studies secretary name."
+          >
+            <input
+              className={`${inputClass} pl-10`}
+              value={settings.pg_signatory_name}
+              onChange={(e) => setSettings((s) => ({ ...s, pg_signatory_name: e.target.value }))}
+              placeholder="Olugbenga A. Adelowo"
+            />
+          </Field>
+          <Field
+            label="Postgraduate signatory title"
+            hint="Appears under the postgraduate signatory name on postgraduate admission letters."
+          >
+            <input
+              className={inputClass}
+              value={settings.pg_signatory_title}
+              onChange={(e) => setSettings((s) => ({ ...s, pg_signatory_title: e.target.value }))}
+              placeholder="Secretary, College of Postgraduate Studies"
+            />
+          </Field>
+          <Field
+            label="Postgraduate signature"
+            hint="Uploaded image prints above the postgraduate signatory name on postgraduate admission letters."
+          >
+            <div className="flex flex-wrap items-start gap-4">
+              <div className="flex h-24 w-44 items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-200 bg-slate-50">
+                {settings.pg_signatory_signature_data_uri ? (
+                  <img
+                    src={settings.pg_signatory_signature_data_uri}
+                    alt="Postgraduate signature preview"
+                    className="max-h-full max-w-full object-contain p-2"
+                  />
+                ) : (
+                  <span className="px-3 text-center text-xs text-slate-400">No signature uploaded</span>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <input
+                  ref={pgSignatureInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(e) => void uploadPgSignature(e.target.files?.[0])}
+                />
+                <Button
+                  type="default"
+                  htmlType="button"
+                  icon={<Upload className="h-4 w-4" />}
+                  loading={uploadingPgSignature}
+                  onClick={() => pgSignatureInputRef.current?.click()}
+                >
+                  {settings.pg_signatory_has_signature ? 'Replace signature' : 'Upload signature'}
+                </Button>
+                {settings.pg_signatory_has_signature ? (
+                  <Button
+                    danger
+                    htmlType="button"
+                    icon={<Trash2 className="h-4 w-4" />}
+                    loading={uploadingPgSignature}
+                    onClick={() => void removePgSignature()}
                   >
                     Remove
                   </Button>
