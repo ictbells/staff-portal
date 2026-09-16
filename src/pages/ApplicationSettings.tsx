@@ -768,7 +768,7 @@ export default function ApplicationSettings() {
                         ? 'Card and transfer checkout via Paystack.'
                         : key === 'wema'
                           ? 'ALATPay checkout (Wema Bank). The popup needs public key, secret key, and business ID from the ALATPay dashboard (Settings → Business).'
-                          : 'Upperlink PayGate hosted checkout. Needs merchant ID, API username/password, and secret key from paygate.upperlink.ng.'}
+                          : 'Upperlink PayGate hosted checkout. Needs merchant ID and secret key from paygate.upperlink.ng.'}
                     </p>
                     {!meta.configured && (meta.missing?.length ?? 0) > 0 ? (
                       <p className="mt-1.5 font-mono text-xs text-amber-800 break-all">
