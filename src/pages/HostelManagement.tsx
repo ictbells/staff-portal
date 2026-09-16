@@ -23,6 +23,13 @@ type HostelBlockRow = {
 
 type HostelCategory = 'undergraduate' | 'jupeb' | 'postgraduate';
 
+type AcademicLevelOption = {
+  id: number;
+  name: string;
+  code?: string | null;
+  study_level?: string;
+};
+
 type HostelRow = {
   id: number;
   name: string;
@@ -31,6 +38,8 @@ type HostelRow = {
   is_active: boolean;
   due_required?: boolean;
   due_amount?: number | null;
+  academic_level_ids?: number[];
+  academic_levels?: AcademicLevelOption[];
   total_beds: number;
   available_beds: number;
   occupied_beds: number;
@@ -97,6 +106,8 @@ type RoomRow = {
   available_bunk_summary?: { lower: number; upper: number; text: string } | null;
   effective_gender?: string | null;
   gender_label?: string;
+  academic_level_ids?: number[];
+  academic_levels?: AcademicLevelOption[];
   beds?: { id: number; label: string; display_label?: string; bunk_position?: string | null; status: string }[];
 };
 
@@ -135,6 +146,26 @@ const hostelTabs: { key: string; label: string; icon: LucideIcon }[] = [
 
 function CategoryTag({ category }: { category: string }) {
   return <Tag color={categoryColors[category] || 'default'}>{categoryLabels[category] || category}</Tag>;
+}
+
+function LevelTags({ levels, emptyLabel = 'All levels' }: { levels?: AcademicLevelOption[]; emptyLabel?: string }) {
+  if (!levels || levels.length === 0) {
+    return <span className="text-slate-400">{emptyLabel}</span>;
+  }
+  return (
+    <Space size={[4, 4]} wrap>
+      {levels.map((level) => (
+        <Tag key={level.id}>{level.name}</Tag>
+      ))}
+    </Space>
+  );
+}
+
+function levelSelectOptions(levels?: AcademicLevelOption[]) {
+  return (levels || []).map((level) => ({
+    value: level.id,
+    label: level.code ? `${level.name} (${level.code})` : level.name,
+  }));
 }
 
 function firstApiError(err: unknown, fallback: string) {
@@ -457,7 +488,7 @@ export default function HostelManagement() {
   const openCreateHostel = () => {
     setEditingHostel(null);
     form.resetFields();
-    form.setFieldsValue({ category: 'undergraduate', gender: 'mixed', is_active: true, due_required: false });
+    form.setFieldsValue({ category: 'undergraduate', gender: 'mixed', is_active: true, due_required: false, academic_level_ids: [] });
     setCreateOpen(true);
   };
 
@@ -470,6 +501,7 @@ export default function HostelManagement() {
       is_active: row.is_active,
       due_required: !!row.due_required,
       due_amount: row.due_amount ?? undefined,
+      academic_level_ids: row.academic_level_ids || [],
     });
     setCreateOpen(true);
   };
@@ -481,12 +513,14 @@ export default function HostelManagement() {
     is_active?: boolean;
     due_required?: boolean;
     due_amount?: number;
+    academic_level_ids?: number[];
   }) => {
     setCreating(true);
     const payload = {
       ...values,
       due_required: !!values.due_required,
       due_amount: values.due_required ? values.due_amount : null,
+      academic_level_ids: values.academic_level_ids || [],
     };
     try {
       if (editingHostel) {
@@ -586,6 +620,7 @@ export default function HostelManagement() {
     bedding_type?: string;
     gender?: string;
     hostel_block_id?: number;
+    academic_level_ids?: number[];
   }) => {
     const blockId = values.hostel_block_id || selectedBlockId;
     if (!blockId) return;
@@ -597,6 +632,7 @@ export default function HostelManagement() {
         room_type: values.room_type || 'standard',
         bedding_type: values.bedding_type || 'single',
         gender: values.gender,
+        academic_level_ids: values.academic_level_ids || [],
       });
       message.success('Room added.');
       setRoomOpen(false);
@@ -617,6 +653,7 @@ export default function HostelManagement() {
       room_type: room.room_type || 'standard',
       bedding_type: room.bedding_type || 'single',
       gender: room.gender || undefined,
+      academic_level_ids: room.academic_level_ids || [],
     });
     setEditRoomOpen(true);
   };
@@ -627,6 +664,7 @@ export default function HostelManagement() {
     room_type?: string;
     bedding_type?: string;
     gender?: string;
+    academic_level_ids?: number[];
   }) => {
     if (!editingRoom) return;
     setSavingRoom(true);
@@ -636,6 +674,7 @@ export default function HostelManagement() {
         room_type: values.room_type || 'standard',
         bedding_type: values.bedding_type || 'single',
         gender: values.gender || null,
+        academic_level_ids: values.academic_level_ids || [],
       });
       message.success('Room updated.');
       setEditRoomOpen(false);
@@ -690,6 +729,7 @@ export default function HostelManagement() {
   const hostelColumns: ColumnsType<HostelRow> = [
     { title: 'Hostel', dataIndex: 'name', key: 'name', render: (name: string) => <span className="font-medium">{name}</span> },
     { title: 'Category', dataIndex: 'category', key: 'category', render: (c: string) => <CategoryTag category={c} /> },
+    { title: 'Levels', key: 'levels', render: (_, row) => <LevelTags levels={row.academic_levels} /> },
     { title: 'Gender', dataIndex: 'gender', key: 'gender', render: (g: string) => g || '—' },
     {
       title: 'Due',
@@ -764,6 +804,11 @@ export default function HostelManagement() {
           ? <Tag color="cyan">Bunk</Tag>
           : <Tag>Single</Tag>
       ),
+    },
+    {
+      title: 'Levels',
+      key: 'levels',
+      render: (_, row) => <LevelTags levels={row.academic_levels} emptyLabel="Same as hostel" />,
     },
     {
       title: 'Spaces',
@@ -982,7 +1027,7 @@ export default function HostelManagement() {
       <WorkspaceHero
         eyebrow="Campus services"
         title="Hostel management"
-        description="Undergraduate, JUPEB, and postgraduate hostels are managed separately. Toggling a level saves immediately and is the live Open/Closed switch students see. Students must still have paid at least 25% of current-session tuition before they can request a bed. A hostel marked Active is not the same as the selection window. Beds from a previous academic session are released when a new session is current."
+        description="Assign student levels to each hostel so students only see rooms for their level. Undergraduate, JUPEB, and postgraduate hostels stay separate. Toggling a level on the Level activation tab is the live Open/Closed switch. Students must still have paid at least 25% of current-session tuition before they can request a bed."
         icon={Building2}
       >
         <RefreshButton onClick={load} loading={loading || tabLoading} />
@@ -1289,7 +1334,29 @@ export default function HostelManagement() {
             <Input placeholder="e.g. Queen Hall" />
           </Form.Item>
           <Form.Item name="category" label="Category" initialValue="undergraduate" rules={[{ required: true }]}>
-            <Select options={categoryOptions} />
+            <Select
+              options={categoryOptions}
+              onChange={() => form.setFieldValue('academic_level_ids', [])}
+            />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.category !== cur.category}>
+            {({ getFieldValue }) => {
+              const category = (getFieldValue('category') || 'undergraduate') as HostelCategory;
+              return (
+                <Form.Item
+                  name="academic_level_ids"
+                  label="Student levels"
+                  extra="Students in these levels see this hostel’s rooms when their selection window is open. Leave empty to show rooms to every level in this category."
+                >
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    placeholder="All levels in this category"
+                    options={levelSelectOptions(overview?.academic_levels?.[category])}
+                  />
+                </Form.Item>
+              );
+            }}
           </Form.Item>
           <Form.Item name="gender" label="Gender" initialValue="mixed" rules={[{ required: true }]}>
             <Select options={[
@@ -1404,6 +1471,26 @@ export default function HostelManagement() {
               />
             </Form.Item>
           )}
+          <Form.Item
+            name="academic_level_ids"
+            label="Student levels (optional)"
+            extra="Leave empty to use the hostel’s assigned levels. Use this to reserve a room for one level inside a mixed-level hostel."
+          >
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="Same as hostel"
+              options={levelSelectOptions(
+                (() => {
+                  const hostel = hostels.find((h) => h.id === selectedHostelId);
+                  if (hostel?.academic_levels && hostel.academic_levels.length > 0) {
+                    return hostel.academic_levels;
+                  }
+                  return overview?.academic_levels?.[hostel?.category || 'undergraduate'];
+                })(),
+              )}
+            />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -1460,6 +1547,26 @@ export default function HostelManagement() {
               />
             </Form.Item>
           )}
+          <Form.Item
+            name="academic_level_ids"
+            label="Student levels (optional)"
+            extra="Leave empty to use the hostel’s assigned levels. Use this to reserve a room for one level inside a mixed-level hostel."
+          >
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="Same as hostel"
+              options={levelSelectOptions(
+                (() => {
+                  const hostel = hostels.find((h) => h.id === editingRoom?.hostel_id);
+                  if (hostel?.academic_levels && hostel.academic_levels.length > 0) {
+                    return hostel.academic_levels;
+                  }
+                  return overview?.academic_levels?.[hostel?.category || editingRoom?.hostel_category || 'undergraduate'];
+                })(),
+              )}
+            />
+          </Form.Item>
         </Form>
       </Modal>
 
