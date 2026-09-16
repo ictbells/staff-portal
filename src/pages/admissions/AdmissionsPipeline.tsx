@@ -70,7 +70,13 @@ const PG_STAGE_OPTIONS = [
   { value: 'rejected', label: 'Rejected' },
 ];
 
-function nextFor(row: { stage: string; entry_mode?: string; workflow?: { next_stage?: string; next_permission?: string } }) {
+function formNotSubmitted(row: { stage: string; workflow?: { form_submitted?: boolean } }) {
+  if (row.workflow?.form_submitted === false) return true;
+  return ['started', 'awaiting_application_fee', 'fee_paid', 'form_in_progress'].includes(row.stage);
+}
+
+function nextFor(row: { stage: string; entry_mode?: string; workflow?: { next_stage?: string; next_permission?: string; form_submitted?: boolean } }) {
+  if (formNotSubmitted(row)) return undefined;
   if (row.workflow?.next_stage) return row.workflow.next_stage;
   if (row.entry_mode === 'transfer' && row.stage === 'verification') return 'credit_assessment';
   if (row.entry_mode === 'transfer' && row.stage === 'credit_assessment') return 'shortlisting';
@@ -149,6 +155,7 @@ type ApplicationRow = {
     next_stage?: string;
     next_label?: string;
     next_permission?: string;
+    form_submitted?: boolean;
     template_code?: string;
     can_revert?: boolean;
     revert?: { restore_stage: string; restore_label: string; last_decision?: string | null; last_to_stage?: string } | null;
@@ -468,10 +475,12 @@ export function AdmissionsPipeline({ channel }: Props) {
 
   const canAdvanceTo = useCallback((row: ApplicationRow | string) => {
     if (typeof row === 'string') {
+      if (['started', 'awaiting_application_fee', 'fee_paid', 'form_in_progress'].includes(row)) return false;
       const next = NEXT_STAGE[row];
       if (!next) return false;
       return has(STAGE_PERMISSION[next] ?? 'admissions.view');
     }
+    if (formNotSubmitted(row)) return false;
     const next = nextFor(row);
     if (!next) return false;
     return has(permissionForNext(row));
@@ -718,6 +727,9 @@ export function AdmissionsPipeline({ channel }: Props) {
         render: (stage: string, row: ApplicationRow) => (
           <Space size={4} wrap>
             <Tag color={stageTagColor(stage)}>{formatStage(stage)}</Tag>
+            {formNotSubmitted(row) && (
+              <Tag color="orange">Not submitted</Tag>
+            )}
             {row.eligibility && row.entry_mode === 'pg' && (
               <Tag color={row.eligibility.meets ? 'success' : 'warning'}>
                 {row.eligibility.meets ? 'Meets' : 'Does not meet'}

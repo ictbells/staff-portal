@@ -24,6 +24,7 @@ export type DecisionApplication = {
     next_stage?: string;
     next_label?: string;
     next_permission?: string;
+    form_submitted?: boolean;
     can_revert?: boolean;
     revert?: { restore_stage: string; restore_label: string; last_decision?: string | null; last_to_stage?: string } | null;
   };
@@ -51,7 +52,13 @@ const NEXT_STAGE: Record<string, string> = {
   approved: 'offer_issued',
 };
 
+function formNotSubmitted(row: { stage: string; submitted_at?: string | null; workflow?: { form_submitted?: boolean } }) {
+  if (row.workflow?.form_submitted === false) return true;
+  return ['started', 'awaiting_application_fee', 'fee_paid', 'form_in_progress'].includes(row.stage);
+}
+
 function nextFor(row: DecisionApplication) {
+  if (formNotSubmitted(row)) return undefined;
   if (row.workflow?.next_stage) return row.workflow.next_stage;
   if (row.entry_mode === 'transfer' && row.stage === 'verification') return 'credit_assessment';
   if (row.entry_mode === 'transfer' && row.stage === 'credit_assessment') return 'shortlisting';
@@ -143,7 +150,7 @@ export function ApplicationDecisionModal({
         label: issuesOffer ? `Issue offer — ${label}` : `Advance to ${label}`,
       });
     }
-    if (row.stage !== 'rejected') {
+    if (row.stage !== 'rejected' && !formNotSubmitted(row)) {
       items.push({ value: 'rejected', label: 'Reject application' });
     }
     return items;
@@ -280,7 +287,11 @@ export function ApplicationDecisionModal({
                 Select the outcome for this file, then update the decision.
               </p>
             </div>
-            {options.length === 0 && !canRevert ? (
+            {formNotSubmitted(row) ? (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                This applicant has not submitted their form yet. Staff can view the file, but screening, rejection, and other processing start only after they submit from the student portal.
+              </p>
+            ) : options.length === 0 && !canRevert ? (
               <p className="text-sm text-slate-600">This file has no further admissions decision.</p>
             ) : (
               <>
