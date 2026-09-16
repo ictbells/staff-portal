@@ -3,6 +3,31 @@ import { message } from 'antd';
 import api from '../../api';
 import type { ReportDefinition } from './types';
 
+function mimeFor(format: 'pdf' | 'excel' | 'word') {
+  return format === 'pdf'
+    ? 'application/pdf'
+    : format === 'excel'
+      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+}
+
+async function errorFromBlob(blob: Blob): Promise<string | null> {
+  const prefix = (await blob.slice(0, 8).text()).trim();
+  if (prefix.startsWith('%PDF') || prefix.startsWith('PK')) return null;
+  if (blob.type.includes('json') || prefix.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(await blob.text());
+      return parsed.message || 'Unable to download the report.';
+    } catch {
+      return 'Unable to download the report.';
+    }
+  }
+  if (blob.type.includes('html') || prefix.startsWith('<')) {
+    return 'Unable to generate the PDF. Try Excel or Word, or narrow the filters.';
+  }
+  return null;
+}
+
 export async function downloadReport(definition: ReportDefinition, format: 'pdf' | 'excel' | 'word', title: string) {
   try {
     const { data } = await api.post('/api/reports/export', {
@@ -10,22 +35,18 @@ export async function downloadReport(definition: ReportDefinition, format: 'pdf'
       format,
       title,
     }, { responseType: 'blob' });
-    const mime = format === 'pdf'
-      ? 'application/pdf'
-      : format === 'excel'
-        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-    const extension = format === 'pdf' ? 'pdf' : format === 'excel' ? 'xlsx' : 'docx';
+    const mime = mimeFor(format);
     const blob = data instanceof Blob ? data : new Blob([data], { type: mime });
-    if (blob.type.includes('application/json')) {
-      const parsed = JSON.parse(await blob.text());
-      message.error(parsed.message || 'Unable to download the report.');
+    const error = await errorFromBlob(blob);
+    if (error) {
+      message.error(error);
       return;
     }
-    const url = window.URL.createObjectURL(blob);
+    const file = new Blob([blob], { type: mime });
+    const url = window.URL.createObjectURL(file);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${title.replace(/\s+/g, '-').toLowerCase()}.${extension}`;
+    link.download = `${title.replace(/\s+/g, '-').toLowerCase()}.${format === 'pdf' ? 'pdf' : format === 'excel' ? 'xlsx' : 'docx'}`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -33,13 +54,8 @@ export async function downloadReport(definition: ReportDefinition, format: 'pdf'
   } catch (err: any) {
     const blob = err.response?.data;
     if (blob instanceof Blob) {
-      try {
-        message.error(JSON.parse(await blob.text()).message || 'Unable to download the report.');
-        return;
-      } catch {
-        message.error('Unable to download the report.');
-        return;
-      }
+      message.error((await errorFromBlob(blob)) || 'Unable to download the report.');
+      return;
     }
     message.error(err.response?.data?.message || 'Unable to download the report.');
   }

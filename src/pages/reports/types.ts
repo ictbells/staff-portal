@@ -58,10 +58,18 @@ export type SavedReport = {
   updated_at?: string;
 };
 
+export type ReportRunColumn = {
+  key: string;
+  label: string;
+  type?: 'string' | 'number' | 'date' | 'datetime' | 'boolean' | 'enum';
+  aggregatable?: boolean;
+};
+
 export type ReportRunResult = {
   dataset: string;
-  columns: { key: string; label: string }[];
-  rows: Record<string, string>[];
+  columns: ReportRunColumn[];
+  rows: Record<string, string | number | null>[];
+  totals?: Record<string, number>;
   meta: {
     current_page: number;
     per_page: number;

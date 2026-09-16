@@ -7,9 +7,10 @@ import { useAuth } from '../../auth';
 import { AccessDeniedPanel } from '../../components/AccessDeniedPanel';
 import { getNavItemAccess } from '../../lib/portalAccess';
 import {
-  Badge, Card, DataTable, Spinner, TablePager, WorkspaceHero, tdClass, thClass, trClass,
+  Badge, Card, Spinner, WorkspaceHero,
 } from '../../components/ui';
 import { downloadMenu, downloadReport } from './download';
+import { ReportResultsTable } from './ReportResultsTable';
 import type { ReportDefinition, ReportRunResult, SavedReport } from './types';
 
 export default function ReportRun() {
@@ -156,38 +157,7 @@ export default function ReportRun() {
 
       {preview && (
         <Card title="Results" description={preview.filter_summary.join(' · ') || 'No filters applied.'}>
-          <DataTable colSpan={preview.columns.length}>
-            <thead>
-              <tr>
-                {preview.columns.map((column) => (
-                  <th key={column.key} className={thClass}>{column.label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {preview.rows.length === 0 && (
-                <tr>
-                  <td className={`${tdClass} text-slate-500`} colSpan={preview.columns.length}>No matching rows.</td>
-                </tr>
-              )}
-              {preview.rows.map((row, index) => (
-                <tr key={index} className={trClass}>
-                  {preview.columns.map((column) => (
-                    <td key={column.key} className={tdClass}>{row[column.key]}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </DataTable>
-          <TablePager
-            page={preview.meta.current_page}
-            lastPage={preview.meta.last_page}
-            total={preview.meta.total}
-            from={preview.meta.from}
-            to={preview.meta.to}
-            onChange={(page) => run(page)}
-            disabled={running}
-          />
+          <ReportResultsTable preview={preview} running={running} onPage={(page) => run(page)} />
         </Card>
       )}
     </div>
