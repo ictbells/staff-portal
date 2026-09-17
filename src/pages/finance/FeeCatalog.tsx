@@ -182,6 +182,7 @@ export function FeeCatalog() {
         { value: 'hostel', label: 'Hostel' },
         { value: 'clinic', label: 'Clinic services' },
         { value: 'sundry', label: 'Sundry' },
+        { value: 'semester_fee', label: 'Semester fee' },
         { value: 'acceptance_fee', label: 'Acceptance fee' },
         { value: 'application_fee', label: 'Application fee' },
         { value: 'other', label: 'Other' },

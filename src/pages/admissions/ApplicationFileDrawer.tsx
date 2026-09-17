@@ -376,6 +376,8 @@ function asDirectEntry(raw: any, jamb?: string): DirectEntry {
     ...base,
     ...raw,
     jamb_de_number: raw.jamb_de_number || jamb || '',
+    qualification_type: raw.qualification_type || base.qualification_type,
+    qualification_class: raw.qualification_class || base.qualification_class,
     requested_entry_level: String(raw.requested_entry_level || base.requested_entry_level),
   };
 }

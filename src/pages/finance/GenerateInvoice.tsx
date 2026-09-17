@@ -30,6 +30,13 @@ type FoundStudent = {
   study_level?: string | null;
 };
 
+type SemesterTerm = {
+  id: number;
+  name: string;
+  session_label?: string | null;
+  is_current?: boolean;
+};
+
 const EXCLUDED_CATEGORIES = ['application_fee', 'acceptance_fee', 'transcript', 'programme_fee'];
 
 function studentFromStatus(payload: any): FoundStudent | null {
@@ -59,17 +66,30 @@ export function GenerateInvoice() {
   const [studentError, setStudentError] = useState('');
   const [lookingUp, setLookingUp] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [semesterTerms, setSemesterTerms] = useState<SemesterTerm[]>([]);
+  const [semesterAmount, setSemesterAmount] = useState<number | null>(null);
+  const [semesterTermId, setSemesterTermId] = useState<number | null>(null);
+  const [semesterGenerating, setSemesterGenerating] = useState(false);
 
   const loadCatalog = () => {
     setCatalogLoading(true);
-    api.get('/api/fees', { params: { active: 1, operational: 1 } })
-      .then((res) => {
-        const list = Array.isArray(res.data) ? res.data : res.data?.data || [];
+    Promise.all([
+      api.get('/api/fees', { params: { active: 1, operational: 1 } }),
+      api.get('/api/fees/meta'),
+    ])
+      .then(([feesRes, metaRes]) => {
+        const list = Array.isArray(feesRes.data) ? feesRes.data : feesRes.data?.data || [];
         setItems(list.filter((row: CatalogFee) => (
           row.is_active !== false
           && row.wallet_allowed !== false
           && !EXCLUDED_CATEGORIES.includes(String(row.category || ''))
         )));
+        const meta = metaRes.data?.semester_fee;
+        const terms: SemesterTerm[] = Array.isArray(meta?.terms) ? meta.terms : [];
+        setSemesterTerms(terms);
+        setSemesterAmount(meta?.amount != null ? Number(meta.amount) : null);
+        const current = terms.find((term) => term.is_current) || terms[0] || null;
+        setSemesterTermId((prev) => prev ?? current?.id ?? null);
       })
       .catch(() => {
         setItems([]);
@@ -141,6 +161,24 @@ export function GenerateInvoice() {
     }
   };
 
+  const generateSemesterFee = async () => {
+    setSemesterGenerating(true);
+    try {
+      const { data } = await api.post('/api/finance/semester-fee/generate', {
+        academic_term_id: semesterTermId || undefined,
+      });
+      message.success(
+        `Semester fee: ${data.created ?? 0} created, ${data.skipped ?? 0} skipped`
+        + (data.failed ? `, ${data.failed} failed` : '')
+        + (data.amount != null ? ` · ${formatNaira(Number(data.amount))}` : ''),
+      );
+    } catch (e: any) {
+      message.error(e.response?.data?.message || 'Could not generate semester fee invoices.');
+    } finally {
+      setSemesterGenerating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <WorkspaceHero
@@ -155,6 +193,44 @@ export function GenerateInvoice() {
         <StatCard label="Fee items" value={items.length} hint="Operational catalog charges" icon={List} />
         <StatCard label="Selected" value={selectedIds.length} hint={selectedIds.length ? formatNaira(total) : 'Choose charges below'} icon={Wallet} tone="amber" />
       </div>
+
+      <Card
+        title="Generate semester fee"
+        description="Bill every active enrolled student the same catalog amount for the selected term. Re-running skips students already billed for that term. Applicants are not included."
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block">
+            <span className={fieldLabelClass}>Academic term</span>
+            <Select
+              className="w-full"
+              placeholder={semesterTerms.length ? 'Select term' : 'No terms available'}
+              value={semesterTermId ?? undefined}
+              onChange={(value) => setSemesterTermId(value ?? null)}
+              options={semesterTerms.map((term) => ({
+                value: term.id,
+                label: `${term.name}${term.session_label ? ` · ${term.session_label}` : ''}${term.is_current ? ' (current)' : ''}`,
+              }))}
+            />
+          </label>
+          <div>
+            <span className={fieldLabelClass}>Catalog amount</span>
+            <p className="mt-2 text-sm font-medium text-slate-800">
+              {semesterAmount != null && semesterAmount > 0
+                ? formatNaira(semesterAmount)
+                : 'Set the Semester fee amount in Fee items first.'}
+            </p>
+          </div>
+        </div>
+        <div className="mt-4">
+          <Btn
+            className="!text-white"
+            onClick={generateSemesterFee}
+            disabled={semesterGenerating || !semesterTermId || !(semesterAmount && semesterAmount > 0)}
+          >
+            {semesterGenerating ? 'Generating…' : 'Generate semester fee for all students'}
+          </Btn>
+        </div>
+      </Card>
 
       <Card title="Student and fee items" description="Only operational fee items appear here. Programme-schedule charges (tuition, ICT, laboratory, and the rest) stay on Programme fees.">
         <div className="grid gap-4 md:grid-cols-2">
