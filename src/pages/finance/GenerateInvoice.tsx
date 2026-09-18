@@ -196,7 +196,7 @@ export function GenerateInvoice() {
 
       <Card
         title="Generate semester fee"
-        description="Bill every active enrolled student the same catalog amount for the selected term. Re-running skips students already billed for that term. Applicants are not included."
+        description="Bill every active enrolled student the same catalog amount for the selected term (optional bulk run). Students who join later also receive the invoice automatically when they open the student portal, as long as the Fee items amount is set. Re-running skips students already billed. Applicants are not included."
       >
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block">
