@@ -446,15 +446,6 @@ export function SessionsPage() {
   };
 
   const setSemesterCurrent = async (semester: Term, isCurrent: boolean, session: AcademicSessionRow) => {
-    if (isCurrent && session.can_set_current === false) {
-      const open = (session.accepting_application_sessions || []).join(', ');
-      message.error(
-        open
-          ? `Stop accepting applications before setting this session current. Still accepting: ${open}.`
-          : 'Stop accepting applications for this admission session before setting it current.',
-      );
-      return;
-    }
     setTogglingSemesterId(semester.id);
     try {
       await patchResource(`/api/terms/${semester.id}`, { is_current: isCurrent });
@@ -492,10 +483,10 @@ export function SessionsPage() {
         <Space size={[4, 4]} wrap>
           {row.is_closed && <Tag color="default">Closed</Tag>}
           {row.is_current && !row.is_closed && <Tag color="blue">Active session</Tag>}
-          {!row.is_closed && !row.is_current && row.can_set_current === false && (
+          {!row.is_closed && !row.is_current && (row.accepting_application_sessions?.length ?? 0) > 0 && (
             <Tag color="orange">Applications open</Tag>
           )}
-          {!row.is_closed && !row.is_current && row.can_set_current !== false && '—'}
+          {!row.is_closed && !row.is_current && !(row.accepting_application_sessions?.length) && '—'}
         </Space>
       ),
     },
@@ -537,7 +528,6 @@ export function SessionsPage() {
 
   const expandedRowRender = (session: AcademicSessionRow) => {
     const accepting = session.accepting_application_sessions || [];
-    const canSetCurrent = session.can_set_current !== false;
     const semesterColumns: ColumnsType<Term> = [
       { title: 'Semester', dataIndex: 'name', key: 'name' },
       { title: 'Starts', dataIndex: 'starts_on', key: 'starts_on', width: 120, render: (v) => formatDisplayDate(v) },
@@ -547,24 +537,13 @@ export function SessionsPage() {
         dataIndex: 'is_current',
         key: 'is_current',
         width: 120,
-        render: (isCurrent, row) => {
-          const switchEl = (
-            <Switch
-              checked={!!isCurrent}
-              loading={togglingSemesterId === row.id}
-              disabled={!isCurrent && !canSetCurrent}
-              onChange={(checked) => setSemesterCurrent(row, checked, session)}
-            />
-          );
-          if (!isCurrent && !canSetCurrent) {
-            return (
-              <Tooltip title={`Stop accepting applications first${accepting.length ? `: ${accepting.join(', ')}` : ''}. Then run admission, then set current.`}>
-                <span>{switchEl}</span>
-              </Tooltip>
-            );
-          }
-          return switchEl;
-        },
+        render: (isCurrent, row) => (
+          <Switch
+            checked={!!isCurrent}
+            loading={togglingSemesterId === row.id}
+            onChange={(checked) => setSemesterCurrent(row, checked, session)}
+          />
+        ),
       },
       actionColumn(
         (row) => {
@@ -587,20 +566,12 @@ export function SessionsPage() {
 
     return (
       <div className="space-y-3 py-1">
-        {!canSetCurrent && (
-          <Alert
-            type="warning"
-            showIcon
-            message="Application sessions still accepting"
-            description={`Stop accepting (${accepting.join(', ') || 'open intakes'}) before running admission and setting this session current.`}
-          />
-        )}
-        {canSetCurrent && !session.is_current && !session.is_closed && (
+        {accepting.length > 0 && (
           <Alert
             type="info"
             showIcon
-            message="Ready for admission"
-            description="Applications are closed for this session. Run admission (offers and matriculation), then set a semester current when ready."
+            message="Application sessions still accepting"
+            description={`Intakes still open: ${accepting.join(', ')}. You can still set a semester current for enrolled students (fees, registration).`}
           />
         )}
         <Table
