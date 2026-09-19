@@ -182,7 +182,11 @@ const RELIGIONS = ['Christianity', 'Islam', 'Traditional', 'Other'];
 const GENDERS = ['Male', 'Female'];
 const OLEVEL_EXAM_TYPES = ['WAEC', 'NECO', 'GCE', 'NABTEB', 'Other'];
 const OLEVEL_GRADES = ['A1', 'B2', 'B3', 'C4', 'C5', 'C6', 'D7', 'E8', 'F9'];
-const OLEVEL_YEARS = Array.from({ length: 30 }, (_, i) => String(new Date().getFullYear() - i));
+const OLEVEL_YEAR_FROM = 1900;
+const OLEVEL_YEARS = Array.from(
+  { length: new Date().getFullYear() - OLEVEL_YEAR_FROM + 1 },
+  (_, i) => String(new Date().getFullYear() - i),
+);
 const CLASS_OPTIONS = [
   { value: 'first', label: 'First Class' },
   { value: 'second_upper', label: 'Second Class Upper' },
