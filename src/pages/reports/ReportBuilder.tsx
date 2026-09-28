@@ -327,6 +327,9 @@ export default function ReportBuilder() {
                       <Select
                         mode={filter.op === 'in' ? 'multiple' : undefined}
                         className="w-full"
+                        showSearch
+                        optionFilterProp="label"
+                        placeholder="Select…"
                         value={filter.value as any}
                         options={(column.options || []).map((item) => ({ value: item, label: item }))}
                         onChange={(value) => {

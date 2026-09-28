@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, DatePicker, Modal, Select, message } from 'antd';
+import { Button, DatePicker, Input, Modal, Pagination, Select, message } from 'antd';
 import dayjs from 'dayjs';
 import { Bell, ClipboardCheck, ExternalLink, FileText, GraduationCap, Landmark, Plug } from 'lucide-react';
 import api, { apiUrl } from '../api';
@@ -42,11 +42,28 @@ export function Students() {
   const [remarkType, setRemarkType] = useState<string>('abs_p');
   const [remarkTermId, setRemarkTermId] = useState<number | undefined>();
   const [remarking, setRemarking] = useState(false);
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(25);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
   const load = () => {
     setLoading(true);
-    api.get('/api/students', { params: { status: statusFilter, academic_session_id: sessionId, level } }).then((r) => setRows(r.data)).finally(() => setLoading(false));
+    api.get('/api/students', {
+      params: {
+        status: statusFilter,
+        academic_session_id: sessionId,
+        level,
+        search: search || undefined,
+        page,
+        per_page: perPage,
+      },
+    }).then((r) => setRows(r.data)).finally(() => setLoading(false));
   };
-  useEffect(() => { load(); }, [statusFilter, sessionId, level]);
+  useEffect(() => { load(); }, [statusFilter, sessionId, level, search, page, perPage]);
+  const resetPage = <T,>(setter: (value: T) => void) => (value: T) => {
+    setPage(1);
+    setter(value);
+  };
   useEffect(() => {
     if (!canSanction) return;
     api.get('/api/students/term-meta').then((r) => {
@@ -62,6 +79,7 @@ export function Students() {
   const list = rows?.data || (rows?.id ? [rows] : rows) || [];
   const items = Array.isArray(list) ? list : [];
   const withMatric = items.filter((s: any) => s.matric_number).length;
+  const total = Number(rows?.total ?? items.length);
 
   const confirmRemark = async () => {
     if (!remark || !remarkTermId) return;
@@ -140,14 +158,14 @@ export function Students() {
         <RefreshButton onClick={load} loading={loading} />
       </WorkspaceHero>
       <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
-        <StatCard label="Listed" value={items.length} hint="Records in this list" icon={GraduationCap} />
+        <StatCard label="Total" value={total} hint={`Showing ${items.length} on this page`} icon={GraduationCap} />
         <StatCard label="With matric" value={withMatric} hint="Assigned matric numbers" icon={ClipboardCheck} tone="emerald" />
         <StatCard label="Awaiting matric" value={items.length - withMatric} hint="Not yet numbered" icon={GraduationCap} tone="amber" />
       </div>
       <div className="flex flex-wrap gap-2">
         <Select
           value={statusFilter}
-          onChange={setStatusFilter}
+          onChange={resetPage(setStatusFilter)}
           options={[
             { value: 'current', label: 'Current studentship' },
             { value: 'alumni', label: 'Alumni' },
@@ -155,7 +173,18 @@ export function Students() {
           ]}
           className="min-w-[200px]"
         />
-        <SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={setSessionId} onLevelChange={setLevel} />
+        <SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={resetPage(setSessionId)} onLevelChange={resetPage(setLevel)} />
+        <Input.Search
+          allowClear
+          placeholder="Search name, matric, or email"
+          value={searchInput}
+          onChange={(e) => {
+            setSearchInput(e.target.value);
+            if (!e.target.value) resetPage(setSearch)('');
+          }}
+          onSearch={(value) => resetPage(setSearch)(value.trim())}
+          className="max-w-xs"
+        />
       </div>
       <DataTable empty={!items.length} emptyMessage="No student records found." colSpan={canGraduate || canSanction ? 7 : 6}>
         <thead>
@@ -213,6 +242,25 @@ export function Students() {
           </tbody>
         )}
       </DataTable>
+      {total > 0 && (
+        <div className="flex justify-end">
+          <Pagination
+            current={page}
+            pageSize={perPage}
+            total={total}
+            showSizeChanger
+            pageSizeOptions={[25, 50, 100]}
+            showTotal={(count, range) => `${range[0]}–${range[1]} of ${count}`}
+            onChange={(nextPage, nextSize) => {
+              if (nextSize !== perPage) {
+                resetPage(setPerPage)(nextSize);
+                return;
+              }
+              setPage(nextPage);
+            }}
+          />
+        </div>
+      )}
       <Modal
         title={`Confirm graduation — ${confer?.name || ''}`}
         open={!!confer}

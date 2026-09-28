@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Alert, Button, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, message,
+  Alert, Button, Dropdown, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { BookOpen, Plus, Search } from 'lucide-react';
+import { BookOpen, Download, Plus, Search } from 'lucide-react';
 import api, { isPendingApproval } from '../../api';
 import { useAuth } from '../../auth';
 import { RefreshButton } from '../../components/RefreshButton';
@@ -208,6 +208,140 @@ function CourseOfferingCell({ course }: { course?: CourseRef | null }) {
   );
 }
 
+type ExportFormat = 'excel' | 'pdf';
+
+type RosterStudent = {
+  student_id: number;
+  matric: string;
+  surname: string;
+  other_names: string;
+  gender: string;
+  programme: string;
+  level: string;
+  email: string;
+  carry_over: string;
+  registered_at: string;
+};
+
+async function downloadExport(url: string, params: Record<string, unknown>, format: ExportFormat, prefix: string) {
+  try {
+    const { data } = await api.get(url, { params, responseType: 'blob' });
+    const mime = format === 'pdf'
+      ? 'application/pdf'
+      : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const href = window.URL.createObjectURL(new Blob([data], { type: mime }));
+    const link = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    link.href = href;
+    link.download = `${prefix}-${stamp}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(href);
+  } catch (err) {
+    const blob = (err as { response?: { data?: unknown } })?.response?.data;
+    if (blob instanceof Blob) {
+      try {
+        const parsed = JSON.parse(await blob.text());
+        message.error(parsed?.message || 'Unable to download.');
+        return;
+      } catch {
+        // not JSON
+      }
+    }
+    message.error(apiError(err, 'Unable to download.'));
+  }
+}
+
+function OfferingRosterModal({ offering, onClose }: { offering: Offering | null; onClose: () => void }) {
+  const [students, setStudents] = useState<RosterStudent[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState<ExportFormat | null>(null);
+  const [filter, setFilter] = useState('');
+
+  useEffect(() => {
+    if (!offering) return;
+    setStudents([]);
+    setFilter('');
+    setLoading(true);
+    api.get(`/api/academic/offerings/${offering.id}/students`)
+      .then(({ data }) => setStudents(Array.isArray(data?.students) ? data.students : []))
+      .catch((err) => message.error(apiError(err, 'Unable to load registered students.')))
+      .finally(() => setLoading(false));
+  }, [offering]);
+
+  const visible = useMemo(() => {
+    const term = filter.trim().toLowerCase();
+    if (!term) return students;
+    return students.filter((s) => [s.matric, s.surname, s.other_names, s.programme, s.email]
+      .some((value) => String(value || '').toLowerCase().includes(term)));
+  }, [students, filter]);
+
+  const download = async (format: ExportFormat) => {
+    if (!offering) return;
+    setDownloading(format);
+    try {
+      const prefix = `${offering.course?.code || 'course'}-${offering.section || 'A'}-class-list`.replace(/\s+/g, '');
+      await downloadExport(`/api/academic/offerings/${offering.id}/students/export`, { format }, format, prefix);
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const columns: ColumnsType<RosterStudent> = [
+    { title: 'S/N', key: 'sn', width: 60, render: (_, __, index) => index + 1 },
+    { title: 'Matric no.', dataIndex: 'matric', key: 'matric', width: 140 },
+    { title: 'Name', key: 'name', render: (_, s) => `${s.surname}, ${s.other_names}` },
+    { title: 'Programme', dataIndex: 'programme', key: 'programme', ellipsis: true },
+    { title: 'Level', dataIndex: 'level', key: 'level', width: 90 },
+    { title: 'Carry-over', dataIndex: 'carry_over', key: 'carry_over', width: 100 },
+    { title: 'Registered', dataIndex: 'registered_at', key: 'registered_at', width: 120 },
+  ];
+
+  const termLabel = offering?.term ? `${offering.term.session_label || ''} ${offering.term.name}`.trim() : '';
+
+  return (
+    <Modal
+      title={offering ? `${offering.course?.code || 'Course'} — ${offering.course?.title || ''} (Section ${offering.section || 'A'})` : ''}
+      open={!!offering}
+      onCancel={onClose}
+      footer={null}
+      width={960}
+      destroyOnHidden
+    >
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <span className="text-sm text-slate-600">
+          {termLabel ? `${termLabel} · ` : ''}{students.length} registered student{students.length === 1 ? '' : 's'}
+        </span>
+        <Input
+          allowClear
+          prefix={<Search size={14} />}
+          placeholder="Filter by matric, name, programme"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          className="max-w-xs ml-auto"
+        />
+        <Button icon={<Download size={14} />} loading={downloading === 'excel'} disabled={!students.length} onClick={() => download('excel')}>
+          Excel
+        </Button>
+        <Button icon={<Download size={14} />} loading={downloading === 'pdf'} disabled={!students.length} onClick={() => download('pdf')}>
+          PDF
+        </Button>
+      </div>
+      <Table
+        rowKey="student_id"
+        size="small"
+        columns={columns}
+        dataSource={visible}
+        loading={loading}
+        pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }}
+        scroll={{ x: 800 }}
+        locale={{ emptyText: 'No students have registered this course.' }}
+      />
+    </Modal>
+  );
+}
+
 function rosterLabel(status?: string) {
   if (status === 'registered') return 'Registered';
   if (status === 'in_progress') return 'In progress';
@@ -244,6 +378,23 @@ export function OfferingsPage() {
     return [...semesterOptions, { value: extra.id, label: `${extra.session_label || ''} ${extra.name}`.trim() }];
   }, [crud.editing, semesterOptions, terms]);
   const currentTermId = termId ?? semesterTerms.find((term) => term.is_current)?.id ?? semesterTerms[0]?.id;
+  const [exporting, setExporting] = useState(false);
+  const [roster, setRoster] = useState<Offering | null>(null);
+  const totalRegistered = useMemo(() => rows.reduce((sum, row) => sum + Number(row.enrolled_count || 0), 0), [rows]);
+
+  const downloadOfferings = async (format: ExportFormat) => {
+    setExporting(true);
+    try {
+      await downloadExport(
+        '/api/academic/offerings/export',
+        { format, academic_session_id: sessionId, academic_term_id: termId, level },
+        format,
+        'course-registrations',
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     if (!termId) return;
@@ -298,6 +449,18 @@ export function OfferingsPage() {
       key: 'seats',
       width: 120,
       render: (_, row) => (row.unlimited || row.capacity == null ? 'Unlimited' : `${offeringSeatsLabel(row)} / ${row.capacity}`),
+    },
+    {
+      title: 'Registered',
+      key: 'registered',
+      width: 110,
+      align: 'right',
+      sorter: (a, b) => Number(a.enrolled_count || 0) - Number(b.enrolled_count || 0),
+      render: (_, row) => (
+        <Button type="link" size="small" className="!px-0" onClick={() => setRoster(row)}>
+          {Number(row.enrolled_count || 0)}
+        </Button>
+      ),
     },
     actionColumn(
       (row) => crud.openEdit(row, {
@@ -368,10 +531,26 @@ export function OfferingsPage() {
           <Button onClick={openPublish} disabled={semesterTerms.length === 0}>
             Publish programme courses
           </Button>
+          <Dropdown
+            disabled={rows.length === 0}
+            menu={{
+              items: [
+                { key: 'excel', label: 'Excel (.xlsx)' },
+                { key: 'pdf', label: 'PDF' },
+              ],
+              onClick: ({ key }) => downloadOfferings(key as 'excel' | 'pdf'),
+            }}
+          >
+            <Button icon={<Download size={14} />} loading={exporting}>Download</Button>
+          </Dropdown>
+          <span className="text-sm text-slate-500 ml-auto">
+            {totalRegistered} registration{totalRegistered === 1 ? '' : 's'} across {rows.length} offering{rows.length === 1 ? '' : 's'}
+          </span>
         </>
       )}
     >
-      <Table rowKey="id" size="middle" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1080 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No offerings yet. Publish programme courses for this semester, or add one course.' }} />
+      <Table rowKey="id" size="middle" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1190 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No offerings yet. Publish programme courses for this semester, or add one course.' }} />
+      <OfferingRosterModal offering={roster} onClose={() => setRoster(null)} />
       <Modal
         title="Publish programme courses"
         open={publishOpen}
