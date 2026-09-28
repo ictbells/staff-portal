@@ -46,6 +46,31 @@ export function Students() {
   const [perPage, setPerPage] = useState(25);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  const [matricInput, setMatricInput] = useState('');
+  const [matric, setMatric] = useState('');
+  const [facultyId, setFacultyId] = useState<number | undefined>();
+  const [departmentId, setDepartmentId] = useState<number | undefined>();
+  const [programId, setProgramId] = useState<number | undefined>();
+  const [orgMeta, setOrgMeta] = useState<{
+    faculties: Array<{ id: number; name: string }>;
+    departments: Array<{ id: number; name: string; faculty_id?: number | null }>;
+    programs: Array<{ id: number; name: string; code?: string | null; department_id?: number | null; faculty_id?: number | null }>;
+  }>({ faculties: [], departments: [], programs: [] });
+  useEffect(() => {
+    api.get('/api/students/filter-meta')
+      .then((r) => setOrgMeta({
+        faculties: r.data?.faculties || [],
+        departments: r.data?.departments || [],
+        programs: r.data?.programs || [],
+      }))
+      .catch(() => {});
+  }, []);
+  const departmentOptions = orgMeta.departments
+    .filter((d) => !facultyId || d.faculty_id === facultyId)
+    .map((d) => ({ value: d.id, label: d.name }));
+  const programOptions = orgMeta.programs
+    .filter((p) => (!departmentId || p.department_id === departmentId) && (!facultyId || p.faculty_id === facultyId))
+    .map((p) => ({ value: p.id, label: p.code ? `${p.name} (${p.code})` : p.name }));
   const load = () => {
     setLoading(true);
     api.get('/api/students', {
@@ -54,12 +79,16 @@ export function Students() {
         academic_session_id: sessionId,
         level,
         search: search || undefined,
+        matric_contains: matric || undefined,
+        faculty_id: facultyId,
+        department_id: departmentId,
+        program_id: programId,
         page,
         per_page: perPage,
       },
     }).then((r) => setRows(r.data)).finally(() => setLoading(false));
   };
-  useEffect(() => { load(); }, [statusFilter, sessionId, level, search, page, perPage]);
+  useEffect(() => { load(); }, [statusFilter, sessionId, level, search, matric, facultyId, departmentId, programId, page, perPage]);
   const resetPage = <T,>(setter: (value: T) => void) => (value: T) => {
     setPage(1);
     setter(value);
@@ -174,9 +203,59 @@ export function Students() {
           className="min-w-[200px]"
         />
         <SessionLevelFilters sessionId={sessionId} level={level} onSessionChange={resetPage(setSessionId)} onLevelChange={resetPage(setLevel)} />
+        <Select
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          placeholder="College"
+          value={facultyId}
+          onChange={(value?: number) => {
+            setPage(1);
+            setFacultyId(value);
+            setDepartmentId(undefined);
+            setProgramId(undefined);
+          }}
+          options={orgMeta.faculties.map((f) => ({ value: f.id, label: f.name }))}
+          className="min-w-[180px]"
+        />
+        <Select
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          placeholder="Department"
+          value={departmentId}
+          onChange={(value?: number) => {
+            setPage(1);
+            setDepartmentId(value);
+            setProgramId(undefined);
+          }}
+          options={departmentOptions}
+          className="min-w-[180px]"
+        />
+        <Select
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          placeholder="Programme"
+          value={programId}
+          onChange={resetPage(setProgramId)}
+          options={programOptions}
+          className="min-w-[220px]"
+        />
         <Input.Search
           allowClear
-          placeholder="Search name, matric, or email"
+          placeholder="Matric no."
+          value={matricInput}
+          onChange={(e) => {
+            setMatricInput(e.target.value);
+            if (!e.target.value) resetPage(setMatric)('');
+          }}
+          onSearch={(value) => resetPage(setMatric)(value.trim())}
+          className="max-w-[200px]"
+        />
+        <Input.Search
+          allowClear
+          placeholder="Search name or email"
           value={searchInput}
           onChange={(e) => {
             setSearchInput(e.target.value);
