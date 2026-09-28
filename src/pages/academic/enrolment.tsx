@@ -253,6 +253,11 @@ async function downloadExport(url: string, params: Record<string, unknown>, form
   }
 }
 
+function downloadClassList(offering: Offering, format: ExportFormat) {
+  const prefix = `${offering.course?.code || 'course'}-${offering.section || 'A'}-class-list`.replace(/\s+/g, '');
+  return downloadExport(`/api/academic/offerings/${offering.id}/students/export`, { format }, format, prefix);
+}
+
 function OfferingRosterModal({ offering, onClose }: { offering: Offering | null; onClose: () => void }) {
   const [students, setStudents] = useState<RosterStudent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -281,8 +286,7 @@ function OfferingRosterModal({ offering, onClose }: { offering: Offering | null;
     if (!offering) return;
     setDownloading(format);
     try {
-      const prefix = `${offering.course?.code || 'course'}-${offering.section || 'A'}-class-list`.replace(/\s+/g, '');
-      await downloadExport(`/api/academic/offerings/${offering.id}/students/export`, { format }, format, prefix);
+      await downloadClassList(offering, format);
     } finally {
       setDownloading(null);
     }
@@ -380,6 +384,7 @@ export function OfferingsPage() {
   const currentTermId = termId ?? semesterTerms.find((term) => term.is_current)?.id ?? semesterTerms[0]?.id;
   const [exporting, setExporting] = useState(false);
   const [roster, setRoster] = useState<Offering | null>(null);
+  const [rowDownloading, setRowDownloading] = useState<number | null>(null);
   const totalRegistered = useMemo(() => rows.reduce((sum, row) => sum + Number(row.enrolled_count || 0), 0), [rows]);
 
   const downloadOfferings = async (format: ExportFormat) => {
@@ -462,6 +467,39 @@ export function OfferingsPage() {
         </Button>
       ),
     },
+    {
+      title: 'Class list',
+      key: 'class_list',
+      width: 120,
+      render: (_, row) => (
+        <Dropdown
+          disabled={!Number(row.enrolled_count || 0)}
+          menu={{
+            items: [
+              { key: 'view', label: 'View students' },
+              { key: 'excel', label: 'Download Excel' },
+              { key: 'pdf', label: 'Download PDF' },
+            ],
+            onClick: async ({ key }) => {
+              if (key === 'view') {
+                setRoster(row);
+                return;
+              }
+              setRowDownloading(row.id);
+              try {
+                await downloadClassList(row, key as ExportFormat);
+              } finally {
+                setRowDownloading(null);
+              }
+            },
+          }}
+        >
+          <Button size="small" icon={<Download size={14} />} loading={rowDownloading === row.id}>
+            Download
+          </Button>
+        </Dropdown>
+      ),
+    },
     actionColumn(
       (row) => crud.openEdit(row, {
         course_id: row.course_id ?? row.course?.id,
@@ -541,7 +579,7 @@ export function OfferingsPage() {
               onClick: ({ key }) => downloadOfferings(key as 'excel' | 'pdf'),
             }}
           >
-            <Button icon={<Download size={14} />} loading={exporting}>Download</Button>
+            <Button icon={<Download size={14} />} loading={exporting}>Download summary</Button>
           </Dropdown>
           <span className="text-sm text-slate-500 ml-auto">
             {totalRegistered} registration{totalRegistered === 1 ? '' : 's'} across {rows.length} offering{rows.length === 1 ? '' : 's'}
@@ -549,7 +587,7 @@ export function OfferingsPage() {
         </>
       )}
     >
-      <Table rowKey="id" size="middle" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1190 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No offerings yet. Publish programme courses for this semester, or add one course.' }} />
+      <Table rowKey="id" size="middle" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1310 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No offerings yet. Publish programme courses for this semester, or add one course.' }} />
       <OfferingRosterModal offering={roster} onClose={() => setRoster(null)} />
       <Modal
         title="Publish programme courses"
