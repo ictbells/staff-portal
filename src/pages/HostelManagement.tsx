@@ -62,6 +62,7 @@ type QueueStudent = {
   name: string;
   matric_number?: string;
   current_level: number;
+  level_label?: string | null;
   priority: string;
   gender?: string;
   program?: string;
@@ -73,6 +74,7 @@ type AllocationRow = {
   student_name?: string;
   matric_number?: string;
   student_level?: number;
+  level_label?: string | null;
   program?: string;
   hostel_name?: string;
   hostel_category?: string;
@@ -874,7 +876,7 @@ export default function HostelManagement() {
 
   const queueColumns: ColumnsType<QueueStudent> = [
     { title: 'Priority', dataIndex: 'priority', key: 'priority', render: (p: string, row) => (
-      <Tag color={row.current_level === 100 ? 'gold' : 'default'}>{p}</Tag>
+      <Tag color={row.current_level === 100 || row.current_level === 1 ? 'gold' : 'default'}>{p}</Tag>
     ) },
     { title: 'Student', dataIndex: 'name', key: 'name' },
     { title: 'Matric', dataIndex: 'matric_number', key: 'matric_number', render: (v?: string) => v || '—' },
@@ -903,7 +905,7 @@ export default function HostelManagement() {
   const allocationColumns: ColumnsType<AllocationRow> = [
     { title: 'Student', dataIndex: 'student_name', key: 'student_name' },
     { title: 'Matric', dataIndex: 'matric_number', key: 'matric_number', render: (v?: string) => v || '—' },
-    { title: 'Level', dataIndex: 'student_level', key: 'student_level', render: (l?: number) => (l ? `${l}L` : '—') },
+    { title: 'Level', dataIndex: 'student_level', key: 'student_level', render: (l: number | undefined, row) => row.level_label || (l ? `${l}L` : '—') },
     { title: 'Hostel', dataIndex: 'hostel_name', key: 'hostel_name' },
     { title: 'Category', dataIndex: 'hostel_category', key: 'hostel_category', render: (c?: string) => (c ? <CategoryTag category={c} /> : '—') },
     { title: 'Room / bed', key: 'bed', render: (_, row) => `${row.room_number || '—'} / ${row.bed_label || '—'}` },
@@ -970,7 +972,9 @@ export default function HostelManagement() {
         showIcon
         message={category === 'postgraduate'
           ? 'Year 1 postgraduate students are served first from the allocation queue. Activate only the levels that may apply for beds in this category. The switch saves immediately.'
-          : '100 Level students are served first from the allocation queue. Activate only the levels that may apply for beds in this category. The switch saves immediately — Open now is the live student window for that level, including before a new session starts.'}
+          : category === 'jupeb'
+            ? 'JUPEB students do not use levels. Activate JUPEB to open the JUPEB hostel window. The switch saves immediately — Open now is the live student window, including before a new session starts.'
+            : '100 Level students are served first from the allocation queue. Activate only the levels that may apply for beds in this category. The switch saves immediately — Open now is the live student window for that level, including before a new session starts.'}
       />
       {closedSiblings.length > 0 && (
         <Alert
@@ -990,7 +994,7 @@ export default function HostelManagement() {
             title: 'Priority',
             key: 'priority',
             render: (_, row) => (
-              row.level_code === '100' || row.level_code === 'Y1'
+              row.level_code === '100' || row.level_code === 'Y1' || category === 'jupeb'
                 ? <Tag color="gold">Highest</Tag>
                 : <Tag>{row.level_code}</Tag>
             ),
@@ -1203,7 +1207,7 @@ export default function HostelManagement() {
               <Alert
                 type="info"
                 showIcon
-                message="Undergraduate, JUPEB, and postgraduate are separate windows. Opening Undergraduate 100 Level does not open JUPEB 100 Level. Students must also have paid at least 25% of current-session tuition before they can request a bed."
+                message="Undergraduate, JUPEB, and postgraduate are separate windows. Opening Undergraduate 100 Level does not open JUPEB. Students must also have paid at least 25% of current-session tuition before they can request a bed."
               />
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -1253,7 +1257,11 @@ export default function HostelManagement() {
                   type="warning"
                   showIcon
                   icon={<Users size={16} />}
-                  message="Students are listed by level (100L first), then by registration order. Only students whose level is activated appear here."
+                  message={queueCategory === 'jupeb'
+                    ? 'JUPEB students are listed by registration order. They appear here only while JUPEB is activated on Level activation.'
+                    : queueCategory === 'postgraduate'
+                      ? 'Students are listed by level (Year 1 first), then by registration order. Only students whose level is activated appear here.'
+                      : 'Students are listed by level (100L first), then by registration order. Only students whose level is activated appear here.'}
                 />
                 <Table<QueueStudent>
                   rowKey="id"
