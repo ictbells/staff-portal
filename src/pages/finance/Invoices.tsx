@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Dropdown, Form, Input, Modal, Select, message } from 'antd';
 import type { MenuProps } from 'antd';
-import { CircleDollarSign, Download, FileSpreadsheet, FileText, Receipt, Search, X } from 'lucide-react';
+import { CircleDollarSign, Download, FileSpreadsheet, Receipt, Search, X } from 'lucide-react';
 import api, { isPendingApproval } from '../../api';
 import { RefreshButton } from '../../components/RefreshButton';
 import {
@@ -364,11 +364,21 @@ export function Invoices() {
     setInvoicePage(1);
   };
 
-  const downloadInvoices = async (format: 'pdf' | 'excel' | 'word') => {
-    if (format !== 'excel' && invoiceMeta.total > (format === 'pdf' ? 1000 : 2000)) {
-      message.warning(
-        `${invoiceMeta.total.toLocaleString()} invoices is too many for ${format === 'word' ? 'Word' : 'PDF'}. Use Excel, or narrow the filters first.`,
-      );
+  const downloadInvoices = async (format: 'pdf' | 'excel' | 'word' | 'csv') => {
+    if (format === 'pdf' && invoiceMeta.total > 1000) {
+      message.warning(`${invoiceMeta.total.toLocaleString()} invoices is too many for PDF. Use Excel or CSV, or narrow the filters first.`);
+      return;
+    }
+    if (format === 'word' && invoiceMeta.total > 2000) {
+      message.warning(`${invoiceMeta.total.toLocaleString()} invoices is too many for Word. Use Excel or CSV, or narrow the filters first.`);
+      return;
+    }
+    if (format === 'excel' && invoiceMeta.total > 25000) {
+      message.warning(`${invoiceMeta.total.toLocaleString()} invoices is too many for Excel. Use CSV, or narrow the filters first.`);
+      return;
+    }
+    if (format === 'csv' && invoiceMeta.total > 100000) {
+      message.warning(`${invoiceMeta.total.toLocaleString()} invoices is too many for one CSV. Narrow the filters first.`);
       return;
     }
     setExporting(true);
@@ -376,23 +386,31 @@ export function Invoices() {
       const { data } = await api.get('/api/invoices/export', {
         params: { format, ...invoiceParams() },
         responseType: 'blob',
-        timeout: 300000,
+        timeout: format === 'csv' ? 600000 : 300000,
       });
       const mime = format === 'pdf'
         ? 'application/pdf'
         : format === 'excel'
           ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-          : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      const extension = format === 'pdf' ? 'pdf' : format === 'excel' ? 'xlsx' : 'docx';
-      const blob = new Blob([data], { type: mime });
-      if (blob.type.includes('application/json')) {
+          : format === 'csv'
+            ? 'text/csv;charset=utf-8'
+            : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      const extension = format === 'pdf' ? 'pdf' : format === 'excel' ? 'xlsx' : format === 'csv' ? 'csv' : 'docx';
+      const raw = data instanceof Blob ? data : new Blob([data], { type: mime });
+      const prefix = (await raw.slice(0, 8).text()).trim();
+      if (raw.type.includes('json') || prefix.startsWith('{')) {
         try {
-          message.error(JSON.parse(await blob.text())?.message || 'Unable to download invoices.');
-          return;
+          message.error(JSON.parse(await raw.text())?.message || 'Unable to download invoices.');
         } catch {
-          // continue
+          message.error('Unable to download invoices.');
         }
+        return;
       }
+      if (raw.type.includes('html') || prefix.startsWith('<')) {
+        message.error('The server could not build that file. Try CSV, or narrow the filters.');
+        return;
+      }
+      const blob = new Blob([raw], { type: mime });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -405,17 +423,22 @@ export function Invoices() {
       message.success(`Download started (${format === 'word' ? 'Word' : format.toUpperCase()}).`);
     } catch (err: any) {
       if (err.code === 'ECONNABORTED') {
-        message.error('Download timed out. Narrow the filters and try Excel.');
+        message.error('Download timed out. Try CSV, or narrow the filters.');
         return;
       }
       const blob = err.response?.data;
       if (blob instanceof Blob) {
         try {
           const text = await blob.text();
-          const parsed = JSON.parse(text);
-          message.error(parsed.message || 'Unable to download invoices.');
+          if (text.trim().startsWith('{')) {
+            message.error(JSON.parse(text).message || 'Unable to download invoices.');
+          } else if (err.response?.status === 502 || err.response?.status === 504) {
+            message.error('The server took too long. Try CSV, or narrow the filters.');
+          } else {
+            message.error('Unable to download invoices. Try CSV, or narrow the filters.');
+          }
         } catch {
-          message.error('Unable to download invoices. Narrow the filters and try Excel.');
+          message.error('Unable to download invoices. Try CSV, or narrow the filters.');
         }
       } else {
         message.error(err.response?.data?.message || 'Unable to download invoices.');
@@ -426,9 +449,8 @@ export function Invoices() {
   };
 
   const downloadMenu: MenuProps['items'] = [
-    { key: 'pdf', icon: <FileText size={14} />, label: 'PDF', onClick: () => downloadInvoices('pdf') },
+    { key: 'csv', icon: <FileSpreadsheet size={14} />, label: 'CSV (large lists)', onClick: () => downloadInvoices('csv') },
     { key: 'excel', icon: <FileSpreadsheet size={14} />, label: 'Excel (.xlsx)', onClick: () => downloadInvoices('excel') },
-    { key: 'word', icon: <FileText size={14} />, label: 'MS Word (.docx)', onClick: () => downloadInvoices('word') },
   ];
 
   const openDisable = (invoice: any) => {

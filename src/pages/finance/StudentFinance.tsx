@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button, Dropdown, Select, message } from 'antd';
 import type { MenuProps } from 'antd';
-import { Download, FileSpreadsheet, FileText, Search, X } from 'lucide-react';
+import { Download, FileSpreadsheet, Search, X } from 'lucide-react';
 import { AlertTriangle, BadgeCheck, GraduationCap, Wallet } from 'lucide-react';
 import api from '../../api';
 import { RefreshButton } from '../../components/RefreshButton';
@@ -223,11 +223,21 @@ export function StudentFinance() {
     setSearchParams({}, { replace: true });
   };
 
-  const downloadRoster = async (format: 'pdf' | 'excel' | 'word') => {
-    if (format !== 'excel' && meta.total > (format === 'pdf' ? 1000 : 2000)) {
-      message.warning(
-        `${meta.total.toLocaleString()} students is too many for ${format === 'word' ? 'Word' : 'PDF'}. Use Excel, or narrow the filters first.`,
-      );
+  const downloadRoster = async (format: 'pdf' | 'excel' | 'word' | 'csv') => {
+    if (format === 'pdf' && meta.total > 1000) {
+      message.warning(`${meta.total.toLocaleString()} students is too many for PDF. Use Excel or CSV, or narrow the filters first.`);
+      return;
+    }
+    if (format === 'word' && meta.total > 2000) {
+      message.warning(`${meta.total.toLocaleString()} students is too many for Word. Use Excel or CSV, or narrow the filters first.`);
+      return;
+    }
+    if (format === 'excel' && meta.total > 25000) {
+      message.warning(`${meta.total.toLocaleString()} students is too many for Excel. Use CSV, or narrow the filters first.`);
+      return;
+    }
+    if (format === 'csv' && meta.total > 100000) {
+      message.warning(`${meta.total.toLocaleString()} students is too many for one CSV. Narrow the filters first.`);
       return;
     }
     setExporting(true);
@@ -235,24 +245,31 @@ export function StudentFinance() {
       const { data } = await api.get('/api/finance/student-roster/export', {
         params: { format, ...listParams() },
         responseType: 'blob',
-        timeout: 300000,
+        timeout: format === 'csv' ? 600000 : 300000,
       });
       const mime = format === 'pdf'
         ? 'application/pdf'
         : format === 'excel'
           ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-          : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      const extension = format === 'pdf' ? 'pdf' : format === 'excel' ? 'xlsx' : 'docx';
-      const blob = new Blob([data], { type: mime });
-      if (blob.type.includes('application/json') || (blob.size < 2048 && blob.type === '')) {
+          : format === 'csv'
+            ? 'text/csv;charset=utf-8'
+            : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      const extension = format === 'pdf' ? 'pdf' : format === 'excel' ? 'xlsx' : format === 'csv' ? 'csv' : 'docx';
+      const raw = data instanceof Blob ? data : new Blob([data], { type: mime });
+      const prefix = (await raw.slice(0, 8).text()).trim();
+      if (raw.type.includes('json') || prefix.startsWith('{')) {
         try {
-          const parsed = JSON.parse(await blob.text());
-          message.error(parsed?.message || 'Unable to download the report.');
-          return;
+          message.error(JSON.parse(await raw.text())?.message || 'Unable to download the report.');
         } catch {
-          // continue as file
+          message.error('Unable to download the report.');
         }
+        return;
       }
+      if (raw.type.includes('html') || prefix.startsWith('<')) {
+        message.error('The server could not build that file. Try CSV, or narrow the filters.');
+        return;
+      }
+      const blob = new Blob([raw], { type: mime });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -264,15 +281,23 @@ export function StudentFinance() {
       message.success(`Download started (${format === 'word' ? 'Word' : format.toUpperCase()}).`);
     } catch (err: any) {
       if (err.code === 'ECONNABORTED') {
-        message.error('Download timed out. Narrow the filters and try Excel.');
+        message.error('Download timed out. Try CSV, or narrow the filters.');
         return;
       }
       const blob = err.response?.data;
       if (blob instanceof Blob) {
         try {
-          message.error(JSON.parse(await blob.text()).message || 'Unable to download the report.');
+          const text = await blob.text();
+          const prefix = text.trim().slice(0, 8);
+          if (prefix.startsWith('{')) {
+            message.error(JSON.parse(text).message || 'Unable to download the report.');
+          } else if (err.response?.status === 502 || err.response?.status === 504) {
+            message.error('The server took too long. Try CSV, or narrow the filters.');
+          } else {
+            message.error('Unable to download the report. Try CSV, or narrow the filters.');
+          }
         } catch {
-          message.error('Unable to download the report. Narrow the filters and try Excel.');
+          message.error('Unable to download the report. Try CSV, or narrow the filters.');
         }
       } else {
         message.error(err.response?.data?.message || 'Unable to download the report.');
@@ -283,9 +308,8 @@ export function StudentFinance() {
   };
 
   const downloadMenu: MenuProps['items'] = [
-    { key: 'pdf', icon: <FileText size={14} />, label: 'PDF', onClick: () => downloadRoster('pdf') },
+    { key: 'csv', icon: <FileSpreadsheet size={14} />, label: 'CSV (large lists)', onClick: () => downloadRoster('csv') },
     { key: 'excel', icon: <FileSpreadsheet size={14} />, label: 'Excel (.xlsx)', onClick: () => downloadRoster('excel') },
-    { key: 'word', icon: <FileText size={14} />, label: 'MS Word (.docx)', onClick: () => downloadRoster('word') },
   ];
 
   const student = detail?.student;
