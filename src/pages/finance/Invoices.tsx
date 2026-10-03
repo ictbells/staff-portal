@@ -365,11 +365,18 @@ export function Invoices() {
   };
 
   const downloadInvoices = async (format: 'pdf' | 'excel' | 'word') => {
+    if (format !== 'excel' && invoiceMeta.total > (format === 'pdf' ? 1000 : 2000)) {
+      message.warning(
+        `${invoiceMeta.total.toLocaleString()} invoices is too many for ${format === 'word' ? 'Word' : 'PDF'}. Use Excel, or narrow the filters first.`,
+      );
+      return;
+    }
     setExporting(true);
     try {
       const { data } = await api.get('/api/invoices/export', {
         params: { format, ...invoiceParams() },
         responseType: 'blob',
+        timeout: 300000,
       });
       const mime = format === 'pdf'
         ? 'application/pdf'
@@ -378,6 +385,14 @@ export function Invoices() {
           : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       const extension = format === 'pdf' ? 'pdf' : format === 'excel' ? 'xlsx' : 'docx';
       const blob = new Blob([data], { type: mime });
+      if (blob.type.includes('application/json')) {
+        try {
+          message.error(JSON.parse(await blob.text())?.message || 'Unable to download invoices.');
+          return;
+        } catch {
+          // continue
+        }
+      }
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -389,6 +404,10 @@ export function Invoices() {
       window.URL.revokeObjectURL(url);
       message.success(`Download started (${format === 'word' ? 'Word' : format.toUpperCase()}).`);
     } catch (err: any) {
+      if (err.code === 'ECONNABORTED') {
+        message.error('Download timed out. Narrow the filters and try Excel.');
+        return;
+      }
       const blob = err.response?.data;
       if (blob instanceof Blob) {
         try {
@@ -396,7 +415,7 @@ export function Invoices() {
           const parsed = JSON.parse(text);
           message.error(parsed.message || 'Unable to download invoices.');
         } catch {
-          message.error('Unable to download invoices.');
+          message.error('Unable to download invoices. Narrow the filters and try Excel.');
         }
       } else {
         message.error(err.response?.data?.message || 'Unable to download invoices.');

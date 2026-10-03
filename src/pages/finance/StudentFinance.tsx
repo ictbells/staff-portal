@@ -224,11 +224,18 @@ export function StudentFinance() {
   };
 
   const downloadRoster = async (format: 'pdf' | 'excel' | 'word') => {
+    if (format !== 'excel' && meta.total > (format === 'pdf' ? 1000 : 2000)) {
+      message.warning(
+        `${meta.total.toLocaleString()} students is too many for ${format === 'word' ? 'Word' : 'PDF'}. Use Excel, or narrow the filters first.`,
+      );
+      return;
+    }
     setExporting(true);
     try {
       const { data } = await api.get('/api/finance/student-roster/export', {
         params: { format, ...listParams() },
         responseType: 'blob',
+        timeout: 300000,
       });
       const mime = format === 'pdf'
         ? 'application/pdf'
@@ -237,6 +244,15 @@ export function StudentFinance() {
           : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       const extension = format === 'pdf' ? 'pdf' : format === 'excel' ? 'xlsx' : 'docx';
       const blob = new Blob([data], { type: mime });
+      if (blob.type.includes('application/json') || (blob.size < 2048 && blob.type === '')) {
+        try {
+          const parsed = JSON.parse(await blob.text());
+          message.error(parsed?.message || 'Unable to download the report.');
+          return;
+        } catch {
+          // continue as file
+        }
+      }
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -247,12 +263,16 @@ export function StudentFinance() {
       window.URL.revokeObjectURL(url);
       message.success(`Download started (${format === 'word' ? 'Word' : format.toUpperCase()}).`);
     } catch (err: any) {
+      if (err.code === 'ECONNABORTED') {
+        message.error('Download timed out. Narrow the filters and try Excel.');
+        return;
+      }
       const blob = err.response?.data;
       if (blob instanceof Blob) {
         try {
           message.error(JSON.parse(await blob.text()).message || 'Unable to download the report.');
         } catch {
-          message.error('Unable to download the report.');
+          message.error('Unable to download the report. Narrow the filters and try Excel.');
         }
       } else {
         message.error(err.response?.data?.message || 'Unable to download the report.');
@@ -298,7 +318,7 @@ export function StudentFinance() {
                 ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
                 : 'bg-amber-50 text-amber-800 ring-amber-200'
             }`}>
-              {summary.clearance === 'cleared' ? 'Cleared — 100% of school fees paid' : 'Outstanding — school fees not paid in full'}
+              {summary.clearance === 'cleared' ? 'Cleared — nothing outstanding' : 'Outstanding — balance still due'}
             </span>
             <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
               <StatCard label="Wallet" value={formatNaira(summary.wallet_balance)} icon={Wallet} />
@@ -308,14 +328,14 @@ export function StudentFinance() {
               <StatCard
                 label="Outstanding"
                 value={formatNaira(summary.outstanding)}
-                hint={summary.clearance === 'cleared' ? 'School fees paid in full' : 'Includes unpaid school fees'}
+                hint={summary.clearance === 'cleared' ? 'All charges paid' : 'School fees and/or other charges unpaid'}
                 icon={Number(summary.outstanding) > 0.009 ? AlertTriangle : BadgeCheck}
                 tone={Number(summary.outstanding) > 0.009 ? 'rose' : 'emerald'}
               />
             </div>
           </div>
         ) : null}
-        <Card title="Invoices" description="Charges billed to this student. Paid and balance are calculated from receipts, not a stored status alone.">
+        <Card title="Invoices" description="Paid is what this invoice received. For tuition installments, Balance is school fees still due after this payment and every earlier tuition payment.">
           <DataTable empty={!invoices.length} emptyMessage="No invoices on this record." colSpan={9} loading={detailLoading}>
             <thead>
               <tr>
@@ -324,7 +344,7 @@ export function StudentFinance() {
                 <th className={thClass}>Billed</th>
                 <th className={thClass}>Paid</th>
                 <th className={thClass}>Rebate</th>
-                <th className={thClass}>Balance</th>
+                <th className={thClass}>Balance due</th>
                 <th className={thClass}>Status</th>
                 <th className={thClass}>Date</th>
                 <th className={`${thClass} text-right`}>Receipt</th>
