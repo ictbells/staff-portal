@@ -9,41 +9,18 @@ export function apiUrl(path: string, fallback = ''): string {
 
 const baseURL = String(import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
 
+/**
+ * Staff auth is Bearer tokens in sessionStorage (same as the student portal).
+ * Keep withCredentials off so a full cookie jar on a shared parent domain
+ * (other apps, old cookie-session payloads) cannot abort login or API calls
+ * with "cookie storage full" / HTTP 431. Staff do not need CSRF cookies.
+ */
 const api = axios.create({
   baseURL,
-  withCredentials: true,
-  // Axios only sends X-XSRF-TOKEN on same-origin by default. Prod SPA and API are different hosts.
-  withXSRFToken: true,
-  xsrfCookieName: 'Bells-XSRF-TOKEN',
-  xsrfHeaderName: 'X-XSRF-TOKEN',
+  withCredentials: false,
 });
 
-let csrfPromise: Promise<void> | null = null;
-
-function ensureCsrfCookie() {
-  if (!csrfPromise) {
-    csrfPromise = api
-      .get('/api/sanctum/csrf-cookie')
-      .then(() => undefined)
-      .catch((err) => {
-        csrfPromise = null;
-        throw err;
-      });
-  }
-  return csrfPromise;
-}
-
-api.interceptors.request.use(async (config) => {
-  const method = (config.method ?? 'get').toLowerCase();
-  const url = String(config.url || '');
-  const csrfExempt = ['/api/login', '/api/forgot-password', '/api/reset-password', '/api/two-factor/'].some((prefix) => url.includes(prefix));
-  if (!['get', 'head', 'options'].includes(method) && !csrfExempt) {
-    try {
-      await ensureCsrfCookie();
-    } catch {
-      // Continue; login and other public routes are CSRF-exempt.
-    }
-  }
+api.interceptors.request.use((config) => {
   const token = sessionStorage.getItem('bells_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
