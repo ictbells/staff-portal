@@ -307,7 +307,7 @@ export function ProgrammeCoursesPage() {
                   onChange={(ids) => setCourseIds(ids as number[])}
                   options={courses.map((course) => ({
                     value: course.id,
-                    label: `${courseLabel(course)}${course.department?.name ? ` · ${course.department.name}` : ''}`,
+                    label: courseLabel(course),
                   }))}
                 />
               </label>
