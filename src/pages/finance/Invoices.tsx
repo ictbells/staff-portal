@@ -89,6 +89,22 @@ function matricNumber(invoice: any) {
   });
 }
 
+function invoiceSettlementSource(invoice: any): string {
+  const payments = Array.isArray(invoice?.payments) ? invoice.payments : [];
+  const pick = payments.find((p: any) => ['successful', 'paid'].includes(String(p.status || '').toLowerCase()))
+    || payments.find((p: any) => String(p.status || '').toLowerCase() === 'pending')
+    || payments[0];
+  const method = String(pick?.method || '').toLowerCase();
+  if (!method) return '—';
+  if (method === 'paystack' || method === 'wema' || method === 'paygate') return 'Payment gateway';
+  if (method === 'legacy_import' || method === 'import') return 'Import';
+  if (method === 'wallet') return 'Wallet';
+  if (method === 'bank' || method === 'transfer' || method === 'bank_transfer') return 'Bank';
+  if (method === 'cash') return 'Cash';
+  if (method === 'pos') return 'POS';
+  return method.replaceAll('_', ' ');
+}
+
 function paymentName(payment: any) {
   const student = payment.user?.student || payment.invoice?.student;
   const fromStudent = [student?.first_name, student?.last_name].filter(Boolean).join(' ').trim();
@@ -972,7 +988,7 @@ export function Invoices() {
         <DataTable
           empty={!rows.length}
           emptyMessage="No invoices match this filter."
-          colSpan={9}
+          colSpan={10}
           loading={invoicesLoading}
           loadingLabel="Loading invoices…"
         >
@@ -982,6 +998,7 @@ export function Invoices() {
               <th className={thClass}>Payer</th>
               <th className={thClass}>Matric</th>
               <th className={thClass}>Category</th>
+              <th className={thClass}>Paid via</th>
               <th className={thClass}>Amount</th>
               <th className={thClass}>Balance</th>
               <th className={thClass}>Status</th>
@@ -991,12 +1008,23 @@ export function Invoices() {
           </thead>
           {!rows.length ? null : (
             <tbody>
-              {rows.map((invoice) => (
+              {rows.map((invoice) => {
+                const source = invoiceSettlementSource(invoice);
+                return (
                 <tr key={invoice.id} className={trClass}>
                   <td className={`${tdClass} font-medium font-mono`}>{invoice.number}</td>
                   <td className={tdClass}>{payerName(invoice)}</td>
                   <td className={`${tdClass} font-mono`}>{matricNumber(invoice)}</td>
                   <td className={tdClass}>{(invoice.category || '').replaceAll('_', ' ')}</td>
+                  <td className={tdClass}>
+                    {source === '—' ? (
+                      <span className="text-slate-400">—</span>
+                    ) : (
+                      <Badge variant={source === 'Payment gateway' ? 'info' : 'default'}>
+                        {source}
+                      </Badge>
+                    )}
+                  </td>
                   <td className={tdClass}>
                     <div>{formatNaira(Number(invoice.amount || 0))}</div>
                     {Number(invoice.rebate_total) > 0 ? (
@@ -1070,9 +1098,10 @@ export function Invoices() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               <tr className="border-t-2 border-slate-200 bg-slate-50/80">
-                <td className={`${tdClass} font-semibold`} colSpan={4}>
+                <td className={`${tdClass} font-semibold`} colSpan={5}>
                   Total for current filters ({invoiceMeta.total.toLocaleString()} invoice{invoiceMeta.total === 1 ? '' : 's'})
                 </td>
                 <td className={`${tdClass} font-semibold`}>{formatNaira(invoiceTotals.amount)}</td>
