@@ -274,7 +274,12 @@ export function Invoices() {
       });
   };
 
-  const loadPayments = (page = paymentPage, status = paymentStatusFilter, query = paymentSearch) => {
+  const loadPayments = (
+    page = paymentPage,
+    status = paymentStatusFilter,
+    query = paymentSearch,
+    gateway = gatewayFilter,
+  ) => {
     const req = ++paymentsReq.current;
     setPaymentsLoading(true);
     api.get('/api/payments', {
@@ -283,6 +288,7 @@ export function Invoices() {
         per_page: 20,
         ...(status ? { status } : {}),
         ...(query.trim() ? { search: query.trim() } : {}),
+        ...(gateway ? { gateway } : {}),
       },
     })
       .then((res) => {
@@ -315,7 +321,9 @@ export function Invoices() {
   useEffect(() => {
     loadInvoices(invoicePage, statusFilter, categoryFilter, collegeFilter, departmentFilter, programFilter, search, fromDate, toDate);
   }, [invoicePage, statusFilter, categoryFilter, collegeFilter, departmentFilter, programFilter, search, fromDate, toDate, sessionId, level, gatewayFilter]);
-  useEffect(() => { loadPayments(paymentPage, paymentStatusFilter, paymentSearch); }, [paymentPage, paymentStatusFilter, paymentSearch]);
+  useEffect(() => {
+    loadPayments(paymentPage, paymentStatusFilter, paymentSearch, gatewayFilter);
+  }, [paymentPage, paymentStatusFilter, paymentSearch, gatewayFilter]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -378,6 +386,7 @@ export function Invoices() {
   const changeGateway = (next?: string) => {
     setGatewayFilter(next);
     setInvoicePage(1);
+    setPaymentPage(1);
   };
 
   const downloadInvoices = async (format: 'pdf' | 'excel' | 'word' | 'csv') => {
@@ -1088,7 +1097,12 @@ export function Invoices() {
         />
       </Card>
 
-      <Card title="Recent payments">
+      <Card
+        title="Recent payments"
+        description={gatewayFilter
+          ? `Filtered to ${gatewayFilter === 'wema' ? 'Wema Bank' : gatewayFilter === 'paygate' ? 'PayGate' : 'Paystack'} (same gateway filter as invoices above).`
+          : undefined}
+      >
         <div className="flex flex-wrap items-end gap-3 mb-4">
           <label className="block min-w-[220px] flex-1">
             <span className={fieldLabelClass}>Search</span>
@@ -1122,9 +1136,11 @@ export function Invoices() {
           emptyMessage={
             paymentSearch
               ? 'No payments match that reference.'
-              : paymentStatusFilter
-                ? `No ${paymentStatusFilter} payments.`
-                : 'No payments recorded.'
+              : gatewayFilter
+                ? `No ${gatewayFilter === 'wema' ? 'Wema Bank' : gatewayFilter === 'paygate' ? 'PayGate' : 'Paystack'} payments${paymentStatusFilter ? ` (${paymentStatusFilter})` : ''}.`
+                : paymentStatusFilter
+                  ? `No ${paymentStatusFilter} payments.`
+                  : 'No payments recorded.'
           }
           colSpan={8}
           loading={paymentsLoading}
