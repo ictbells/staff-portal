@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, DatePicker, Dropdown, message } from 'antd';
+import { Button, DatePicker, Dropdown, Select, message } from 'antd';
 import type { MenuProps } from 'antd';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
@@ -46,24 +46,29 @@ type RecentPayment = {
 type DashboardPayload = {
   institution: { name: string; motto?: string; address?: string };
   period: { from: string | null; to: string | null; label: string };
+  gateway?: string | null;
+  gateways?: { key: string; label: string }[];
   generated_at: string;
   totals: {
     invoiced: number;
     collected: number;
     receipts: number;
     cash_received: number;
+    online_collected: number;
+    online_payments: number;
     wallet_inflows: number;
     wallet_applied: number;
     rebates: number;
     outstanding: number;
     wallet_liability: number;
   };
-  today: { collected: number; receipts: number; payments: number };
-  this_month: { collected: number; receipts: number; payments: number };
+  today: { collected: number; receipts: number; payments: number; online_collected?: number; online_payments?: number };
+  this_month: { collected: number; receipts: number; payments: number; online_collected?: number; online_payments?: number };
   invoice_counts: { issued: number; unpaid: number; partial: number; paid: number };
-  payment_counts: { successful: number; pending: number; failed: number };
+  payment_counts: { successful: number; pending: number; failed: number; online_successful?: number };
   by_category: StatementLine[];
   by_method: StatementLine[];
+  by_online_gateway?: StatementLine[];
   monthly: StatementLine[];
   recent_payments: RecentPayment[];
 };
@@ -87,6 +92,7 @@ function formatWhen(value?: string | null) {
 export function PaymentDashboard() {
   const yearRange: [Dayjs, Dayjs] = [dayjs().startOf('year'), dayjs()];
   const [range, setRange] = useState<DateRange>(yearRange);
+  const [gateway, setGateway] = useState<string | undefined>(undefined);
   const [data, setData] = useState<DashboardPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -95,6 +101,7 @@ export function PaymentDashboard() {
   const params = () => ({
     from: range?.[0]?.format('YYYY-MM-DD'),
     to: range?.[1]?.format('YYYY-MM-DD'),
+    ...(gateway ? { gateway } : {}),
   });
 
   const load = () => {
@@ -118,7 +125,7 @@ export function PaymentDashboard() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range?.[0]?.format('YYYY-MM-DD'), range?.[1]?.format('YYYY-MM-DD')]);
+  }, [range?.[0]?.format('YYYY-MM-DD'), range?.[1]?.format('YYYY-MM-DD'), gateway]);
 
   const download = async (format: 'pdf' | 'excel' | 'word') => {
     setExporting(true);
@@ -176,8 +183,8 @@ export function PaymentDashboard() {
         eyebrow="Fees & payments"
         title="Payment dashboard"
         description={data
-          ? `${data.institution.name} · ${data.period.label}. Fee collections exclude wallet top-ups.`
-          : 'University receipts, invoices issued, receivables, and student wallet liability.'}
+          ? `${data.institution.name} · ${data.period.label}. Online totals are successful Paystack, Wema, and PayGate payments.`
+          : 'University receipts, online gateway collections, receivables, and student wallet liability.'}
         icon={Landmark}
       >
         <Dropdown menu={{ items: downloadMenu }} trigger={['click']} disabled={exporting || loading || !data}>
@@ -186,29 +193,53 @@ export function PaymentDashboard() {
         <RefreshButton onClick={load} loading={loading} />
       </WorkspaceHero>
 
-      <Card title="Reporting period" description="Defaults to this calendar year. Clear the dates for all recorded activity.">
-        <label className="block max-w-md">
-          <span className={fieldLabelClass}>Period</span>
-          <DatePicker.RangePicker
-            allowClear
-            className="w-full"
-            format={DATE_FORMAT}
-            placeholder={['From', 'To']}
-            value={range}
-            disabledDate={(current) => !!current && current.isAfter(dayjs(), 'day')}
-            presets={[
-              { label: 'Today', value: [dayjs(), dayjs()] },
-              { label: 'This month', value: [dayjs().startOf('month'), dayjs()] },
-              { label: 'This year', value: yearRange },
-              { label: 'Last 12 months', value: [dayjs().subtract(11, 'month').startOf('month'), dayjs()] },
-            ]}
-            onChange={(value) => setRange(value && value[0] && value[1] ? [value[0], value[1]] : null)}
-          />
-        </label>
+      <Card title="Reporting filters" description="Defaults to this calendar year. Choose a gateway to report actual online settlements only.">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block min-w-[260px] flex-1 max-w-md">
+            <span className={fieldLabelClass}>Period</span>
+            <DatePicker.RangePicker
+              allowClear
+              className="w-full"
+              format={DATE_FORMAT}
+              placeholder={['From', 'To']}
+              value={range}
+              disabledDate={(current) => !!current && current.isAfter(dayjs(), 'day')}
+              presets={[
+                { label: 'Today', value: [dayjs(), dayjs()] },
+                { label: 'This month', value: [dayjs().startOf('month'), dayjs()] },
+                { label: 'This year', value: yearRange },
+                { label: 'Last 12 months', value: [dayjs().subtract(11, 'month').startOf('month'), dayjs()] },
+              ]}
+              onChange={(value) => setRange(value && value[0] && value[1] ? [value[0], value[1]] : null)}
+            />
+          </label>
+          <label className="block min-w-[200px]">
+            <span className={fieldLabelClass}>Payment gateway</span>
+            <Select
+              allowClear
+              className="w-full min-w-[200px]"
+              placeholder="All online gateways"
+              value={gateway}
+              options={(data?.gateways || [
+                { key: 'paystack', label: 'Paystack' },
+                { key: 'wema', label: 'Wema Bank' },
+                { key: 'paygate', label: 'PayGate' },
+              ]).map((row) => ({ value: row.key, label: row.label }))}
+              onChange={(value) => setGateway(value || undefined)}
+            />
+          </label>
+        </div>
       </Card>
 
-      <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
-        <StatCard label="Collected" value={formatNaira(totals?.collected)} hint={data?.period.label || 'Fee income'} icon={TrendingUp} tone="emerald" />
+      <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-3">
+        <StatCard
+          label="Online collected"
+          value={formatNaira(totals?.online_collected)}
+          hint={`${totals?.online_payments ?? 0} successful gateway payment${(totals?.online_payments ?? 0) === 1 ? '' : 's'}`}
+          icon={Landmark}
+          tone="emerald"
+        />
+        <StatCard label="Collected (fees)" value={formatNaira(totals?.collected)} hint={data?.period.label || 'Fee income'} icon={TrendingUp} tone="emerald" />
         <StatCard label="Invoiced" value={formatNaira(totals?.invoiced)} hint="Invoices issued in period" icon={Receipt} />
         <StatCard label="Outstanding" value={formatNaira(totals?.outstanding)} hint="Open invoice balances now" icon={Receipt} tone="rose" />
         <StatCard label="Wallet liability" value={formatNaira(totals?.wallet_liability)} hint="Student wallet balances now" icon={Wallet} />
@@ -216,9 +247,9 @@ export function PaymentDashboard() {
       </div>
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-        <StatCard label="Today" value={formatNaira(data?.today.collected)} hint={`${data?.today.payments ?? 0} fee payments`} icon={TrendingUp} tone="emerald" />
-        <StatCard label="This month" value={formatNaira(data?.this_month.collected)} hint={`${data?.this_month.payments ?? 0} fee payments`} icon={TrendingUp} />
-        <StatCard label="Cash received" value={formatNaira(totals?.cash_received)} hint="Paystack, Wema, import, bank" icon={Landmark} />
+        <StatCard label="Today (online)" value={formatNaira(data?.today.online_collected)} hint={`${data?.today.online_payments ?? 0} gateway payments`} icon={TrendingUp} tone="emerald" />
+        <StatCard label="This month (online)" value={formatNaira(data?.this_month.online_collected)} hint={`${data?.this_month.online_payments ?? 0} gateway payments`} icon={TrendingUp} />
+        <StatCard label="Cash received" value={formatNaira(totals?.cash_received)} hint="Gateways + import + bank (excludes wallet)" icon={Landmark} />
         <StatCard label="Wallet top-ups" value={formatNaira(totals?.wallet_inflows)} hint="Not counted as fee income" icon={Wallet} tone="amber" />
       </div>
 
@@ -228,7 +259,8 @@ export function PaymentDashboard() {
             rows={[
               ['Fee collections', totals?.collected],
               ['Wallet top-ups', totals?.wallet_inflows],
-              ['Cash received (Paystack / Wema / import / bank)', totals?.cash_received],
+              ['Online gateway payments (successful)', totals?.online_collected],
+              ['Cash received (gateways / import / bank)', totals?.cash_received],
               ['Wallet applied to invoices', totals?.wallet_applied],
             ]}
             totalLabel="Total receipts"
@@ -279,24 +311,34 @@ export function PaymentDashboard() {
             ) : null}
           </DataTable>
         </Card>
-        <Card title="Receipts by method" description="Successful payments in the period, including wallet top-ups.">
-          <DataTable empty={!data?.by_method.length} emptyMessage="No receipts in this period." colSpan={3} loading={loading && !data}>
+        <Card
+          title="Online by gateway"
+          description={gateway
+            ? `Successful ${data?.gateways?.find((row) => row.key === gateway)?.label || gateway} payments in the period.`
+            : 'Successful Paystack, Wema, and PayGate payments in the period.'}
+        >
+          <DataTable empty={!data?.by_online_gateway?.length} emptyMessage="No online gateway payments in this period." colSpan={3} loading={loading && !data}>
             <thead>
               <tr>
-                <th className={thClass}>Method</th>
+                <th className={thClass}>Gateway</th>
                 <th className={`${thClass} text-right`}>Amount</th>
                 <th className={`${thClass} text-right`}>Payments</th>
               </tr>
             </thead>
-            {data?.by_method.length ? (
+            {data?.by_online_gateway?.length ? (
               <tbody>
-                {data.by_method.map((row) => (
+                {data.by_online_gateway.map((row) => (
                   <tr key={row.method || row.label} className={trClass}>
                     <td className={tdClass}>{row.label}</td>
                     <td className={`${tdClass} text-right`}>{formatNaira(row.amount)}</td>
                     <td className={`${tdClass} text-right`}>{row.payments ?? 0}</td>
                   </tr>
                 ))}
+                <tr className="border-t-2 border-slate-200 bg-slate-50/80">
+                  <td className={`${tdClass} font-semibold`}>Total online</td>
+                  <td className={`${tdClass} text-right font-semibold`}>{formatNaira(totals?.online_collected)}</td>
+                  <td className={`${tdClass} text-right font-semibold`}>{totals?.online_payments ?? 0}</td>
+                </tr>
               </tbody>
             ) : null}
           </DataTable>
@@ -327,15 +369,17 @@ export function PaymentDashboard() {
       </Card>
 
       <Card
-        title="Recent payments"
-        description="Latest successful receipts in the selected period."
+        title="Recent online payments"
+        description={gateway
+          ? `Latest successful ${data?.gateways?.find((row) => row.key === gateway)?.label || gateway} settlements.`
+          : 'Latest successful Paystack, Wema, and PayGate settlements (excludes wallet, import, and bank).'}
         actions={(
           <Link to="/finance/invoices" className="inline-flex items-center gap-1 text-sm text-sky-700 hover:text-sky-800">
             Open invoices <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         )}
       >
-        <DataTable empty={!data?.recent_payments.length} emptyMessage="No payments in this period." colSpan={6} loading={loading && !data}>
+        <DataTable empty={!data?.recent_payments.length} emptyMessage="No online gateway payments in this period." colSpan={6} loading={loading && !data}>
             <thead>
               <tr>
                 <th className={thClass}>Receipt</th>

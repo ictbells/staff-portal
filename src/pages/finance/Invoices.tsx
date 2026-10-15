@@ -129,6 +129,7 @@ function metaFrom(res: any, fallbackPage = 1): PageMeta {
 export function Invoices() {
   const [rows, setRows] = useState<any[]>([]);
   const [invoiceMeta, setInvoiceMeta] = useState<PageMeta>(emptyMeta);
+  const [invoiceTotals, setInvoiceTotals] = useState({ amount: 0, balance: 0, rebate_total: 0 });
   const [invoicePage, setInvoicePage] = useState(1);
   const [payments, setPayments] = useState<any[]>([]);
   const [paymentMeta, setPaymentMeta] = useState<PageMeta>(emptyMeta);
@@ -252,11 +253,18 @@ export function Invoices() {
         if (req !== invoicesReq.current) return;
         setRows(rowsFrom(res));
         setInvoiceMeta(metaFrom(res, page));
+        const totals = res?.data?.totals;
+        setInvoiceTotals({
+          amount: Number(totals?.amount || 0),
+          balance: Number(totals?.balance || 0),
+          rebate_total: Number(totals?.rebate_total || 0),
+        });
       })
       .catch(() => {
         if (req !== invoicesReq.current) return;
         setRows([]);
         setInvoiceMeta(emptyMeta);
+        setInvoiceTotals({ amount: 0, balance: 0, rebate_total: 0 });
       })
       .finally(() => {
         if (req === invoicesReq.current) setInvoicesLoading(false);
@@ -728,7 +736,7 @@ export function Invoices() {
       >
         <RefreshButton onClick={refresh} loading={pageLoading} />
       </WorkspaceHero>
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-3">
         <StatCard
           label="Matching"
           value={invoiceMeta.total}
@@ -736,6 +744,19 @@ export function Invoices() {
           icon={Receipt}
           active={!statusFilter}
           onClick={() => { setStatusFilter(undefined); setInvoicePage(1); }}
+        />
+        <StatCard
+          label="Billed"
+          value={formatNaira(invoiceTotals.amount)}
+          hint="Sum of amounts for current filters"
+          icon={CircleDollarSign}
+        />
+        <StatCard
+          label="Outstanding"
+          value={formatNaira(invoiceTotals.balance)}
+          hint={invoiceTotals.rebate_total > 0 ? `Rebates ${formatNaira(invoiceTotals.rebate_total)}` : 'Sum of balances for current filters'}
+          icon={CircleDollarSign}
+          tone="rose"
         />
         <StatCard
           label="Unpaid"
@@ -1011,6 +1032,18 @@ export function Invoices() {
                   </td>
                 </tr>
               ))}
+              <tr className="border-t-2 border-slate-200 bg-slate-50/80">
+                <td className={`${tdClass} font-semibold`} colSpan={4}>
+                  Total for current filters ({invoiceMeta.total.toLocaleString()} invoice{invoiceMeta.total === 1 ? '' : 's'})
+                </td>
+                <td className={`${tdClass} font-semibold`}>{formatNaira(invoiceTotals.amount)}</td>
+                <td className={`${tdClass} font-semibold`}>{formatNaira(invoiceTotals.balance)}</td>
+                <td className={tdClass} colSpan={3}>
+                  {invoiceTotals.rebate_total > 0 ? (
+                    <span className="text-xs text-emerald-700">Rebates {formatNaira(invoiceTotals.rebate_total)}</span>
+                  ) : null}
+                </td>
+              </tr>
             </tbody>
           )}
         </DataTable>
