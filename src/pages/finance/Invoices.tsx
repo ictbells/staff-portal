@@ -148,6 +148,7 @@ export function Invoices() {
   const [level, setLevel] = useState<string | undefined>();
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [gatewayFilter, setGatewayFilter] = useState<string | undefined>(undefined);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -216,6 +217,7 @@ export function Invoices() {
     to = toDate,
     nextSession = sessionId,
     nextLevel = level,
+    gateway = gatewayFilter,
   ) => ({
     ...(status && status !== 'all' ? { status } : {}),
     ...(category ? { category } : {}),
@@ -227,6 +229,7 @@ export function Invoices() {
     ...(to ? { to } : {}),
     ...(nextSession ? { academic_session_id: nextSession } : {}),
     ...(nextLevel ? { level: nextLevel } : {}),
+    ...(gateway ? { gateway } : {}),
   });
 
   const loadInvoices = (
@@ -311,7 +314,7 @@ export function Invoices() {
   useEffect(() => { loadCatalog(); }, []);
   useEffect(() => {
     loadInvoices(invoicePage, statusFilter, categoryFilter, collegeFilter, departmentFilter, programFilter, search, fromDate, toDate);
-  }, [invoicePage, statusFilter, categoryFilter, collegeFilter, departmentFilter, programFilter, search, fromDate, toDate, sessionId, level]);
+  }, [invoicePage, statusFilter, categoryFilter, collegeFilter, departmentFilter, programFilter, search, fromDate, toDate, sessionId, level, gatewayFilter]);
   useEffect(() => { loadPayments(paymentPage, paymentStatusFilter, paymentSearch); }, [paymentPage, paymentStatusFilter, paymentSearch]);
 
   useEffect(() => {
@@ -372,21 +375,27 @@ export function Invoices() {
     setInvoicePage(1);
   };
 
+  const changeGateway = (next?: string) => {
+    setGatewayFilter(next);
+    setInvoicePage(1);
+  };
+
   const downloadInvoices = async (format: 'pdf' | 'excel' | 'word' | 'csv') => {
+    const recordLabel = gatewayFilter ? 'payments' : 'invoices';
     if (format === 'pdf' && invoiceMeta.total > 1000) {
-      message.warning(`${invoiceMeta.total.toLocaleString()} invoices is too many for PDF. Use Excel or CSV, or narrow the filters first.`);
+      message.warning(`${invoiceMeta.total.toLocaleString()} ${recordLabel} is too many for PDF. Use Excel or CSV, or narrow the filters first.`);
       return;
     }
     if (format === 'word' && invoiceMeta.total > 2000) {
-      message.warning(`${invoiceMeta.total.toLocaleString()} invoices is too many for Word. Use Excel or CSV, or narrow the filters first.`);
+      message.warning(`${invoiceMeta.total.toLocaleString()} ${recordLabel} is too many for Word. Use Excel or CSV, or narrow the filters first.`);
       return;
     }
     if (format === 'excel' && invoiceMeta.total > 25000) {
-      message.warning(`${invoiceMeta.total.toLocaleString()} invoices is too many for Excel. Use CSV, or narrow the filters first.`);
+      message.warning(`${invoiceMeta.total.toLocaleString()} ${recordLabel} is too many for Excel. Use CSV, or narrow the filters first.`);
       return;
     }
     if (format === 'csv' && invoiceMeta.total > 100000) {
-      message.warning(`${invoiceMeta.total.toLocaleString()} invoices is too many for one CSV. Narrow the filters first.`);
+      message.warning(`${invoiceMeta.total.toLocaleString()} ${recordLabel} is too many for one CSV. Narrow the filters first.`);
       return;
     }
     setExporting(true);
@@ -408,9 +417,9 @@ export function Invoices() {
       const prefix = (await raw.slice(0, 8).text()).trim();
       if (raw.type.includes('json') || prefix.startsWith('{')) {
         try {
-          message.error(JSON.parse(await raw.text())?.message || 'Unable to download invoices.');
+          message.error(JSON.parse(await raw.text())?.message || 'Unable to download report.');
         } catch {
-          message.error('Unable to download invoices.');
+          message.error('Unable to download report.');
         }
         return;
       }
@@ -423,7 +432,7 @@ export function Invoices() {
       const link = document.createElement('a');
       const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
       link.href = url;
-      link.download = `invoices-${stamp}.${extension}`;
+      link.download = `${gatewayFilter ? `${gatewayFilter}-payments` : 'invoices'}-${stamp}.${extension}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -439,17 +448,17 @@ export function Invoices() {
         try {
           const text = await blob.text();
           if (text.trim().startsWith('{')) {
-            message.error(JSON.parse(text).message || 'Unable to download invoices.');
+            message.error(JSON.parse(text).message || 'Unable to download report.');
           } else if (err.response?.status === 502 || err.response?.status === 504) {
             message.error('The server took too long. Try CSV, or narrow the filters.');
           } else {
-            message.error('Unable to download invoices. Try CSV, or narrow the filters.');
+            message.error('Unable to download report. Try CSV, or narrow the filters.');
           }
         } catch {
-          message.error('Unable to download invoices. Try CSV, or narrow the filters.');
+          message.error('Unable to download report.');
         }
       } else {
-        message.error(err.response?.data?.message || 'Unable to download invoices.');
+        message.error(err.response?.data?.message || 'Unable to download report.');
       }
     } finally {
       setExporting(false);
@@ -929,7 +938,28 @@ export function Invoices() {
               ) : null}
             </div>
           </label>
+          <label className="block min-w-[200px]">
+            <span className={fieldLabelClass}>Payment gateway</span>
+            <Select
+              allowClear
+              className="w-full min-w-[200px]"
+              placeholder="All gateways"
+              value={gatewayFilter}
+              onChange={changeGateway}
+              options={[
+                { value: 'paystack', label: 'Paystack' },
+                { value: 'wema', label: 'Wema Bank' },
+                { value: 'paygate', label: 'PayGate' },
+              ]}
+            />
+          </label>
         </div>
+        {gatewayFilter ? (
+          <p className="mb-3 text-xs text-slate-500">
+            Showing invoices with successful {gatewayFilter === 'wema' ? 'Wema Bank' : gatewayFilter === 'paygate' ? 'PayGate' : 'Paystack'} payments.
+            Download exports those successful payments (with a Gateway column). Date filters use payment settlement date.
+          </p>
+        ) : null}
         <DataTable
           empty={!rows.length}
           emptyMessage="No invoices match this filter."

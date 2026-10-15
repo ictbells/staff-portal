@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, DatePicker, Dropdown, Select, message } from 'antd';
+import { Button, DatePicker, Dropdown, message } from 'antd';
 import type { MenuProps } from 'antd';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
@@ -92,7 +92,6 @@ function formatWhen(value?: string | null) {
 export function PaymentDashboard() {
   const yearRange: [Dayjs, Dayjs] = [dayjs().startOf('year'), dayjs()];
   const [range, setRange] = useState<DateRange>(yearRange);
-  const [gateway, setGateway] = useState<string | undefined>(undefined);
   const [data, setData] = useState<DashboardPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -101,7 +100,6 @@ export function PaymentDashboard() {
   const params = () => ({
     from: range?.[0]?.format('YYYY-MM-DD'),
     to: range?.[1]?.format('YYYY-MM-DD'),
-    ...(gateway ? { gateway } : {}),
   });
 
   const load = () => {
@@ -125,7 +123,7 @@ export function PaymentDashboard() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range?.[0]?.format('YYYY-MM-DD'), range?.[1]?.format('YYYY-MM-DD'), gateway]);
+  }, [range?.[0]?.format('YYYY-MM-DD'), range?.[1]?.format('YYYY-MM-DD')]);
 
   const download = async (format: 'pdf' | 'excel' | 'word') => {
     setExporting(true);
@@ -193,42 +191,25 @@ export function PaymentDashboard() {
         <RefreshButton onClick={load} loading={loading} />
       </WorkspaceHero>
 
-      <Card title="Reporting filters" description="Defaults to this calendar year. Choose a gateway to report actual online settlements only.">
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="block min-w-[260px] flex-1 max-w-md">
-            <span className={fieldLabelClass}>Period</span>
-            <DatePicker.RangePicker
-              allowClear
-              className="w-full"
-              format={DATE_FORMAT}
-              placeholder={['From', 'To']}
-              value={range}
-              disabledDate={(current) => !!current && current.isAfter(dayjs(), 'day')}
-              presets={[
-                { label: 'Today', value: [dayjs(), dayjs()] },
-                { label: 'This month', value: [dayjs().startOf('month'), dayjs()] },
-                { label: 'This year', value: yearRange },
-                { label: 'Last 12 months', value: [dayjs().subtract(11, 'month').startOf('month'), dayjs()] },
-              ]}
-              onChange={(value) => setRange(value && value[0] && value[1] ? [value[0], value[1]] : null)}
-            />
-          </label>
-          <label className="block min-w-[200px]">
-            <span className={fieldLabelClass}>Payment gateway</span>
-            <Select
-              allowClear
-              className="w-full min-w-[200px]"
-              placeholder="All online gateways"
-              value={gateway}
-              options={(data?.gateways || [
-                { key: 'paystack', label: 'Paystack' },
-                { key: 'wema', label: 'Wema Bank' },
-                { key: 'paygate', label: 'PayGate' },
-              ]).map((row) => ({ value: row.key, label: row.label }))}
-              onChange={(value) => setGateway(value || undefined)}
-            />
-          </label>
-        </div>
+      <Card title="Reporting period" description="Defaults to this calendar year. Filter successful gateway payments by gateway on Invoices → Download.">
+        <label className="block max-w-md">
+          <span className={fieldLabelClass}>Period</span>
+          <DatePicker.RangePicker
+            allowClear
+            className="w-full"
+            format={DATE_FORMAT}
+            placeholder={['From', 'To']}
+            value={range}
+            disabledDate={(current) => !!current && current.isAfter(dayjs(), 'day')}
+            presets={[
+              { label: 'Today', value: [dayjs(), dayjs()] },
+              { label: 'This month', value: [dayjs().startOf('month'), dayjs()] },
+              { label: 'This year', value: yearRange },
+              { label: 'Last 12 months', value: [dayjs().subtract(11, 'month').startOf('month'), dayjs()] },
+            ]}
+            onChange={(value) => setRange(value && value[0] && value[1] ? [value[0], value[1]] : null)}
+          />
+        </label>
       </Card>
 
       <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-3">
@@ -313,9 +294,7 @@ export function PaymentDashboard() {
         </Card>
         <Card
           title="Online by gateway"
-          description={gateway
-            ? `Successful ${data?.gateways?.find((row) => row.key === gateway)?.label || gateway} payments in the period.`
-            : 'Successful Paystack, Wema, and PayGate payments in the period.'}
+          description="Successful Paystack, Wema, and PayGate payments in the period. Download a gateway list from Invoices."
         >
           <DataTable empty={!data?.by_online_gateway?.length} emptyMessage="No online gateway payments in this period." colSpan={3} loading={loading && !data}>
             <thead>
@@ -370,9 +349,7 @@ export function PaymentDashboard() {
 
       <Card
         title="Recent online payments"
-        description={gateway
-          ? `Latest successful ${data?.gateways?.find((row) => row.key === gateway)?.label || gateway} settlements.`
-          : 'Latest successful Paystack, Wema, and PayGate settlements (excludes wallet, import, and bank).'}
+        description="Latest successful Paystack, Wema, and PayGate settlements (excludes wallet, import, and bank)."
         actions={(
           <Link to="/finance/invoices" className="inline-flex items-center gap-1 text-sm text-sky-700 hover:text-sky-800">
             Open invoices <ArrowRight className="h-3.5 w-3.5" />

@@ -4,7 +4,7 @@ import { Button, Dropdown, Input, Modal, Select, Space, Table, Tag, message } fr
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { MenuProps } from 'antd';
 import {
-  Award, BookOpen, Download, FileSpreadsheet, FileText, GraduationCap, Layers, Printer, Search,
+  Award, BookOpen, Download, FileSpreadsheet, GraduationCap, Layers, Printer, Search,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import api from '../../api';
@@ -226,9 +226,18 @@ export function RegistrationsList({ channel }: Props) {
     search: search || undefined,
   }), [channel.entryModes, courseRegFilter, entryModeFilter, levelFilter, programFilter, search, sessionFilter, studentshipFilter]);
 
-  const download = useCallback(async (format: 'pdf' | 'excel' | 'word') => {
+  const download = useCallback(async (format: 'csv' | 'excel') => {
     if (!has('registrations.view')) {
       message.error('You do not have permission to download registrations.');
+      return;
+    }
+    const total = pagination.total || 0;
+    if (format === 'excel' && total > 25000) {
+      message.warning(`${total.toLocaleString()} registrations is too many for Excel. Use CSV, or narrow the filters first.`);
+      return;
+    }
+    if (format === 'csv' && total > 100000) {
+      message.warning(`${total.toLocaleString()} registrations is too many for one CSV. Narrow the filters first.`);
       return;
     }
     setExporting(true);
@@ -241,14 +250,27 @@ export function RegistrationsList({ channel }: Props) {
           show_entry_mode: channel.showEntryMode ? 1 : 0,
         },
         responseType: 'blob',
+        timeout: format === 'csv' ? 600000 : 300000,
       });
-      const mime = format === 'pdf'
-        ? 'application/pdf'
-        : format === 'excel'
-          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-          : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      const extension = format === 'pdf' ? 'pdf' : format === 'excel' ? 'xlsx' : 'docx';
-      const blob = new Blob([data], { type: mime });
+      const mime = format === 'excel'
+        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        : 'text/csv;charset=utf-8';
+      const extension = format === 'excel' ? 'xlsx' : 'csv';
+      const raw = data instanceof Blob ? data : new Blob([data], { type: mime });
+      const prefix = (await raw.slice(0, 8).text()).trim();
+      if (raw.type.includes('json') || prefix.startsWith('{')) {
+        try {
+          message.error(JSON.parse(await raw.text())?.message || 'Unable to download report.');
+        } catch {
+          message.error('Unable to download report.');
+        }
+        return;
+      }
+      if (raw.type.includes('html') || prefix.startsWith('<')) {
+        message.error('The server could not build that file. Try CSV, or narrow the filters.');
+        return;
+      }
+      const blob = new Blob([raw], { type: mime });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -260,12 +282,21 @@ export function RegistrationsList({ channel }: Props) {
       window.URL.revokeObjectURL(url);
       message.success(`Download started (${format.toUpperCase()}).`);
     } catch (err: any) {
+      if (err.code === 'ECONNABORTED') {
+        message.error('Download timed out. Try CSV, or narrow the filters.');
+        return;
+      }
       const blob = err.response?.data;
       if (blob instanceof Blob) {
         try {
           const text = await blob.text();
-          const parsed = JSON.parse(text);
-          message.error(parsed.message || 'Unable to download report.');
+          if (text.trim().startsWith('{')) {
+            message.error(JSON.parse(text).message || 'Unable to download report.');
+          } else if (err.response?.status === 502 || err.response?.status === 504) {
+            message.error('The server took too long. Try CSV, or narrow the filters.');
+          } else {
+            message.error('Unable to download report. Try CSV, or narrow the filters.');
+          }
         } catch {
           message.error('Unable to download report.');
         }
@@ -275,7 +306,7 @@ export function RegistrationsList({ channel }: Props) {
     } finally {
       setExporting(false);
     }
-  }, [channel.key, channel.showEntryMode, channel.title, filterParams, has]);
+  }, [channel.key, channel.showEntryMode, channel.title, filterParams, has, pagination.total]);
 
   const openFormPrint = useCallback(async (id: number) => {
     setPrintingId(id);
@@ -291,22 +322,16 @@ export function RegistrationsList({ channel }: Props) {
 
   const downloadMenu: MenuProps['items'] = [
     {
-      key: 'pdf',
-      icon: <FileText size={14} />,
-      label: 'PDF',
-      onClick: () => download('pdf'),
+      key: 'csv',
+      icon: <FileSpreadsheet size={14} />,
+      label: 'CSV (large lists)',
+      onClick: () => download('csv'),
     },
     {
       key: 'excel',
       icon: <FileSpreadsheet size={14} />,
       label: 'Excel (.xlsx)',
       onClick: () => download('excel'),
-    },
-    {
-      key: 'word',
-      icon: <FileText size={14} />,
-      label: 'MS Word (.docx)',
-      onClick: () => download('word'),
     },
   ];
 
@@ -584,7 +609,7 @@ export function RegistrationsList({ channel }: Props) {
             {hasActiveFilters ? ' matching filters' : ' listed'}
           </p>
           <p className="text-xs text-slate-400">
-            Downloads include institution header and current filters (up to 5,000 rows).
+            Downloads use CSV (up to 100,000) or Excel (up to 25,000) with the current filters.
           </p>
         </div>
 
