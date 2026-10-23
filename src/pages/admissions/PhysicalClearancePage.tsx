@@ -48,11 +48,13 @@ export function PhysicalClearancePage({ channel }: Props) {
   const [selected, setSelected] = useState<number[]>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [singleId, setSingleId] = useState<number | null>(null);
+  const [matricInput, setMatricInput] = useState('');
   const [pagination, setPagination] = useState({ current: 1, pageSize: 25, total: 0 });
   const [summary, setSummary] = useState({ pending: 0, cleared: 0 });
   const [sessions, setSessions] = useState<{ id: number; session_label: string }[]>([]);
 
   const entryModes = channel.entryModes.join(',');
+  const allowHistoricMatric = channel.key === 'postgraduate';
 
   const load = useCallback(async (page = 1, pageSize = pagination.pageSize) => {
     setLoading(true);
@@ -108,24 +110,32 @@ export function PhysicalClearancePage({ channel }: Props) {
 
   const clearApplicants = async (ids: number[]) => {
     if (!ids.length || !canClear) return;
+    const historicMatric = allowHistoricMatric && ids.length === 1 ? matricInput.trim() : '';
     setClearing(true);
     try {
       const res = ids.length === 1
-        ? await api.post(`/api/applications/${ids[0]}/clear`)
+        ? await api.post(`/api/applications/${ids[0]}/clear`, historicMatric ? { matric_number: historicMatric } : {})
         : await api.post('/api/applications/clearance/bulk', { ids });
       if (isPendingApproval(res)) {
         setConfirmOpen(false);
         setSingleId(null);
+        setMatricInput('');
         return;
       }
       const skipped = res.data.skipped ?? [];
       const count = res.data.cleared_count ?? ids.length;
-      message.success(res.data.message || `${count} applicant(s) cleared.`);
+      const assigned = ids.length === 1 ? res.data?.data?.student?.matric_number : undefined;
+      message.success(
+        assigned
+          ? `${res.data.message || 'Applicant cleared.'} Matric: ${assigned}`
+          : (res.data.message || `${count} applicant(s) cleared.`),
+      );
       if (skipped.length) {
         message.warning(`${skipped.length} could not be cleared.`);
       }
       setConfirmOpen(false);
       setSingleId(null);
+      setMatricInput('');
       setSelected([]);
       load(pagination.current);
     } catch (err: unknown) {
@@ -210,7 +220,7 @@ export function PhysicalClearancePage({ channel }: Props) {
             size="small"
             type="primary"
             icon={<BadgeCheck size={14} />}
-            onClick={() => { setSingleId(row.id); setConfirmOpen(true); }}
+            onClick={() => { setSingleId(row.id); setMatricInput(''); setConfirmOpen(true); }}
           >
             Clear
           </Button>
@@ -221,6 +231,7 @@ export function PhysicalClearancePage({ channel }: Props) {
   }, [canClear, channel.referenceColumn, channel.showEntryMode, status]);
 
   const idsToClear = singleId ? [singleId] : selected;
+  const showMatricField = allowHistoricMatric && idsToClear.length === 1;
   if (!has('admissions.view') && !canClear) {
     return <p className="text-slate-500">You do not have access to physical clearance.</p>;
   }
@@ -235,7 +246,7 @@ export function PhysicalClearancePage({ channel }: Props) {
       >
         <RefreshButton onClick={() => load(pagination.current)} loading={loading} />
         {canClear && status === 'pending' && (
-          <Button type="primary" disabled={!selected.length} onClick={() => { setSingleId(null); setConfirmOpen(true); }}>
+          <Button type="primary" disabled={!selected.length} onClick={() => { setSingleId(null); setMatricInput(''); setConfirmOpen(true); }}>
             Clear selected ({selected.length})
           </Button>
         )}
@@ -324,15 +335,38 @@ export function PhysicalClearancePage({ channel }: Props) {
       <Modal
         title={idsToClear.length > 1 ? 'Clear selected applicants' : 'Clear applicant'}
         open={confirmOpen}
-        onCancel={() => { setConfirmOpen(false); setSingleId(null); }}
+        onCancel={() => { setConfirmOpen(false); setSingleId(null); setMatricInput(''); }}
         onOk={() => clearApplicants(idsToClear)}
         okText={idsToClear.length > 1 ? `Clear ${idsToClear.length} applicants` : 'Clear applicant'}
         confirmLoading={clearing}
         destroyOnHidden
       >
-        <p className="text-sm text-slate-600">
-          Confirm that the applicant{idsToClear.length > 1 ? 's have' : ' has'} paid acceptance and presented original documents. Clearing creates the student record.
-        </p>
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Confirm that the applicant{idsToClear.length > 1 ? 's have' : ' has'} paid acceptance and presented original documents. Clearing creates the student record.
+          </p>
+          {showMatricField ? (
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">Historic matric number (optional)</span>
+              <Input
+                allowClear
+                value={matricInput}
+                onChange={(e) => setMatricInput(e.target.value)}
+                placeholder="e.g. 2018/000042"
+                maxLength={40}
+              />
+              <span className="mt-1 block text-xs text-slate-500">
+                Leave blank to auto-assign the next PG matric. Enter the graduate&apos;s existing number if their history has not been migrated.
+              </span>
+            </label>
+          ) : allowHistoricMatric && idsToClear.length > 1 ? (
+            <Alert
+              type="info"
+              showIcon
+              message="Bulk clear auto-assigns new PG matric numbers. Clear one applicant at a time to enter a historic matric."
+            />
+          ) : null}
+        </div>
       </Modal>
     </div>
   );
