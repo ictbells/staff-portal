@@ -73,6 +73,7 @@ type DetailLine = {
   fee_item_id?: number;
   amount?: number | null;
   effective_amount?: number | null;
+  effective_amount_usd?: number | null;
   installment_tranche?: number | null;
   effective_installment_tranche?: number | null;
   effective_installment_tranche_label?: string | null;

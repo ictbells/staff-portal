@@ -75,6 +75,9 @@ type FileApp = {
   jamb_registration?: string | null;
   jamb_status?: string | null;
   entry_mode?: string;
+  country?: string | null;
+  billing_currency?: string | null;
+  passport_number?: string | null;
   stage?: string;
   submitted_at?: string | null;
   user?: { name?: string; email?: string; phone?: string; alternate_phone?: string; jamb_registration?: string | null };

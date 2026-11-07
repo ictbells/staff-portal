@@ -9,6 +9,8 @@ export type DecisionApplication = {
   jamb_registration?: string | null;
   offer_reference?: string | null;
   entry_mode: string;
+  country?: string | null;
+  billing_currency?: string | null;
   stage: string;
   submitted_at?: string | null;
   user?: { name?: string; email?: string; jamb_registration?: string | null };
