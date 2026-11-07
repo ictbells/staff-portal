@@ -54,6 +54,7 @@ export function FeeCatalog() {
     program_id: '',
     installment_tranche: '',
     amount: '',
+    amount_usd: '',
     is_active: true,
   });
 
@@ -93,7 +94,7 @@ export function FeeCatalog() {
 
   const openCreateFee = () => {
     setEditingFee(null);
-    setFeeForm({ name: '', description: '', category: 'tuition', entry_mode: '', transcript_type: '', program_id: '', installment_tranche: '', amount: '', is_active: true });
+    setFeeForm({ name: '', description: '', category: 'tuition', entry_mode: '', transcript_type: '', program_id: '', installment_tranche: '', amount: '', amount_usd: '', is_active: true });
     setFeeModalOpen(true);
   };
 
@@ -108,6 +109,7 @@ export function FeeCatalog() {
       program_id: fee.program_id != null ? String(fee.program_id) : '',
       installment_tranche: fee.installment_tranche != null ? String(fee.installment_tranche) : '',
       amount: String(fee.amount ?? ''),
+      amount_usd: fee.amount_usd != null && fee.amount_usd !== '' ? String(fee.amount_usd) : '',
       is_active: fee.is_active !== false,
     });
     setFeeModalOpen(true);
@@ -139,6 +141,7 @@ export function FeeCatalog() {
           ? Number(feeForm.installment_tranche)
           : null,
         amount: Number(feeForm.amount),
+        amount_usd: feeForm.amount_usd === '' ? null : Number(feeForm.amount_usd),
         is_active: feeForm.is_active,
       };
       const res = editingFee
@@ -265,7 +268,7 @@ export function FeeCatalog() {
                         {isSchedule ? 'Programme schedule' : 'Operational'}
                       </Badge>
                     </td>
-                    <td className={tdClass}>{formatNaira(f.amount)}</td>
+                    <td className={tdClass}>{formatNaira(f.amount)}{f.amount_usd != null && Number(f.amount_usd) > 0 ? ` · $${Number(f.amount_usd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}</td>
                     <td className={tdClass}>
                       <Badge variant={isOnlineOnlyFee(f.category) ? 'default' : 'success'}>
                         {isOnlineOnlyFee(f.category) ? 'Online only' : 'Wallet'}
@@ -396,6 +399,8 @@ export function FeeCatalog() {
             <label className="block">
               <span className={fieldLabelClass}>Default amount (₦)</span>
               <input className={inputClass} type="number" min={0} value={feeForm.amount} onChange={(e) => setFeeForm((s) => ({ ...s, amount: e.target.value }))} />
+              <span className={fieldLabelClass}>Amount (USD)</span>
+              <input className={inputClass} type="number" min={0} step="0.01" value={feeForm.amount_usd} onChange={(e) => setFeeForm((s) => ({ ...s, amount_usd: e.target.value }))} placeholder="Required before a Non-Nigeria postgraduate student can be billed" />
             </label>
             <label className="block">
               <span className={fieldLabelClass}>Description</span>

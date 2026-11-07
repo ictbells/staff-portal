@@ -38,6 +38,7 @@ type HostelRow = {
   is_active: boolean;
   due_required?: boolean;
   due_amount?: number | null;
+  due_amount_usd?: number | null;
   academic_level_ids?: number[];
   academic_levels?: AcademicLevelOption[];
   total_beds: number;
@@ -503,6 +504,7 @@ export default function HostelManagement() {
       is_active: row.is_active,
       due_required: !!row.due_required,
       due_amount: row.due_amount ?? undefined,
+      due_amount_usd: row.due_amount_usd ?? undefined,
       academic_level_ids: row.academic_level_ids || [],
     });
     setCreateOpen(true);
@@ -515,6 +517,7 @@ export default function HostelManagement() {
     is_active?: boolean;
     due_required?: boolean;
     due_amount?: number;
+    due_amount_usd?: number;
     academic_level_ids?: number[];
   }) => {
     setCreating(true);
@@ -522,6 +525,7 @@ export default function HostelManagement() {
       ...values,
       due_required: !!values.due_required,
       due_amount: values.due_required ? values.due_amount : null,
+      due_amount_usd: values.due_required ? values.due_amount_usd ?? null : null,
       academic_level_ids: values.academic_level_ids || [],
     };
     try {
@@ -1392,6 +1396,13 @@ export default function HostelManagement() {
                 rules={[{ required: true, message: 'Enter the hostel due amount' }]}
               >
                 <InputNumber min={1} precision={2} className="w-full" />
+              </Form.Item>
+            ) : null}
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.due_required !== cur.due_required}>
+            {({ getFieldValue }) => getFieldValue('due_required') ? (
+              <Form.Item name="due_amount_usd" label="Due amount (USD)" extra="Charged when a Non-Nigeria postgraduate student is allocated a bed.">
+                <InputNumber min={0} precision={2} className="w-full" />
               </Form.Item>
             ) : null}
           </Form.Item>

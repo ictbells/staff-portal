@@ -7,12 +7,13 @@ import {
   Badge, Btn, Card, DataTable, fieldLabelClass, inputClass,
   StatCard, WorkspaceHero, tdClass, thClass, trClass,
 } from '../../components/ui';
-import { formatNaira } from '../../lib/money';
+import { formatMoney, formatNaira } from '../../lib/money';
 
 const emptyForm = {
   name: '',
   description: '',
   kind: 'percent' as 'percent' | 'amount',
+  currency: 'NGN',
   default_value: '',
   is_active: true,
 };
@@ -50,6 +51,7 @@ export function Rebates() {
       name: row.name || '',
       description: row.description || '',
       kind: row.kind === 'amount' ? 'amount' : 'percent',
+      currency: row.currency === 'USD' ? 'USD' : 'NGN',
       default_value: String(row.default_value ?? ''),
       is_active: row.is_active !== false,
     });
@@ -76,6 +78,7 @@ export function Rebates() {
         name: form.name.trim(),
         description: form.description.trim() || null,
         kind: form.kind,
+        currency: form.kind === 'amount' ? form.currency : 'NGN',
         default_value: value,
         is_active: form.is_active,
       };
@@ -153,7 +156,7 @@ export function Rebates() {
                     {row.description && <div className="text-xs text-slate-500">{row.description}</div>}
                   </td>
                   <td className={tdClass}>
-                    {row.kind === 'percent' ? `${Number(row.default_value || 0)}%` : formatNaira(Number(row.default_value))}
+                    {row.kind === 'percent' ? `${Number(row.default_value || 0)}%` : formatMoney(Number(row.default_value), row.currency)}
                   </td>
                   <td className={tdClass}>
                     <Badge variant={row.is_active === false ? 'default' : 'success'}>
@@ -199,7 +202,16 @@ export function Rebates() {
               </select>
             </label>
             <label className="block">
-              <span className={fieldLabelClass}>{form.kind === 'percent' ? 'Default percent' : 'Default amount (₦)'}</span>
+              {form.kind === 'amount' && (
+                <>
+                  <span className={fieldLabelClass}>Currency</span>
+                  <select className={inputClass} value={form.currency} onChange={(e) => setForm((s) => ({ ...s, currency: e.target.value }))}>
+                    <option value="NGN">NGN</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </>
+              )}
+              <span className={fieldLabelClass}>{form.kind === 'percent' ? 'Default percent' : `Default amount (${form.currency})`}</span>
               <input
                 className={inputClass}
                 type="number"

@@ -10,7 +10,7 @@ import {
   Badge, Btn, Card, DataTable, fieldLabelClass, inputClass,
   StatCard, WorkspaceHero, stageBadge, TablePager, tdClass, thClass, trClass,
 } from '../../components/ui';
-import { formatNaira } from '../../lib/money';
+import { formatMoney, formatNaira } from '../../lib/money';
 import { studentLevelLabel } from '../../lib/studentLevel';
 import { ReceiptPreview, fetchReceiptHtml, receiptErrorMessage } from '../../components/ReceiptPreview';
 
@@ -345,13 +345,13 @@ export function StudentFinance() {
               {summary.clearance === 'cleared' ? 'Cleared — nothing outstanding' : 'Outstanding — balance still due'}
             </span>
             <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
-              <StatCard label="Wallet" value={formatNaira(summary.wallet_balance)} icon={Wallet} />
-              <StatCard label="Billed" value={formatNaira(summary.billed)} hint="100% school fees plus other invoices" icon={Wallet} />
-              <StatCard label="Rebated" value={formatNaira(summary.rebate_total)} icon={BadgeCheck} tone="amber" />
-              <StatCard label="Paid" value={formatNaira(summary.paid)} icon={BadgeCheck} tone="emerald" />
+              <StatCard label="Wallet" value={formatMoney(summary.wallet_balance, summary.billing_currency)} icon={Wallet} />
+              <StatCard label="Billed" value={formatMoney(summary.billed, summary.billing_currency)} hint="100% school fees plus other invoices" icon={Wallet} />
+              <StatCard label="Rebated" value={formatMoney(summary.rebate_total, summary.billing_currency)} icon={BadgeCheck} tone="amber" />
+              <StatCard label="Paid" value={formatMoney(summary.paid, summary.billing_currency)} icon={BadgeCheck} tone="emerald" />
               <StatCard
                 label="Outstanding"
-                value={formatNaira(summary.outstanding)}
+                value={formatMoney(summary.outstanding, summary.billing_currency)}
                 hint={summary.clearance === 'cleared' ? 'All charges paid' : 'School fees and/or other charges unpaid'}
                 icon={Number(summary.outstanding) > 0.009 ? AlertTriangle : BadgeCheck}
                 tone={Number(summary.outstanding) > 0.009 ? 'rose' : 'emerald'}
@@ -707,10 +707,10 @@ export function StudentFinance() {
                     {row.college ? <div className="text-xs text-slate-500">{row.college}</div> : null}
                   </td>
                   <td className={tdClass}>{studentLevelLabel(row)}</td>
-                  <td className={tdClass}>{formatNaira(row.wallet_balance)}</td>
-                  <td className={tdClass}>{formatNaira(row.billed)}</td>
-                  <td className={tdClass}>{formatNaira(row.paid)}</td>
-                  <td className={tdClass}>{formatNaira(row.outstanding)}</td>
+                  <td className={tdClass}>{formatMoney(row.wallet_balance, row.billing_currency)}</td>
+                  <td className={tdClass}>{formatMoney(row.billed, row.billing_currency)}</td>
+                  <td className={tdClass}>{formatMoney(row.paid, row.billing_currency)}</td>
+                  <td className={tdClass}>{formatMoney(row.outstanding, row.billing_currency)}</td>
                   <td className={tdClass}>
                     <Badge variant={row.clearance === 'cleared' ? 'success' : 'warning'}>
                       {row.clearance === 'cleared' ? 'Cleared' : 'Outstanding'}

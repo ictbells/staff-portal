@@ -959,7 +959,8 @@ export function ApplicationFileDrawer({
       message.error('Select a first-choice programme.');
       return;
     }
-    if (form.nin && form.nin.length !== 11) {
+    const foreignApplicant = app.country === 'Non-Nigeria' || app.billing_currency === 'USD';
+    if (!foreignApplicant && form.nin && form.nin.length !== 11) {
       message.error('NIN must be 11 digits.');
       return;
     }
@@ -1351,6 +1352,9 @@ export function ApplicationFileDrawer({
                 <StaffPassportPhoto applicationId={app.id} />
               </div>
             ) : null}
+            {app.country === 'Non-Nigeria' || app.billing_currency === 'USD' ? (
+              <p className="mb-3 text-xs text-slate-500">This applicant identified with a passport or ID number. There is no NIN on this file.</p>
+            ) : (
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-slate-500">You can correct the NIN. Names and date of birth stay locked until staff with Re-verify NIN resyncs them from the NIN portal.</p>
               {has('identity.verify_nin') && (
@@ -1359,10 +1363,16 @@ export function ApplicationFileDrawer({
                 </Button>
               )}
             </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <Field label="First name"><Input value={form.first_name} disabled /></Field>
               <Field label="Middle name"><Input value={form.middle_name} disabled /></Field>
               <Field label="Surname"><Input value={form.last_name} disabled /></Field>
+              {app.country === 'Non-Nigeria' || app.billing_currency === 'USD' ? (
+                <Field label="Passport / ID">
+                  <Input value={app.passport_number || pick(stepPayload(app, 'biodata'), 'passport_number') || ''} disabled />
+                </Field>
+              ) : (
               <Field label="NIN">
                 <Input
                   value={form.nin}
@@ -1372,6 +1382,7 @@ export function ApplicationFileDrawer({
                   onChange={(e) => setField('nin', e.target.value.replace(/\D/g, '').slice(0, 11))}
                 />
               </Field>
+              )}
               <Field label="Date of birth"><Input type="date" value={form.date_of_birth} disabled /></Field>
               <Field label="Gender">
                 <Select className="w-full" disabled value={form.gender || undefined} options={GENDERS.map((value) => ({ value, label: value }))} />

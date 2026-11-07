@@ -309,7 +309,7 @@ export function ApplicationDecisionModal({
                 </div>
                 {issuesOffer && (
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Acceptance fee (₦)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Acceptance fee ({row.billing_currency === 'USD' || row.country === 'Non-Nigeria' ? 'USD' : '₦'})</label>
                     <InputNumber
                       min={0}
                       className="w-full"

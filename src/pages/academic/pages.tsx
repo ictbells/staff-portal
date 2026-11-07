@@ -10,7 +10,7 @@ import { ConfirmDeleteButton } from '../../components/ConfirmDeleteButton';
 import { StatCard, WorkspaceHero } from '../../components/ui';
 import { RefreshButton } from '../../components/RefreshButton';
 import { SessionLevelFilters } from '../../components/SessionLevelFilters';
-import { formatNaira } from '../../lib/money';
+import { formatMoney, formatNaira } from '../../lib/money';
 import { ENTRY_MODES, STUDY_LEVELS, UG_ENTRY_MODES, studyLevelLabel } from './constants';
 import { actionColumn, formatDisplayDate, fromDateTimeValue, fromDateValue, toDateValue, useCrudModal } from './crudHelpers';
 import { CatalogImportPanel } from './CatalogImportPanel';
@@ -97,6 +97,7 @@ type Term = {
   normal_registration_closes_at?: string;
   late_registration_closes_at?: string;
   extension_price_per_unit?: number | string | null;
+  extension_price_per_unit_usd?: number | string | null;
   is_current: boolean;
   auto_schedule?: boolean;
 };
@@ -187,6 +188,7 @@ type Intake = {
   application_fee_amount?: number | string;
   acceptance_fee_amount?: number | string;
   resolved_application_fee_amount?: number | string;
+  resolved_application_fee_amount_usd?: number | string | null;
   resolved_acceptance_fee_amount?: number | string;
   term?: Term;
 };
@@ -555,6 +557,7 @@ export function SessionsPage() {
             normal_registration_closes_at: toDateValue(row.normal_registration_closes_at),
             late_registration_closes_at: toDateValue(row.late_registration_closes_at),
             extension_price_per_unit: row.extension_price_per_unit != null ? Number(row.extension_price_per_unit) : undefined,
+            extension_price_per_unit_usd: row.extension_price_per_unit_usd != null ? Number(row.extension_price_per_unit_usd) : undefined,
             is_current: row.is_current,
             auto_schedule: row.auto_schedule ?? true,
             academic_session_id: session.id,
@@ -627,6 +630,7 @@ export function SessionsPage() {
       normal_registration_closes_at: fromDateTimeValue(values.normal_registration_closes_at),
       late_registration_closes_at: fromDateTimeValue(values.late_registration_closes_at),
       extension_price_per_unit: values.extension_price_per_unit ?? null,
+      extension_price_per_unit_usd: values.extension_price_per_unit_usd ?? null,
       is_current: values.is_current ?? false,
       auto_schedule: values.auto_schedule ?? true,
     }, () => {
@@ -780,6 +784,13 @@ export function SessionsPage() {
           name="extension_price_per_unit"
           label="Extension price per unit (₦)"
           extra="Charged only when a late-registration extension is approved. Leave blank until you are ready to accept extension requests."
+        >
+          <InputNumber min={0} className="w-full" placeholder="Optional" />
+        </Form.Item>
+        <Form.Item
+          name="extension_price_per_unit_usd"
+          label="Extension price per unit (USD)"
+          extra="Used when a Non-Nigeria postgraduate student is approved for extra units."
         >
           <InputNumber min={0} className="w-full" placeholder="Optional" />
         </Form.Item>
@@ -1391,6 +1402,14 @@ export function IntakesPage() {
       key: 'application_fee_amount',
       width: 130,
       render: (_, row) => formatNaira(row.resolved_application_fee_amount ?? row.application_fee_amount, 'Fee items'),
+    },
+    {
+      title: 'Application fee (USD)',
+      key: 'application_fee_amount_usd',
+      width: 160,
+      render: (_, row) => row.entry_mode === 'pg'
+        ? formatMoney(row.resolved_application_fee_amount_usd, 'USD', 'Not set')
+        : '—',
     },
     {
       title: 'Default acceptance',

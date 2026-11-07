@@ -230,7 +230,7 @@ function FeeBreakdownTable({
             </td>
             <td className={tdClass}>{line.semester || 'both'}</td>
             <td className={tdClass}>{formatNaira(line.amount, 'Catalog default')}</td>
-            <td className={`${tdClass} font-medium`}>{formatNaira(line.effective_amount)}</td>
+            <td className={`${tdClass} font-medium`}>{formatNaira(line.effective_amount)}{line.effective_amount_usd != null && Number(line.effective_amount_usd) > 0 ? ` · $${Number(line.effective_amount_usd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}</td>
             <td className={tdClass}>
               <div className="flex flex-wrap gap-2">
                 <button type="button" className="text-sm text-sky-700 hover:underline" onClick={() => onEdit(line)}>Edit</button>
@@ -273,6 +273,7 @@ export function ProgrammeFees() {
     program_id: undefined as number | undefined,
     fee_item_ids: [] as number[],
     amount: '',
+    amount_usd: '',
     itemAmounts: {} as Record<number, string>,
     itemSlices: {} as Record<number, number[]>,
     level_codes: ['all'] as string[],
@@ -403,6 +404,7 @@ export function ProgrammeFees() {
       program_id: program?.id ?? detail?.id,
       fee_item_ids: line?.fee_item_id ? [line.fee_item_id] : [],
       amount: line?.amount != null ? String(line.amount) : '',
+      amount_usd: line?.amount_usd != null ? String(line.amount_usd) : '',
       itemAmounts: line?.fee_item_id
         ? { [line.fee_item_id]: line?.amount != null ? String(line.amount) : '' }
         : {},
@@ -425,6 +427,7 @@ export function ProgrammeFees() {
           program_id: assignForm.program_id,
           fee_item_id: assignForm.fee_item_ids[0],
           amount: assignForm.amount === '' ? null : Number(assignForm.amount),
+          amount_usd: assignForm.amount_usd === '' ? null : Number(assignForm.amount_usd),
           installment_tranche: (assignForm.itemSlices[assignForm.fee_item_ids[0]] || [])[0] ?? null,
           level_code: assignForm.level_codes[0] || 'all',
           semester: assignForm.semester || 'both',
@@ -438,7 +441,8 @@ export function ProgrammeFees() {
             const raw = assignForm.itemAmounts[id];
             const amount = raw === '' || raw == null ? null : Number(raw);
             const slices = assignForm.itemSlices[id] || [];
-            const base = { fee_item_id: id, amount, is_active: assignForm.is_active };
+            const amountUsd = assignForm.amount_usd === '' ? null : Number(assignForm.amount_usd);
+            const base = { fee_item_id: id, amount, amount_usd: amountUsd, is_active: assignForm.is_active };
             if (slices.length === 0) {
               return [{ ...base, installment_tranche: null as number | null }];
             }
@@ -808,6 +812,16 @@ export function ProgrammeFees() {
                   />
                 </label>
                 <label className="block">
+                  <span className={fieldLabelClass}>Amount override (USD)</span>
+                  <input
+                    className={inputClass}
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={assignForm.amount_usd}
+                    onChange={(e) => setAssignForm((s) => ({ ...s, amount_usd: e.target.value }))}
+                    placeholder="Blank uses the catalog USD amount"
+                  />
                   <span className={fieldLabelClass}>Amount override (₦)</span>
                   <input
                     className={inputClass}

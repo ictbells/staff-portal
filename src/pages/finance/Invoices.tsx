@@ -8,7 +8,7 @@ import {
   Badge, Card, DataTable, fieldLabelClass, inputClass,
   StatCard, WorkspaceHero, stageBadge, TablePager, tdClass, thClass, trClass,
 } from '../../components/ui';
-import { formatNaira } from '../../lib/money';
+import { formatMoney, formatNaira } from '../../lib/money';
 import { SessionLevelFilters } from '../../components/SessionLevelFilters';
 import { ReceiptPreview, fetchReceiptHtml, receiptErrorMessage } from '../../components/ReceiptPreview';
 
@@ -145,7 +145,7 @@ function metaFrom(res: any, fallbackPage = 1): PageMeta {
 export function Invoices() {
   const [rows, setRows] = useState<any[]>([]);
   const [invoiceMeta, setInvoiceMeta] = useState<PageMeta>(emptyMeta);
-  const [invoiceTotals, setInvoiceTotals] = useState({ amount: 0, balance: 0, rebate_total: 0 });
+  const [invoiceTotals, setInvoiceTotals] = useState<{ amount: number; balance: number; rebate_total: number; usd?: { amount: number; balance: number; rebate_total: number } }>({ amount: 0, balance: 0, rebate_total: 0 });
   const [invoicePage, setInvoicePage] = useState(1);
   const [payments, setPayments] = useState<any[]>([]);
   const [paymentMeta, setPaymentMeta] = useState<PageMeta>(emptyMeta);
@@ -165,6 +165,7 @@ export function Invoices() {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [gatewayFilter, setGatewayFilter] = useState<string | undefined>(undefined);
+  const [currencyFilter, setCurrencyFilter] = useState<string | undefined>(undefined);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -234,6 +235,7 @@ export function Invoices() {
     nextSession = sessionId,
     nextLevel = level,
     gateway = gatewayFilter,
+    invoiceCurrency = currencyFilter,
   ) => ({
     ...(status && status !== 'all' ? { status } : {}),
     ...(category ? { category } : {}),
@@ -246,6 +248,7 @@ export function Invoices() {
     ...(nextSession ? { academic_session_id: nextSession } : {}),
     ...(nextLevel ? { level: nextLevel } : {}),
     ...(gateway ? { gateway } : {}),
+    ...(invoiceCurrency ? { currency: invoiceCurrency } : {}),
   });
 
   const loadInvoices = (
@@ -277,6 +280,7 @@ export function Invoices() {
           amount: Number(totals?.amount || 0),
           balance: Number(totals?.balance || 0),
           rebate_total: Number(totals?.rebate_total || 0),
+          ...(totals?.usd ? { usd: { amount: Number(totals.usd.amount || 0), balance: Number(totals.usd.balance || 0), rebate_total: Number(totals.usd.rebate_total || 0) } } : {}),
         });
       })
       .catch(() => {
@@ -336,7 +340,7 @@ export function Invoices() {
   useEffect(() => { loadCatalog(); }, []);
   useEffect(() => {
     loadInvoices(invoicePage, statusFilter, categoryFilter, collegeFilter, departmentFilter, programFilter, search, fromDate, toDate);
-  }, [invoicePage, statusFilter, categoryFilter, collegeFilter, departmentFilter, programFilter, search, fromDate, toDate, sessionId, level, gatewayFilter]);
+  }, [invoicePage, statusFilter, categoryFilter, collegeFilter, departmentFilter, programFilter, search, fromDate, toDate, sessionId, level, gatewayFilter, currencyFilter]);
   useEffect(() => {
     loadPayments(paymentPage, paymentStatusFilter, paymentSearch, gatewayFilter);
   }, [paymentPage, paymentStatusFilter, paymentSearch, gatewayFilter]);
@@ -405,7 +409,7 @@ export function Invoices() {
     setPaymentPage(1);
   };
 
-  const downloadInvoices = async (format: 'pdf' | 'excel' | 'word' | 'csv') => {
+  const downloadInvoices = async (format: 'pdf' | 'excel' | 'word' | 'csv', currencyOverride?: string) => {
     const recordLabel = gatewayFilter ? 'payments' : 'invoices';
     if (format === 'pdf' && invoiceMeta.total > 1000) {
       message.warning(`${invoiceMeta.total.toLocaleString()} ${recordLabel} is too many for PDF. Use Excel or CSV, or narrow the filters first.`);
@@ -426,7 +430,7 @@ export function Invoices() {
     setExporting(true);
     try {
       const { data } = await api.get('/api/invoices/export', {
-        params: { format, ...invoiceParams() },
+        params: { format, ...invoiceParams(), ...(currencyOverride ? { currency: currencyOverride } : {}) },
         responseType: 'blob',
         timeout: format === 'csv' ? 600000 : 300000,
       });
@@ -781,14 +785,14 @@ export function Invoices() {
         />
         <StatCard
           label="Billed"
-          value={formatNaira(invoiceTotals.amount)}
-          hint="Sum of amounts for current filters"
+          value={formatMoney(invoiceTotals.amount, currencyFilter === 'USD' ? 'USD' : 'NGN')}
+          hint={!currencyFilter && invoiceTotals.usd ? `USD billed ${formatMoney(invoiceTotals.usd.amount, 'USD')}` : 'Sum of amounts for current filters'}
           icon={CircleDollarSign}
         />
         <StatCard
           label="Outstanding"
-          value={formatNaira(invoiceTotals.balance)}
-          hint={invoiceTotals.rebate_total > 0 ? `Rebates ${formatNaira(invoiceTotals.rebate_total)}` : 'Sum of balances for current filters'}
+          value={formatMoney(invoiceTotals.balance, currencyFilter === 'USD' ? 'USD' : 'NGN')}
+          hint={invoiceTotals.rebate_total > 0 ? `Rebates ${formatMoney(invoiceTotals.rebate_total, currencyFilter === 'USD' ? 'USD' : 'NGN')}` : (!currencyFilter && invoiceTotals.usd ? `USD outstanding ${formatMoney(invoiceTotals.usd.balance, 'USD')}` : 'Sum of balances for current filters')}
           icon={CircleDollarSign}
           tone="rose"
         />
@@ -978,6 +982,23 @@ export function Invoices() {
               ]}
             />
           </label>
+          <label className="block min-w-[180px]">
+            <span className={fieldLabelClass}>Currency</span>
+            <Select
+              allowClear
+              className="w-full min-w-[180px]"
+              placeholder="All currencies"
+              value={currencyFilter}
+              onChange={(value) => { setCurrencyFilter(value); setInvoicePage(1); }}
+              options={[
+                { value: 'NGN', label: 'NGN' },
+                { value: 'USD', label: 'USD' },
+              ]}
+            />
+          </label>
+          <div className="flex items-end">
+            <Button onClick={() => { setCurrencyFilter('USD'); setInvoicePage(1); downloadInvoices('excel', 'USD'); }}>Foreign currency</Button>
+          </div>
         </div>
         {gatewayFilter ? (
           <p className="mb-3 text-xs text-slate-500">
@@ -1026,12 +1047,12 @@ export function Invoices() {
                     )}
                   </td>
                   <td className={tdClass}>
-                    <div>{formatNaira(Number(invoice.amount || 0))}</div>
+                    <div>{formatMoney(Number(invoice.amount || 0), invoice.currency)}</div>
                     {Number(invoice.rebate_total) > 0 ? (
                       <div className="text-xs text-emerald-700 mt-0.5">Rebate {formatNaira(Number(invoice.rebate_total))}</div>
                     ) : null}
                   </td>
-                  <td className={tdClass}>{formatNaira(invoice.balance)}</td>
+                  <td className={tdClass}>{formatMoney(invoice.balance, invoice.currency)}</td>
                   <td className={tdClass}>
                     <Badge variant={stageBadge(invoice.status === 'cancelled' ? 'inactive' : invoice.status)}>
                       {statusLabel(invoice.status)}

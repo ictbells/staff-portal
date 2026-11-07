@@ -13,7 +13,7 @@ import {
   Card, DataTable, fieldLabelClass,
   StatCard, WorkspaceHero, tdClass, thClass, trClass,
 } from '../../components/ui';
-import { formatNaira } from '../../lib/money';
+import { formatMoney } from '../../lib/money';
 
 type DateRange = [Dayjs, Dayjs] | null;
 
@@ -47,6 +47,8 @@ type DashboardPayload = {
   institution: { name: string; motto?: string; address?: string };
   period: { from: string | null; to: string | null; label: string };
   gateway?: string | null;
+  currency?: string | null;
+  totals_usd?: DashboardPayload['totals'];
   gateways?: { key: string; label: string }[];
   generated_at: string;
   totals: {
@@ -92,6 +94,7 @@ function formatWhen(value?: string | null) {
 export function PaymentDashboard() {
   const yearRange: [Dayjs, Dayjs] = [dayjs().startOf('year'), dayjs()];
   const [range, setRange] = useState<DateRange>(yearRange);
+  const [currency, setCurrency] = useState<'all' | 'NGN' | 'USD'>('all');
   const [data, setData] = useState<DashboardPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -100,6 +103,7 @@ export function PaymentDashboard() {
   const params = () => ({
     from: range?.[0]?.format('YYYY-MM-DD'),
     to: range?.[1]?.format('YYYY-MM-DD'),
+    currency,
   });
 
   const load = () => {
@@ -123,7 +127,7 @@ export function PaymentDashboard() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range?.[0]?.format('YYYY-MM-DD'), range?.[1]?.format('YYYY-MM-DD')]);
+  }, [range?.[0]?.format('YYYY-MM-DD'), range?.[1]?.format('YYYY-MM-DD'), currency]);
 
   const download = async (format: 'pdf' | 'excel' | 'word') => {
     setExporting(true);
@@ -170,6 +174,8 @@ export function PaymentDashboard() {
   ];
 
   const totals = data?.totals;
+  const shownCurrency = currency === 'USD' ? 'USD' : 'NGN';
+  const money = (value?: number | null) => formatMoney(value, shownCurrency);
   const monthlyMax = useMemo(
     () => Math.max(1, ...(data?.monthly || []).map((row) => Number(row.collected || 0))),
     [data?.monthly],
@@ -210,33 +216,50 @@ export function PaymentDashboard() {
             onChange={(value) => setRange(value && value[0] && value[1] ? [value[0], value[1]] : null)}
           />
         </label>
+        <label className="block max-w-xs mt-4">
+          <span className={fieldLabelClass}>Currency</span>
+          <select className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" value={currency} onChange={(e) => setCurrency(e.target.value as 'all' | 'NGN' | 'USD')}>
+            <option value="all">All (naira and dollars separate)</option>
+            <option value="NGN">NGN</option>
+            <option value="USD">USD</option>
+          </select>
+        </label>
       </Card>
 
       <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-3">
         <StatCard
           label="Online collected"
-          value={formatNaira(totals?.online_collected)}
+          value={money(totals?.online_collected)}
           hint={`${totals?.online_payments ?? 0} successful gateway payment${(totals?.online_payments ?? 0) === 1 ? '' : 's'}`}
           icon={Landmark}
           tone="emerald"
         />
-        <StatCard label="Collected (fees)" value={formatNaira(totals?.collected)} hint={data?.period.label || 'Fee income'} icon={TrendingUp} tone="emerald" />
-        <StatCard label="Invoiced" value={formatNaira(totals?.invoiced)} hint="Invoices issued in period" icon={Receipt} />
-        <StatCard label="Outstanding" value={formatNaira(totals?.outstanding)} hint="Open invoice balances now" icon={Receipt} tone="rose" />
-        <StatCard label="Wallet liability" value={formatNaira(totals?.wallet_liability)} hint="Student wallet balances now" icon={Wallet} />
-        <StatCard label="Rebates" value={formatNaira(totals?.rebates)} hint="Granted in period" icon={BadgeCheck} tone="amber" />
+        <StatCard label="Collected (fees)" value={money(totals?.collected)} hint={data?.period.label || 'Fee income'} icon={TrendingUp} tone="emerald" />
+        <StatCard label="Invoiced" value={money(totals?.invoiced)} hint="Invoices issued in period" icon={Receipt} />
+        <StatCard label="Outstanding" value={money(totals?.outstanding)} hint="Open invoice balances now" icon={Receipt} tone="rose" />
+        <StatCard label="Wallet liability" value={money(totals?.wallet_liability)} hint="Student wallet balances now" icon={Wallet} />
+        <StatCard label="Rebates" value={money(totals?.rebates)} hint="Granted in period" icon={BadgeCheck} tone="amber" />
       </div>
+      {currency === 'all' && data?.totals_usd && (
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+          <StatCard label="USD collected" value={formatMoney(data.totals_usd.collected, 'USD')} icon={TrendingUp} tone="emerald" />
+          <StatCard label="USD invoiced" value={formatMoney(data.totals_usd.invoiced, 'USD')} icon={Receipt} />
+          <StatCard label="USD outstanding" value={formatMoney(data.totals_usd.outstanding, 'USD')} icon={Receipt} tone="rose" />
+          <StatCard label="USD wallet liability" value={formatMoney(data.totals_usd.wallet_liability, 'USD')} hint="Dollar wallet balances now" icon={Wallet} />
+        </div>
+      )}
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-        <StatCard label="Today (online)" value={formatNaira(data?.today.online_collected)} hint={`${data?.today.online_payments ?? 0} gateway payments`} icon={TrendingUp} tone="emerald" />
-        <StatCard label="This month (online)" value={formatNaira(data?.this_month.online_collected)} hint={`${data?.this_month.online_payments ?? 0} gateway payments`} icon={TrendingUp} />
-        <StatCard label="Cash received" value={formatNaira(totals?.cash_received)} hint="Gateways + import + bank (excludes wallet)" icon={Landmark} />
-        <StatCard label="Wallet top-ups" value={formatNaira(totals?.wallet_inflows)} hint="Not counted as fee income" icon={Wallet} tone="amber" />
+        <StatCard label="Today (online)" value={money(data?.today.online_collected)} hint={`${data?.today.online_payments ?? 0} gateway payments`} icon={TrendingUp} tone="emerald" />
+        <StatCard label="This month (online)" value={money(data?.this_month.online_collected)} hint={`${data?.this_month.online_payments ?? 0} gateway payments`} icon={TrendingUp} />
+        <StatCard label="Cash received" value={money(totals?.cash_received)} hint="Gateways + import + bank (excludes wallet)" icon={Landmark} />
+        <StatCard label="Wallet top-ups" value={money(totals?.wallet_inflows)} hint="Not counted as fee income" icon={Wallet} tone="amber" />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
         <Card title="Statement of receipts" description="Money received in the selected period.">
           <StatementRows
+            currency={shownCurrency}
             rows={[
               ['Fee collections', totals?.collected],
               ['Wallet top-ups', totals?.wallet_inflows],
@@ -250,6 +273,7 @@ export function PaymentDashboard() {
         </Card>
         <Card title="Financial position" description="Invoices in the period, balances as they stand now.">
           <StatementRows
+            currency={shownCurrency}
             rows={[
               ['Invoices issued (period)', totals?.invoiced],
               ['Rebates granted (period)', totals?.rebates],
@@ -283,9 +307,9 @@ export function PaymentDashboard() {
                 {data.by_category.map((row) => (
                   <tr key={row.category || row.label} className={trClass}>
                     <td className={tdClass}>{row.label}</td>
-                    <td className={`${tdClass} text-right`}>{formatNaira(row.invoiced)}</td>
-                    <td className={`${tdClass} text-right`}>{formatNaira(row.collected)}</td>
-                    <td className={`${tdClass} text-right`}>{formatNaira(row.outstanding)}</td>
+                    <td className={`${tdClass} text-right`}>{money(row.invoiced)}</td>
+                    <td className={`${tdClass} text-right`}>{money(row.collected)}</td>
+                    <td className={`${tdClass} text-right`}>{money(row.outstanding)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -309,13 +333,13 @@ export function PaymentDashboard() {
                 {data.by_online_gateway.map((row) => (
                   <tr key={row.method || row.label} className={trClass}>
                     <td className={tdClass}>{row.label}</td>
-                    <td className={`${tdClass} text-right`}>{formatNaira(row.amount)}</td>
+                    <td className={`${tdClass} text-right`}>{money(row.amount)}</td>
                     <td className={`${tdClass} text-right`}>{row.payments ?? 0}</td>
                   </tr>
                 ))}
                 <tr className="border-t-2 border-slate-200 bg-slate-50/80">
                   <td className={`${tdClass} font-semibold`}>Total online</td>
-                  <td className={`${tdClass} text-right font-semibold`}>{formatNaira(totals?.online_collected)}</td>
+                  <td className={`${tdClass} text-right font-semibold`}>{money(totals?.online_collected)}</td>
                   <td className={`${tdClass} text-right font-semibold`}>{totals?.online_payments ?? 0}</td>
                 </tr>
               </tbody>
@@ -333,7 +357,7 @@ export function PaymentDashboard() {
                 <div key={row.month}>
                   <div className="flex items-center justify-between gap-3 text-sm">
                     <span className="font-medium text-slate-700">{row.label}</span>
-                    <span className="text-slate-600">{formatNaira(row.collected)}</span>
+                    <span className="text-slate-600">{money(row.collected)}</span>
                   </div>
                   <div className="mt-1 h-2 rounded-full bg-slate-100">
                     <div className="h-2 rounded-full bg-sky-500" style={{ width: `${Math.max(pct, row.collected ? 4 : 0)}%` }} />
@@ -382,7 +406,7 @@ export function PaymentDashboard() {
                     </td>
                     <td className={tdClass}>{row.category_label}</td>
                     <td className={tdClass}>{row.method_label}</td>
-                    <td className={`${tdClass} text-right`}>{formatNaira(row.amount)}</td>
+                    <td className={`${tdClass} text-right`}>{money(row.amount)}</td>
                     <td className={tdClass}>{formatWhen(row.created_at)}</td>
                   </tr>
                 ))}
@@ -398,22 +422,24 @@ function StatementRows({
   rows,
   totalLabel,
   total,
+  currency = 'NGN',
 }: {
   rows: Array<[string, number | undefined]>;
   totalLabel: string;
   total?: number;
+  currency?: string;
 }) {
   return (
     <dl className="divide-y divide-slate-100">
       {rows.map(([label, value]) => (
         <div key={label} className="flex items-center justify-between gap-3 py-2">
           <dt className="text-sm text-slate-600">{label}</dt>
-          <dd className="text-sm font-medium text-slate-800">{formatNaira(value)}</dd>
+          <dd className="text-sm font-medium text-slate-800">{formatMoney(value, currency)}</dd>
         </div>
       ))}
       <div className="flex items-center justify-between gap-3 py-2">
         <dt className="text-sm font-semibold text-slate-800">{totalLabel}</dt>
-        <dd className="text-sm font-semibold text-slate-900">{formatNaira(total)}</dd>
+        <dd className="text-sm font-semibold text-slate-900">{formatMoney(total, currency)}</dd>
       </div>
     </dl>
   );
