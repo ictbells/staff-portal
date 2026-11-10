@@ -4,6 +4,7 @@ import { Eye, FileText, Printer, RefreshCw, Save, Trash2 } from 'lucide-react';
 import api, { isPendingApproval } from '../../api';
 import { useAuth } from '../../auth';
 import { isValidPhone, PHONE_ERROR, PHONE_HINT, phoneIssue } from '../../lib/phone';
+import { studentLevelLabel } from '../../lib/studentLevel';
 import { requiredDocumentsFor } from './requiredDocuments';
 
 type Step = { step_key?: string; payload?: Record<string, any> };
@@ -95,6 +96,8 @@ type FileApp = {
   student?: {
     id?: number;
     current_level?: number | string;
+    study_level?: string | null;
+    level_label?: string | null;
     program_id?: number | null;
     matric_number?: string | null;
     student_number?: string | null;
@@ -859,7 +862,13 @@ export function ApplicationFileDrawer({
   };
 
   const studentLevel = programmeLevel(app?.student?.current_level);
-  const canChangeProgramme = !app?.student || (studentLevel >= 100 && studentLevel <= 300);
+  const isJupebStudent = (app?.entry_mode || app?.student?.study_level || '').toLowerCase() === 'jupeb';
+  const canChangeProgramme = !app?.student || (!isJupebStudent && studentLevel >= 100 && studentLevel <= 300);
+  const displayedStudentLevel = studentLevelLabel({
+    ...app?.student,
+    study_level: app?.student?.study_level || (isJupebStudent ? 'jupeb' : null),
+    application: { entry_mode: app?.entry_mode },
+  });
   const programmeChanging = !!(form && originalProgramId && Number(form.first_choice_program_id) !== Number(originalProgramId));
   const fromProgram = programs.find((program) => program.id === Number(originalProgramId));
   const toProgram = programs.find((program) => program.id === Number(form?.first_choice_program_id));
@@ -1271,16 +1280,16 @@ export function ApplicationFileDrawer({
               </Field>
               {app.student && (
                 <Field label="Current level">
-                  <Input value={`${app.student.current_level || '—'}L`} disabled />
+                  <Input value={displayedStudentLevel} disabled />
                 </Field>
               )}
             </div>
           </Section>
 
           <Section title="Programme">
-            {app.student && !canChangeProgramme && (
+            {app.student && !canChangeProgramme && !isJupebStudent && (
               <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                Change of programme is only allowed for 100L to 300L. This student is {studentLevel}L.
+                Change of programme is only allowed for 100L to 300L. This student is {displayedStudentLevel}.
               </p>
             )}
             {app.student && canChangeProgramme && programmeChanging && (

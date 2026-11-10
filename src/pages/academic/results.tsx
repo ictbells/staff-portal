@@ -397,18 +397,27 @@ export function ResultsDashboardPage() {
 }
 
 export function ResultsStudentsPage() {
-  const { levels } = useResultsLookups();
+  const { levels, faculties, departments } = useResultsLookups();
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [level, setLevel] = useState<string | undefined>();
+  const [facultyId, setFacultyId] = useState<number | undefined>();
+  const [departmentId, setDepartmentId] = useState<number | undefined>();
   const [rows, setRows] = useState<any[]>([]);
   const load = useCallback(() => {
     setLoading(true);
-    api.get('/api/academic/results/students', { params: { search, level } })
+    api.get('/api/academic/results/students', {
+      params: listQuery({
+        search,
+        level,
+        faculty_id: facultyId,
+        department_id: departmentId,
+      }),
+    })
       .then((r) => setRows(r.data?.data || r.data || []))
       .catch(() => message.error('Could not search students'))
       .finally(() => setLoading(false));
-  }, [search, level]);
+  }, [search, level, facultyId, departmentId]);
   useEffect(() => { load(); }, [load]);
   const columns: ColumnsType = [
     { title: 'Matric', dataIndex: 'matric_number' },
@@ -424,6 +433,31 @@ export function ResultsStudentsPage() {
     <ResourceShell title="Result entry" description="Search students and enter CA/exam scores." loading={loading} onRefresh={load}
       extra={(
         <Space wrap>
+          <Select
+            placeholder="College"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            style={{ width: 180 }}
+            value={facultyId}
+            options={faculties.map((faculty) => ({ value: faculty.id, label: faculty.name }))}
+            onChange={(value) => {
+              setFacultyId(value);
+              if (!value || departments.find((department) => department.id === departmentId)?.faculty_id !== value) {
+                setDepartmentId(undefined);
+              }
+            }}
+          />
+          <Select
+            placeholder="Department"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            style={{ width: 200 }}
+            value={departmentId}
+            options={departmentOptions(departments, facultyId)}
+            onChange={setDepartmentId}
+          />
           <CourseLevelFilter levels={levels} value={level} onChange={setLevel} />
           <Input.Search placeholder="Matric or name" allowClear onSearch={setSearch} style={{ width: 260 }} />
           <Button onClick={load}>Search</Button>

@@ -23,12 +23,28 @@ export function useSessionLevelOptions() {
     api.get('/api/academic/levels')
       .then(({ data }) => {
         const list = Array.isArray(data) ? data : data?.data ?? [];
+        const seen = new Set<string>();
         const mapped = list
-          .map((row: any) => ({
-            value: String(row.code || row.name || ''),
-            label: row.name || String(row.code || ''),
-          }))
-          .filter((row: LevelOption) => row.value);
+          .map((row: any) => {
+            const track = String(row.study_level || 'undergraduate').toLowerCase();
+            const code = String(row.code || '').trim();
+            const name = String(row.name || '').trim();
+            const isJupeb = track === 'jupeb' || /jupeb/i.test(name) || /jupeb/i.test(code);
+            // JUPEB catalog rows often reuse code "100". Prefer a JUPEB label as the
+            // filter value so the API can tell them apart from undergraduate 100L.
+            const value = isJupeb
+              ? (/jupeb/i.test(code) ? code : (name || code || 'JUPEB'))
+              : (code || name);
+            const label = isJupeb
+              ? (name || code || 'JUPEB')
+              : (name || code);
+            return { value, label };
+          })
+          .filter((row: LevelOption) => {
+            if (!row.value || seen.has(row.value)) return false;
+            seen.add(row.value);
+            return true;
+          });
         setLevels(mapped.length ? mapped : ['100', '200', '300', '400', '500'].map((value) => ({ value, label: value })));
       })
       .catch(() => {

@@ -747,9 +747,9 @@ export default function OfficeSetup() {
       >
         <p className="text-slate-500 text-sm mb-4">
           Choose which staff-portal sidebar links appear for people who <strong>work in</strong> this {linksRow?.level.toLowerCase()}.
-          Units and subunits automatically inherit links assigned on the parent department (and subunits inherit unit links). Role permissions still control what they can do.
+          The same link can be assigned to more than one office department. Units and subunits automatically inherit links assigned on the parent department (and subunits inherit unit links). Role permissions still control what they can do.
           Assigned links start as <strong>no approval</strong> — tick the gear to require Create/Update/Delete approval when needed.
-          Super Admin and the owning HOD still apply immediately. Saving these link settings takes effect at once.
+          Super Admin and that office&apos;s HOD still apply immediately. Saving these link settings takes effect at once.
           {' '}<strong>Super Admin accounts ignore office link limits</strong> and only need the matching role permission.
         </p>
         {error && linksRow && (
