@@ -49,11 +49,20 @@ type Offering = {
   enrolled_count?: number;
   course_id?: number;
   academic_term_id?: number;
+  faculty_staff_id?: number | null;
   lecturer_name?: string | null;
   lecturer_display_name?: string | null;
   course?: CourseRef;
   term?: Term;
-  lecturer?: { user?: { name?: string } };
+  lecturer?: { id?: number; user?: { name?: string } };
+};
+type LecturerOption = {
+  id: number;
+  name?: string | null;
+  email?: string | null;
+  staff_number?: string | null;
+  title?: string | null;
+  is_lecturer?: boolean;
 };
 type UnitLimit = {
   id: number;
@@ -371,7 +380,19 @@ export function OfferingsPage() {
   const { rows: terms } = useResourceList<Term>('/api/academic/terms');
   const { rows: courses } = useResourceList<CourseRef>('/api/academic/courses');
   const { rows: programs } = useResourceList<ProgramRef>('/api/academic/programs');
+  const { rows: lecturers } = useResourceList<LecturerOption>('/api/academic/lecturers');
   const crud = useCrudModal<Offering>();
+  const lecturerOptions = useMemo(
+    () => lecturers.map((lecturer) => ({
+      value: lecturer.id,
+      label: [
+        lecturer.name || `Staff #${lecturer.id}`,
+        lecturer.is_lecturer ? 'Lecturer' : null,
+        lecturer.staff_number || null,
+      ].filter(Boolean).join(' · '),
+    })),
+    [lecturers],
+  );
   const semesterTerms = useMemo(() => academicSemesterTerms(terms, sessionId), [terms, sessionId]);
   const semesterOptions = useMemo(() => semesterSelectOptions(semesterTerms), [semesterTerms]);
   const formSemesterOptions = useMemo(() => {
@@ -504,7 +525,8 @@ export function OfferingsPage() {
       (row) => crud.openEdit(row, {
         course_id: row.course_id ?? row.course?.id,
         academic_term_id: row.academic_term_id ?? row.term?.id,
-        lecturer_name: row.lecturer_name || row.lecturer_display_name || row.lecturer?.user?.name || '',
+        faculty_staff_id: row.faculty_staff_id ?? row.lecturer?.id ?? undefined,
+        lecturer_name: row.lecturer_name || '',
         section: row.section || 'A',
         capacity: row.capacity,
       }),
@@ -524,6 +546,7 @@ export function OfferingsPage() {
     }
     const payload: Record<string, unknown> = {
       academic_term_id: values.academic_term_id,
+      faculty_staff_id: values.faculty_staff_id || null,
       lecturer_name: values.lecturer_name || null,
       section: values.section || 'A',
       capacity: values.capacity ?? null,
@@ -643,9 +666,22 @@ export function OfferingsPage() {
             <Select options={formSemesterOptions} />
           </Form.Item>
           <Form.Item
+            name="faculty_staff_id"
+            label="Lecturer (portal account)"
+            extra="Assign a staff account so they can enter and upload scores for this offering. Free-text name alone does not grant access."
+          >
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="Select lecturer staff"
+              options={lecturerOptions}
+            />
+          </Form.Item>
+          <Form.Item
             name="lecturer_name"
-            label="Lecturer"
-            extra="Type the lecturer’s name. They do not need a portal account."
+            label="Lecturer name (display only)"
+            extra="Optional label when no portal account is assigned, or to override the displayed name."
           >
             <Input placeholder="e.g. Dr. Ada Okonkwo" allowClear />
           </Form.Item>

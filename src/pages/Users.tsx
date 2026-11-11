@@ -22,6 +22,7 @@ type UserRow = {
   roles?: { id: number; name: string }[];
   staff?: {
     title?: string;
+    department_id?: number | null;
     office_department_id?: number | null;
     office_unit_id?: number | null;
     office_subunit_id?: number | null;
@@ -30,6 +31,12 @@ type UserRow = {
     is_office_unit_head?: boolean;
   } | null;
   student?: unknown;
+};
+
+type AcademicDepartment = {
+  id: number;
+  name: string;
+  faculty?: { id: number; name?: string } | null;
 };
 
 type UserFilters = {
@@ -56,6 +63,7 @@ type UserForm = {
   status: 'active' | 'disabled';
   reason: string;
   role_ids: number[];
+  department_id: string | number;
   office_department_id: string | number;
   office_unit_id: string | number;
   office_subunit_id: string | number;
@@ -71,6 +79,7 @@ const emptyForm = (): UserForm => ({
   status: 'active',
   reason: '',
   role_ids: [],
+  department_id: '',
   office_department_id: '',
   office_unit_id: '',
   office_subunit_id: '',
@@ -95,6 +104,7 @@ function formFromUser(user: UserRow): UserForm {
     status: user.status === 'disabled' ? 'disabled' : 'active',
     reason: '',
     role_ids: user.roles?.map((r) => r.id) || [],
+    department_id: user.staff?.department_id ?? '',
     office_department_id: user.staff?.office_department_id ?? '',
     office_unit_id: user.staff?.office_unit_id ?? '',
     office_subunit_id: user.staff?.office_subunit_id ?? '',
@@ -212,6 +222,7 @@ function UserFormFields({
   setForm,
   roles,
   officeTree,
+  academicDepartments,
   units,
   subunits,
   mode,
@@ -221,6 +232,7 @@ function UserFormFields({
   setForm: (next: UserForm) => void;
   roles: { id: number; name: string }[];
   officeTree: OfficeTree;
+  academicDepartments: AcademicDepartment[];
   units: { id: number; name: string; departmentId: number; departmentName: string; subunits: { id: number; name: string }[] }[];
   subunits: { id: number; name: string; unitId: number; unitName: string; departmentName: string }[];
   mode: 'create' | 'edit';
@@ -365,6 +377,30 @@ function UserFormFields({
 
       <FormSection
         icon={Building2}
+        title="Academic department"
+        description="Optional. Used for HOD and Dean results scope (and exam-officer lanes). Not the same as office placement below."
+      >
+        <label className="block max-w-xl">
+          <FieldLabel>School department</FieldLabel>
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            className="w-full"
+            placeholder="Select academic department"
+            value={form.department_id || undefined}
+            onChange={(value) => patch({ department_id: value ?? '' })}
+            options={academicDepartments.map((d) => ({
+              value: d.id,
+              label: d.faculty?.name ? `${d.name} · ${d.faculty.name}` : d.name,
+            }))}
+          />
+          <FieldError message={firstError(errors, 'department_id')} />
+        </label>
+      </FormSection>
+
+      <FormSection
+        icon={Building2}
         title="Office placement"
         description="Optional. Places them in an administrative office so they inherit that office’s portal links. This is not a job role, faculty, or programme."
       >
@@ -447,6 +483,7 @@ export default function Users() {
   const [rows, setRows] = useState<UserRow[]>([]);
   const [roles, setRoles] = useState<{ id: number; name: string }[]>([]);
   const [officeTree, setOfficeTree] = useState<OfficeTree>([]);
+  const [academicDepartments, setAcademicDepartments] = useState<AcademicDepartment[]>([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 30, total: 0 });
   const [filters, setFilters] = useState<UserFilters>(emptyFilters);
@@ -476,8 +513,9 @@ export default function Users() {
       api.get('/api/users', { params: { page, ...filterParams(nextFilters) } }),
       api.get('/api/roles', { params: { per_page: 100 } }),
       api.get('/api/office-structure').catch(() => ({ data: [] })),
+      api.get('/api/users/meta/academic-departments').catch(() => ({ data: [] })),
     ])
-      .then(([usersRes, rolesRes, officeRes]) => {
+      .then(([usersRes, rolesRes, officeRes, departmentsRes]) => {
         const body = usersRes.data;
         if (Array.isArray(body?.data)) {
           setRows(body.data);
@@ -491,6 +529,14 @@ export default function Users() {
         }
         setRoles(roleOptionsFromResponse(rolesRes.data));
         setOfficeTree(officeRes.data);
+        const departmentsBody = departmentsRes.data;
+        setAcademicDepartments(
+          Array.isArray(departmentsBody?.data)
+            ? departmentsBody.data
+            : Array.isArray(departmentsBody)
+              ? departmentsBody
+              : [],
+        );
       })
       .finally(() => setLoading(false));
   }, [filterParams]);
@@ -563,6 +609,7 @@ export default function Users() {
     }
     if (includeStaffFields) {
       payload.staff_title = form.staff_title.trim() || null;
+      payload.department_id = form.department_id || null;
       payload.office_department_id = form.office_department_id || null;
       payload.office_unit_id = form.office_unit_id || null;
       payload.office_subunit_id = form.office_subunit_id || null;
@@ -790,7 +837,7 @@ export default function Users() {
       <WorkspaceHero
         eyebrow="Administration"
         title="Users"
-        description="Create staff accounts, assign roles (what they can do), and place them in an office (where they work and which portal links they see)."
+        description="Create staff accounts, assign roles (what they can do), set academic department for results scope, and place them in an office (portal links)."
         icon={UsersIcon}
       >
         <RefreshButton onClick={() => load(pagination.current, filters)} loading={loading} />
@@ -917,6 +964,7 @@ export default function Users() {
           }}
           roles={roles}
           officeTree={officeTree}
+          academicDepartments={academicDepartments}
           units={units}
           subunits={subunits}
           mode="create"
@@ -956,6 +1004,7 @@ export default function Users() {
             }}
             roles={roles}
             officeTree={officeTree}
+            academicDepartments={academicDepartments}
             units={units}
             subunits={subunits}
             mode="edit"
