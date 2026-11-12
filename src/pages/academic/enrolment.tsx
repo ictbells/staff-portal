@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Alert, Button, Dropdown, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, message,
+  Alert, Button, Checkbox, Dropdown, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { BookOpen, Download, Plus, Search } from 'lucide-react';
@@ -159,6 +159,81 @@ function offeringLecturerName(row: Offering) {
     .filter(Boolean);
   if (names.length) return names.join(', ');
   return row.lecturer?.user?.name || '—';
+}
+
+function LecturerMultiPicker({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: number; label: string }[];
+  value?: number[];
+  onChange?: (next: number[]) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const selected = Array.isArray(value) ? value.map(Number).filter((id) => id > 0) : [];
+  const needle = search.trim().toLowerCase();
+  const visible = needle
+    ? options.filter((option) => option.label.toLowerCase().includes(needle))
+    : options;
+
+  const toggle = (id: number, checked: boolean) => {
+    if (checked) {
+      onChange?.(selected.includes(id) ? selected : [...selected, id]);
+      return;
+    }
+    onChange?.(selected.filter((row) => row !== id));
+  };
+
+  return (
+    <div className="space-y-2">
+      <Input
+        allowClear
+        placeholder="Search staff"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+      />
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {selected.map((id) => {
+            const option = options.find((row) => row.value === id);
+            return (
+              <Tag
+                key={id}
+                closable
+                onClose={(event) => {
+                  event.preventDefault();
+                  toggle(id, false);
+                }}
+              >
+                {option?.label || `Staff #${id}`}
+              </Tag>
+            );
+          })}
+        </div>
+      )}
+      <div className="max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+        {visible.length === 0 ? (
+          <p className="text-sm text-slate-500 m-0 py-2">No matching staff.</p>
+        ) : (
+          <div className="space-y-1">
+            {visible.map((option) => (
+              <label key={option.value} className="flex items-start gap-2 py-1 text-sm text-slate-800 cursor-pointer">
+                <Checkbox
+                  checked={selected.includes(option.value)}
+                  onChange={(event) => toggle(option.value, event.target.checked)}
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+      <p className="text-xs text-slate-500 m-0">
+        {selected.length === 0 ? 'No lecturers selected.' : `${selected.length} lecturer${selected.length === 1 ? '' : 's'} selected.`}
+      </p>
+    </div>
+  );
 }
 
 function offeringSeatsLabel(row: { capacity?: number | null; seats_left?: number | null; unlimited?: boolean; enrolled_count?: number }) {
@@ -381,6 +456,10 @@ function rosterLabel(status?: string) {
 }
 
 export function OfferingsPage() {
+  const { auth } = useAuth();
+  const isLecturer = Boolean(auth?.roles?.some((role) => role.slug === 'lecturer'))
+    && !Boolean(auth?.roles?.some((role) => role.slug === 'super-admin'));
+  const canMutateOfferings = !isLecturer;
   const [sessionId, setSessionId] = useState<number | undefined>();
   const [level, setLevel] = useState<string | undefined>();
   const [termId, setTermId] = useState<number | undefined>();
@@ -397,9 +476,9 @@ export function OfferingsPage() {
   }, [sessionId, termId, level]);
   const { rows, loading, reload } = useResourceList<Offering>(endpoint);
   const { rows: terms } = useResourceList<Term>('/api/academic/terms');
-  const { rows: courses } = useResourceList<CourseRef>('/api/academic/courses');
-  const { rows: programs } = useResourceList<ProgramRef>('/api/academic/programs');
-  const { rows: lecturers } = useResourceList<LecturerOption>('/api/academic/lecturers');
+  const { rows: courses } = useResourceList<CourseRef>('/api/academic/courses', canMutateOfferings);
+  const { rows: programs } = useResourceList<ProgramRef>('/api/academic/programs', canMutateOfferings);
+  const { rows: lecturers } = useResourceList<LecturerOption>('/api/academic/lecturers', canMutateOfferings);
   const crud = useCrudModal<Offering>();
   const lecturerOptions = useMemo(
     () => lecturers.map((lecturer) => ({
@@ -540,17 +619,19 @@ export function OfferingsPage() {
         </Dropdown>
       ),
     },
-    actionColumn(
-      (row) => crud.openEdit(row, {
-        course_id: row.course_id ?? row.course?.id,
-        academic_term_id: row.academic_term_id ?? row.term?.id,
-        faculty_staff_ids: offeringLecturerIds(row),
-        lecturer_name: row.lecturer_name || '',
-        section: row.section || 'A',
-        capacity: row.capacity,
-      }),
-      (row) => crud.remove(`/api/academic/offerings/${row.id}`, reload),
-    ),
+    ...(canMutateOfferings
+      ? [actionColumn(
+        (row) => crud.openEdit(row, {
+          course_id: row.course_id ?? row.course?.id,
+          academic_term_id: row.academic_term_id ?? row.term?.id,
+          faculty_staff_ids: offeringLecturerIds(row),
+          lecturer_name: row.lecturer_name || '',
+          section: row.section || 'A',
+          capacity: row.capacity,
+        }),
+        (row) => crud.remove(`/api/academic/offerings/${row.id}`, reload),
+      )]
+      : []),
   ];
 
   const submit = async () => {
@@ -586,11 +667,15 @@ export function OfferingsPage() {
   return (
     <ResourceShell
       title="Course offerings"
-      description="Publish programme courses as section A, then set lecturers and capacity. Students register from the current semester."
+      description={canMutateOfferings
+        ? 'Publish programme courses as section A, then set lecturers and capacity. Students register from the current semester.'
+        : 'Your assigned course offerings for the semester. Use Class list to view or download registered students.'}
       loading={loading}
       onRefresh={reload}
-      onAdd={() => crud.openCreate({ section: 'A', academic_term_id: currentTermId, course_id: [], faculty_staff_ids: [] })}
-      canAdd={courses.length > 0 && semesterTerms.length > 0}
+      onAdd={canMutateOfferings
+        ? () => crud.openCreate({ section: 'A', academic_term_id: currentTermId, course_id: [], faculty_staff_ids: [] })
+        : undefined}
+      canAdd={canMutateOfferings && courses.length > 0 && semesterTerms.length > 0}
       count={rows.length}
       countLabel="Offerings"
       extra={(
@@ -612,9 +697,11 @@ export function OfferingsPage() {
             onChange={setTermId}
             options={semesterOptions}
           />
-          <Button onClick={openPublish} disabled={semesterTerms.length === 0}>
-            Publish programme courses
-          </Button>
+          {canMutateOfferings && (
+            <Button onClick={openPublish} disabled={semesterTerms.length === 0}>
+              Publish programme courses
+            </Button>
+          )}
           <Dropdown
             disabled={rows.length === 0}
             menu={{
@@ -633,8 +720,20 @@ export function OfferingsPage() {
         </>
       )}
     >
-      <Table rowKey="id" size="middle" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1310 }} pagination={{ pageSize: 15 }} locale={{ emptyText: 'No offerings yet. Publish programme courses for this semester, or add one course.' }} />
+      <Table
+        rowKey="id"
+        size="middle"
+        columns={columns}
+        dataSource={rows}
+        loading={loading}
+        scroll={{ x: canMutateOfferings ? 1310 : 1180 }}
+        pagination={{ pageSize: 15 }}
+        locale={{ emptyText: canMutateOfferings
+          ? 'No offerings yet. Publish programme courses for this semester, or add one course.'
+          : 'No offerings are assigned to you for this filter.' }}
+      />
       <OfferingRosterModal offering={roster} onClose={() => setRoster(null)} />
+      {canMutateOfferings && (
       <Modal
         title="Publish programme courses"
         open={publishOpen}
@@ -667,7 +766,9 @@ export function OfferingsPage() {
           </Form.Item>
         </Form>
       </Modal>
-      <Modal title={crud.isEdit ? 'Edit offering' : 'Add offering'} open={crud.open} onCancel={crud.close} onOk={submit} confirmLoading={crud.saving} destroyOnHidden width={520}>
+      )}
+      {canMutateOfferings && (
+      <Modal title={crud.isEdit ? 'Edit offering' : 'Add offering'} open={crud.open} onCancel={crud.close} onOk={submit} confirmLoading={crud.saving} destroyOnHidden width={640}>
         <Form form={crud.form} layout="vertical" className="mt-4">
           {crud.isEdit ? (
             <Form.Item name="course_id" label="Course" rules={[{ required: true }]}>
@@ -682,26 +783,21 @@ export function OfferingsPage() {
                 maxTagCount="responsive"
                 placeholder="Select one or more courses"
                 options={courses.map((course) => ({ value: course.id, label: courseOfferingLabel(course) }))}
+                getPopupContainer={(node) => node.parentElement || document.body}
               />
             </Form.Item>
           )}
           <Form.Item name="academic_term_id" label="Semester" rules={[{ required: true }]}>
-            <Select options={formSemesterOptions} />
+            <Select options={formSemesterOptions} getPopupContainer={(node) => node.parentElement || document.body} />
           </Form.Item>
           <Form.Item
             name="faculty_staff_ids"
             label="Lecturers (portal accounts)"
-            extra="Assign one or more staff accounts so they can enter and upload scores for this offering. Free-text name alone does not grant access."
+            extra="Tick one or more staff accounts so they can enter and upload scores for this offering. Free-text name alone does not grant access."
+            getValueFromEvent={(next) => (Array.isArray(next) ? next.map(Number).filter((id) => id > 0) : [])}
+            normalize={(next) => (Array.isArray(next) ? next.map(Number).filter((id) => id > 0) : [])}
           >
-            <Select
-              mode="multiple"
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              maxTagCount="responsive"
-              placeholder="Select lecturer staff"
-              options={lecturerOptions}
-            />
+            <LecturerMultiPicker options={lecturerOptions} />
           </Form.Item>
           <Form.Item
             name="lecturer_name"
@@ -728,6 +824,7 @@ export function OfferingsPage() {
           </div>
         </Form>
       </Modal>
+      )}
     </ResourceShell>
   );
 }
