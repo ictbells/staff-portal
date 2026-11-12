@@ -78,6 +78,8 @@ type DetailLine = {
   effective_installment_tranche?: number | null;
   effective_installment_tranche_label?: string | null;
   level_code?: string;
+  entry_mode?: string | null;
+  entry_mode_label?: string | null;
   semester?: string;
   is_active?: boolean;
   fee_item?: {
@@ -108,9 +110,33 @@ type LevelGroup = {
   subtotal: number;
 };
 
+type EntryModeGroup = {
+  key: string;
+  entryMode: string;
+  label: string;
+  levels: LevelGroup[];
+  subtotal: number;
+};
+
 function lineLevelCode(line: DetailLine): string {
   const code = String(line.level_code || 'all').trim();
   return code || 'all';
+}
+
+function lineEntryMode(line: DetailLine): string {
+  const mode = String(line.entry_mode || 'all').trim().toLowerCase();
+  return mode || 'all';
+}
+
+function compareEntryModes(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a === 'all') return -1;
+  if (b === 'all') return 1;
+  const order = ENTRY_MODES.map((item) => item.value);
+  const ia = order.indexOf(a);
+  const ib = order.indexOf(b);
+  if (ia !== -1 || ib !== -1) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  return a.localeCompare(b);
 }
 
 function compareLevelCodes(a: string, b: string): number {
@@ -183,6 +209,28 @@ function groupDetailLinesByLevel(lines: DetailLine[]): LevelGroup[] {
         levelCode,
         slices,
         subtotal: slicePackageTotal(slices),
+      };
+    });
+}
+
+function groupDetailLinesByEntryMode(lines: DetailLine[]): EntryModeGroup[] {
+  const buckets = new Map<string, DetailLine[]>();
+  for (const line of lines) {
+    const key = lineEntryMode(line);
+    const group = buckets.get(key) || [];
+    group.push(line);
+    buckets.set(key, group);
+  }
+  return [...buckets.keys()]
+    .sort(compareEntryModes)
+    .map((entryMode) => {
+      const levels = groupDetailLinesByLevel(buckets.get(entryMode) || []);
+      return {
+        key: entryMode,
+        entryMode,
+        label: entryMode === 'all' ? 'All entry modes' : entryModeLabel(entryMode),
+        levels,
+        subtotal: levels.reduce((sum, level) => sum + level.subtotal, 0),
       };
     });
 }
@@ -278,9 +326,14 @@ export function ProgrammeFees() {
     itemAmounts: {} as Record<number, string>,
     itemSlices: {} as Record<number, number[]>,
     level_codes: ['all'] as string[],
+    entry_modes: ['all'] as string[],
     semester: 'both',
     is_active: true,
   });
+  const [entryModeOptions, setEntryModeOptions] = useState<{ value: string; label: string }[]>([
+    { value: 'all', label: 'All entry modes' },
+    ...ENTRY_MODES,
+  ]);
   const [copyOpen, setCopyOpen] = useState(false);
   const [copyTargets, setCopyTargets] = useState<number[]>([]);
   const [copyReplace, setCopyReplace] = useState(false);
@@ -297,7 +350,7 @@ export function ProgrammeFees() {
     ),
   ), [fees, scheduleCategories, categories]);
 
-  const detailGroups = useMemo(() => groupDetailLinesByLevel(detailLines), [detailLines]);
+  const detailGroups = useMemo(() => groupDetailLinesByEntryMode(detailLines), [detailLines]);
 
   const levelHeading = (code: string) => {
     if (code === 'all') return 'All levels';
@@ -370,6 +423,9 @@ export function ProgrammeFees() {
       setFaculties(r.data.filters?.faculties || []);
       setDepartments(r.data.filters?.departments || []);
       setCatalogLevels(r.data.filters?.levels || []);
+      if (Array.isArray(r.data.filters?.entry_modes) && r.data.filters.entry_modes.length) {
+        setEntryModeOptions(r.data.filters.entry_modes);
+      }
     }).catch((err) => {
       setRows([]);
       message.error(apiMessage(err, 'Could not load programme fees.'));
@@ -413,6 +469,7 @@ export function ProgrammeFees() {
         ? { [line.fee_item_id]: line?.installment_tranche != null ? [Number(line.installment_tranche)] : [] }
         : {},
       level_codes: [line?.level_code || 'all'],
+      entry_modes: [line?.entry_mode || 'all'],
       semester: line?.semester || 'both',
       is_active: line ? line.is_active !== false : true,
     });
@@ -431,12 +488,14 @@ export function ProgrammeFees() {
           amount_usd: assignForm.amount_usd === '' ? null : Number(assignForm.amount_usd),
           installment_tranche: (assignForm.itemSlices[assignForm.fee_item_ids[0]] || [])[0] ?? null,
           level_code: assignForm.level_codes[0] || 'all',
+          entry_mode: assignForm.entry_modes[0] || 'all',
           semester: assignForm.semester || 'both',
           is_active: assignForm.is_active,
         })
         : await api.post('/api/programme-fees/bulk', {
           program_id: assignForm.program_id,
           level_codes: assignForm.level_codes.length ? assignForm.level_codes : ['all'],
+          entry_modes: assignForm.entry_modes.length ? assignForm.entry_modes : ['all'],
           semester: assignForm.semester || 'both',
           items: assignForm.fee_item_ids.flatMap((id) => {
             const raw = assignForm.itemAmounts[id];
@@ -611,7 +670,7 @@ export function ProgrammeFees() {
               <th className={thClass}>Programme</th>
               <th className={thClass}>College</th>
               <th className={thClass}>Department</th>
-              <th className={thClass}>Level</th>
+              <th className={thClass}>Entry modes</th>
               <th className={thClass}>Fee lines</th>
               <th className={thClass}>Schedule total</th>
               <th className={thClass}>Actions</th>
@@ -697,43 +756,51 @@ export function ProgrammeFees() {
                 <p className="text-sm text-slate-500 py-8 text-center">No fee lines on this programme yet.</p>
               ) : (
                 <>
-                  {detailGroups.length === 1 && detailTotal != null && (
+                  {detailGroups.length === 1 && detailGroups[0].levels.length === 1 && detailTotal != null && (
                     <p className="text-sm font-medium text-slate-800">
                       Grand total (1st–4th 25%): {formatNaira(detailTotal)}
                     </p>
                   )}
-                  {detailGroups.length > 1 && (
+                  {(detailGroups.length > 1 || detailGroups.some((group) => group.levels.length > 1)) && (
                     <p className="text-sm text-slate-500">
-                      Grouped by level. A student is billed <span className="font-medium text-slate-700">All levels</span> plus the lines for their current level.
+                      Grouped by entry mode, then level. Mode-specific lines replace <span className="font-medium text-slate-700">All entry modes</span> for that admission category. Within a mode, students pay <span className="font-medium text-slate-700">All levels</span> plus their current level.
                     </p>
                   )}
-                  {detailGroups.map((level) => (
-                    <div key={level.key} className="rounded-xl border border-slate-200 overflow-hidden">
-                      <div className="flex items-center justify-between gap-3 bg-slate-100 px-4 py-2.5">
-                        <p className="text-sm font-semibold text-slate-900">{levelHeading(level.levelCode)}</p>
-                        <p className="text-sm font-medium text-slate-800 tabular-nums">{formatNaira(level.subtotal)}</p>
+                  {detailGroups.map((modeGroup) => (
+                    <div key={modeGroup.key} className="rounded-xl border border-slate-200 overflow-hidden">
+                      <div className="flex items-center justify-between gap-3 bg-sky-50 px-4 py-2.5 border-b border-sky-100">
+                        <p className="text-sm font-semibold text-slate-900">{modeGroup.label}</p>
+                        <p className="text-sm font-medium text-slate-800 tabular-nums">{formatNaira(modeGroup.subtotal)}</p>
                       </div>
-                      {level.slices.length === 1 ? (
-                        <FeeBreakdownTable
-                          lines={level.slices[0].lines}
-                          onEdit={(line) => openAssign(detail, line)}
-                          onRemove={removeLine}
-                        />
-                      ) : (
-                        level.slices.map((slice) => (
-                          <div key={`${level.key}-${slice.key}`} className="border-t border-slate-200">
-                            <div className="flex items-center justify-between gap-3 bg-slate-50 px-4 py-2">
-                              <p className="text-sm font-medium text-slate-700">{slice.label}</p>
-                              <p className="text-sm text-slate-600 tabular-nums">{formatNaira(slice.subtotal)}</p>
-                            </div>
+                      {modeGroup.levels.map((level) => (
+                        <div key={`${modeGroup.key}-${level.key}`} className="border-t border-slate-200 first:border-t-0">
+                          <div className="flex items-center justify-between gap-3 bg-slate-100 px-4 py-2.5">
+                            <p className="text-sm font-semibold text-slate-900">{levelHeading(level.levelCode)}</p>
+                            <p className="text-sm font-medium text-slate-800 tabular-nums">{formatNaira(level.subtotal)}</p>
+                          </div>
+                          {level.slices.length === 1 ? (
                             <FeeBreakdownTable
-                              lines={slice.lines}
+                              lines={level.slices[0].lines}
                               onEdit={(line) => openAssign(detail, line)}
                               onRemove={removeLine}
                             />
-                          </div>
-                        ))
-                      )}
+                          ) : (
+                            level.slices.map((slice) => (
+                              <div key={`${modeGroup.key}-${level.key}-${slice.key}`} className="border-t border-slate-200">
+                                <div className="flex items-center justify-between gap-3 bg-slate-50 px-4 py-2">
+                                  <p className="text-sm font-medium text-slate-700">{slice.label}</p>
+                                  <p className="text-sm text-slate-600 tabular-nums">{formatNaira(slice.subtotal)}</p>
+                                </div>
+                                <FeeBreakdownTable
+                                  lines={slice.lines}
+                                  onEdit={(line) => openAssign(detail, line)}
+                                  onRemove={removeLine}
+                                />
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </>
@@ -885,6 +952,35 @@ export function ProgrammeFees() {
               </div>
             ) : null}
             <label className="block">
+              <span className={fieldLabelClass}>Entry mode</span>
+              <Select
+                className="w-full"
+                mode={editingLine ? undefined : 'multiple'}
+                showSearch
+                optionFilterProp="label"
+                placeholder={editingLine ? 'Entry mode' : 'Select entry modes'}
+                value={editingLine ? (assignForm.entry_modes[0] || 'all') : assignForm.entry_modes}
+                onChange={(v) => {
+                  const selected = asLevelCodes(v).map((mode) => mode.toLowerCase());
+                  if (editingLine) {
+                    setAssignForm((s) => ({ ...s, entry_modes: [selected[0] || 'all'] }));
+                    return;
+                  }
+                  const last = selected[selected.length - 1];
+                  const next = last === 'all'
+                    ? ['all']
+                    : selected.filter((mode) => mode !== 'all');
+                  setAssignForm((s) => ({ ...s, entry_modes: next.length ? next : ['all'] }));
+                }}
+                options={entryModeOptions}
+              />
+              {!editingLine && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Use All entry modes for a shared schedule. Choose UTME (or DE / Transfer) to create a separate schedule for that admission category — mode-specific lines replace the shared schedule for those students.
+                </p>
+              )}
+            </label>
+            <label className="block">
               <span className={fieldLabelClass}>Level</span>
               <Select
                 className="w-full"
@@ -982,7 +1078,7 @@ export function ProgrammeFees() {
                 checked={copyReplace}
                 onChange={(e) => setCopyReplace(e.target.checked)}
               />
-              <span>Replace existing lines on the destination programmes. Leave unchecked to merge (matching catalog item, level, semester, and slice are overwritten).</span>
+              <span>Replace existing lines on the destination programmes. Leave unchecked to merge (matching catalog item, level, entry mode, semester, and slice are overwritten).</span>
             </label>
             <div className="flex justify-end gap-2 pt-2">
               <Btn variant="secondary" onClick={() => setCopyOpen(false)}>Cancel</Btn>

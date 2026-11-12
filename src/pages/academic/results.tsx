@@ -22,7 +22,9 @@ type Term = {
 };
 type Faculty = { id: number; name: string };
 type Department = { id: number; name: string; faculty_id?: number };
+type ProgramOption = { id: number; name: string; code?: string | null; department_id?: number | null };
 type LevelOption = { id: number; name: string; code?: string | null };
+type ResultsScopeKind = 'global' | 'lecturer' | 'hod' | 'dean' | 'committee' | 'faculty' | 'department' | 'gs' | string;
 
 const GRADE_STATUS_LABELS: Record<string, string> = {
   draft: 'Draft',
@@ -172,18 +174,22 @@ function useResultsLookups() {
   const [terms, setTerms] = useState<Term[]>([]);
   const [faculties, setFaculties] = useState<Faculty[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [programs, setPrograms] = useState<ProgramOption[]>([]);
   const [levels, setLevels] = useState<LevelOption[]>([]);
+  const [scopeKind, setScopeKind] = useState<ResultsScopeKind>('global');
   useEffect(() => {
     api.get('/api/academic/results/meta')
       .then((r) => {
         setTerms(r.data?.terms || []);
         setFaculties(r.data?.faculties || []);
         setDepartments(r.data?.departments || []);
+        setPrograms(r.data?.programs || []);
         setLevels(r.data?.levels || []);
+        setScopeKind(r.data?.scope?.kind || (r.data?.scope?.global ? 'global' : 'global'));
       })
       .catch(() => {});
   }, []);
-  return { terms, faculties, departments, levels };
+  return { terms, faculties, departments, programs, levels, scopeKind, isLecturer: scopeKind === 'lecturer', isGlobal: scopeKind === 'global' || scopeKind === 'committee' };
 }
 
 const QUEUE_PAGE_SIZE = 5000;
@@ -397,27 +403,80 @@ export function ResultsDashboardPage() {
 }
 
 export function ResultsStudentsPage() {
-  const { levels, faculties, departments } = useResultsLookups();
+  const { levels, faculties, departments, programs, terms, isLecturer, isGlobal } = useResultsLookups();
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [level, setLevel] = useState<string | undefined>();
+  const [sessionId, setSessionId] = useState<number | undefined>();
   const [facultyId, setFacultyId] = useState<number | undefined>();
   const [departmentId, setDepartmentId] = useState<number | undefined>();
+  const [programId, setProgramId] = useState<number | undefined>();
+  const [courseId, setCourseId] = useState<number | undefined>();
+  const [courseOptions, setCourseOptions] = useState<{ value: number; label: string }[]>([]);
   const [rows, setRows] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!isLecturer) {
+      setCourseOptions([]);
+      return;
+    }
+    api.get('/api/academic/results/offerings', {
+      params: listQuery({ academic_session_id: sessionId }),
+    })
+      .then((r) => {
+        const offerings = Array.isArray(r.data) ? r.data : r.data?.data || [];
+        const seen = new Set<number>();
+        const options: { value: number; label: string }[] = [];
+        for (const offering of offerings) {
+          const id = Number(offering.course_id || offering.course?.id || 0);
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          const code = offering.course?.code || `#${id}`;
+          const title = offering.course?.title || '';
+          options.push({ value: id, label: title ? `${code} · ${title}` : code });
+        }
+        options.sort((a, b) => a.label.localeCompare(b.label));
+        setCourseOptions(options);
+        setCourseId((current) => (current && !seen.has(current) ? undefined : current));
+      })
+      .catch(() => setCourseOptions([]));
+  }, [isLecturer, sessionId]);
+
+  const programOptions = programs
+    .filter((program) => {
+      if (departmentId) return program.department_id === departmentId;
+      if (facultyId) {
+        return departments.some((department) => (
+          department.id === program.department_id && department.faculty_id === facultyId
+        ));
+      }
+      return true;
+    })
+    .map((program) => ({
+      value: program.id,
+      label: program.code ? `${program.name} (${program.code})` : program.name,
+    }));
+
   const load = useCallback(() => {
     setLoading(true);
     api.get('/api/academic/results/students', {
       params: listQuery({
         search,
         level,
-        faculty_id: facultyId,
-        department_id: departmentId,
+        academic_session_id: sessionId,
+        ...(isLecturer
+          ? { course_id: courseId }
+          : {
+            faculty_id: facultyId,
+            department_id: departmentId,
+            ...(isGlobal ? { program_id: programId } : {}),
+          }),
       }),
     })
       .then((r) => setRows(r.data?.data || r.data || []))
       .catch(() => message.error('Could not search students'))
       .finally(() => setLoading(false));
-  }, [search, level, facultyId, departmentId]);
+  }, [search, level, sessionId, courseId, facultyId, departmentId, programId, isLecturer, isGlobal]);
   useEffect(() => { load(); }, [load]);
   const columns: ColumnsType = [
     { title: 'Matric', dataIndex: 'matric_number' },
@@ -430,33 +489,81 @@ export function ResultsStudentsPage() {
     },
   ];
   return (
-    <ResourceShell title="Result entry" description="Search students and enter CA/exam scores." loading={loading} onRefresh={load}
+    <ResourceShell
+      title="Result entry"
+      description={isLecturer
+        ? 'Students on your assigned courses. Filter by course, level, or session.'
+        : 'Search students and enter CA/exam scores.'}
+      loading={loading}
+      onRefresh={load}
       extra={(
         <Space wrap>
+          {isLecturer ? (
+            <Select
+              placeholder="Course"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              style={{ width: 260 }}
+              value={courseId}
+              options={courseOptions}
+              onChange={setCourseId}
+            />
+          ) : (
+            <>
+              <Select
+                placeholder="College"
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                style={{ width: 180 }}
+                value={facultyId}
+                options={faculties.map((faculty) => ({ value: faculty.id, label: faculty.name }))}
+                onChange={(value) => {
+                  setFacultyId(value);
+                  if (!value || departments.find((department) => department.id === departmentId)?.faculty_id !== value) {
+                    setDepartmentId(undefined);
+                  }
+                  setProgramId(undefined);
+                }}
+              />
+              <Select
+                placeholder="Department"
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                style={{ width: 200 }}
+                value={departmentId}
+                options={departmentOptions(departments, facultyId)}
+                onChange={(value) => {
+                  setDepartmentId(value);
+                  setProgramId(undefined);
+                }}
+              />
+              {isGlobal && (
+                <Select
+                  placeholder="Programme"
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  style={{ width: 240 }}
+                  value={programId}
+                  options={programOptions}
+                  onChange={setProgramId}
+                />
+              )}
+            </>
+          )}
           <Select
-            placeholder="College"
             allowClear
-            showSearch
-            optionFilterProp="label"
-            style={{ width: 180 }}
-            value={facultyId}
-            options={faculties.map((faculty) => ({ value: faculty.id, label: faculty.name }))}
-            onChange={(value) => {
-              setFacultyId(value);
-              if (!value || departments.find((department) => department.id === departmentId)?.faculty_id !== value) {
-                setDepartmentId(undefined);
-              }
-            }}
-          />
-          <Select
-            placeholder="Department"
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            style={{ width: 200 }}
-            value={departmentId}
-            options={departmentOptions(departments, facultyId)}
-            onChange={setDepartmentId}
+            placeholder="Session"
+            style={{ width: 160 }}
+            value={sessionId}
+            options={academicSessionsFromTerms(terms).map((session) => ({
+              value: session.id,
+              label: session.is_current ? `${session.label} (current)` : session.label,
+            }))}
+            onChange={setSessionId}
           />
           <CourseLevelFilter levels={levels} value={level} onChange={setLevel} />
           <Input.Search placeholder="Matric or name" allowClear onSearch={setSearch} style={{ width: 260 }} />
