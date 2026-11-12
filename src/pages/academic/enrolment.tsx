@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Alert, Button, Checkbox, Dropdown, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, message,
+  Alert, Button, Dropdown, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { BookOpen, Download, Plus, Search } from 'lucide-react';
@@ -161,79 +161,14 @@ function offeringLecturerName(row: Offering) {
   return row.lecturer?.user?.name || '—';
 }
 
-function LecturerMultiPicker({
-  options,
-  value,
-  onChange,
-}: {
-  options: { value: number; label: string }[];
-  value?: number[];
-  onChange?: (next: number[]) => void;
-}) {
-  const [search, setSearch] = useState('');
-  const selected = Array.isArray(value) ? value.map(Number).filter((id) => id > 0) : [];
-  const needle = search.trim().toLowerCase();
-  const visible = needle
-    ? options.filter((option) => option.label.toLowerCase().includes(needle))
-    : options;
-
-  const toggle = (id: number, checked: boolean) => {
-    if (checked) {
-      onChange?.(selected.includes(id) ? selected : [...selected, id]);
-      return;
-    }
-    onChange?.(selected.filter((row) => row !== id));
-  };
-
-  return (
-    <div className="space-y-2">
-      <Input
-        allowClear
-        placeholder="Search staff"
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-      />
-      {selected.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {selected.map((id) => {
-            const option = options.find((row) => row.value === id);
-            return (
-              <Tag
-                key={id}
-                closable
-                onClose={(event) => {
-                  event.preventDefault();
-                  toggle(id, false);
-                }}
-              >
-                {option?.label || `Staff #${id}`}
-              </Tag>
-            );
-          })}
-        </div>
-      )}
-      <div className="max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
-        {visible.length === 0 ? (
-          <p className="text-sm text-slate-500 m-0 py-2">No matching staff.</p>
-        ) : (
-          <div className="space-y-1">
-            {visible.map((option) => (
-              <label key={option.value} className="flex items-start gap-2 py-1 text-sm text-slate-800 cursor-pointer">
-                <Checkbox
-                  checked={selected.includes(option.value)}
-                  onChange={(event) => toggle(option.value, event.target.checked)}
-                />
-                <span>{option.label}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
-      <p className="text-xs text-slate-500 m-0">
-        {selected.length === 0 ? 'No lecturers selected.' : `${selected.length} lecturer${selected.length === 1 ? '' : 's'} selected.`}
-      </p>
-    </div>
-  );
+function deriveLecturerDisplayName(
+  ids: number[],
+  lecturers: LecturerOption[],
+): string {
+  return ids
+    .map((id) => lecturers.find((lecturer) => lecturer.id === id)?.name || `Staff #${id}`)
+    .filter(Boolean)
+    .join(', ');
 }
 
 function offeringSeatsLabel(row: { capacity?: number | null; seats_left?: number | null; unlimited?: boolean; enrolled_count?: number }) {
@@ -621,14 +556,17 @@ export function OfferingsPage() {
     },
     ...(canMutateOfferings
       ? [actionColumn<Offering>(
-        (row) => crud.openEdit(row, {
-          course_id: row.course_id ?? row.course?.id,
-          academic_term_id: row.academic_term_id ?? row.term?.id,
-          faculty_staff_ids: offeringLecturerIds(row),
-          lecturer_name: row.lecturer_name || '',
-          section: row.section || 'A',
-          capacity: row.capacity,
-        }),
+        (row) => {
+          const facultyStaffIds = offeringLecturerIds(row);
+          crud.openEdit(row, {
+            course_id: row.course_id ?? row.course?.id,
+            academic_term_id: row.academic_term_id ?? row.term?.id,
+            faculty_staff_ids: facultyStaffIds,
+            lecturer_name: deriveLecturerDisplayName(facultyStaffIds, lecturers) || row.lecturer_name || '',
+            section: row.section || 'A',
+            capacity: row.capacity,
+          });
+        },
         (row) => crud.remove(`/api/academic/offerings/${row.id}`, reload),
       )]
       : []),
@@ -651,7 +589,7 @@ export function OfferingsPage() {
       academic_term_id: values.academic_term_id,
       faculty_staff_ids: lecturerIds,
       faculty_staff_id: lecturerIds[0] || null,
-      lecturer_name: values.lecturer_name || null,
+      lecturer_name: deriveLecturerDisplayName(lecturerIds, lecturers) || null,
       section: values.section || 'A',
       capacity: values.capacity ?? null,
     };
@@ -673,7 +611,7 @@ export function OfferingsPage() {
       loading={loading}
       onRefresh={reload}
       onAdd={canMutateOfferings
-        ? () => crud.openCreate({ section: 'A', academic_term_id: currentTermId, course_id: [], faculty_staff_ids: [] })
+        ? () => crud.openCreate({ section: 'A', academic_term_id: currentTermId, course_id: [], faculty_staff_ids: [], lecturer_name: '' })
         : undefined}
       canAdd={canMutateOfferings && courses.length > 0 && semesterTerms.length > 0}
       count={rows.length}
@@ -792,19 +730,35 @@ export function OfferingsPage() {
           </Form.Item>
           <Form.Item
             name="faculty_staff_ids"
-            label="Lecturers (portal accounts)"
-            extra="Tick one or more staff accounts so they can enter and upload scores for this offering. Free-text name alone does not grant access."
+            label="Lecturers"
+            extra="Select one or more staff accounts so they can enter and upload scores for this offering."
             getValueFromEvent={(next) => (Array.isArray(next) ? next.map(Number).filter((id) => id > 0) : [])}
             normalize={(next) => (Array.isArray(next) ? next.map(Number).filter((id) => id > 0) : [])}
           >
-            <LecturerMultiPicker options={lecturerOptions} />
+            <Select
+              mode="multiple"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              maxTagCount="responsive"
+              placeholder="Search and select lecturers"
+              options={lecturerOptions}
+              getPopupContainer={(node) => node.parentElement || document.body}
+              onChange={(ids) => {
+                const nextIds = (Array.isArray(ids) ? ids : []).map(Number).filter((id) => id > 0);
+                crud.form.setFieldsValue({
+                  faculty_staff_ids: nextIds,
+                  lecturer_name: deriveLecturerDisplayName(nextIds, lecturers),
+                });
+              }}
+            />
           </Form.Item>
           <Form.Item
             name="lecturer_name"
-            label="Lecturer name (display only)"
-            extra="Optional label when no portal account is assigned, or to override the displayed names."
+            label="Lecturer name"
+            extra="Derived from the selected lecturers."
           >
-            <Input placeholder="e.g. Dr. Ada Okonkwo" allowClear />
+            <Input readOnly placeholder="Select lecturers above" />
           </Form.Item>
           <div className="grid grid-cols-2 gap-3">
             <Form.Item
