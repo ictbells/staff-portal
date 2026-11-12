@@ -166,6 +166,14 @@ type ProgrammeSpecialisation = {
   is_active?: boolean;
   display_order?: number;
 };
+type SpecialisationCatalogRow = ProgrammeSpecialisation & {
+  key: string;
+  program_id: number;
+  program_name: string;
+  program_code?: string;
+  department_name?: string;
+  specialisation_required?: boolean;
+};
 type Program = {
   id: number; name: string; code?: string; award_type: string; study_level: string;
   entry_modes?: string[]; duration_years: number; tuition_amount?: number | string; is_active: boolean;
@@ -857,6 +865,7 @@ export function ProgrammesPage() {
   const { rows: templates } = useResourceList<WorkflowTemplate>('/api/academic/workflow-templates');
   const crud = useCrudModal<Program>();
   const [modeFilter, setModeFilter] = useState<string | null>(null);
+  const [specialisationSearch, setSpecialisationSearch] = useState('');
   const watchedModes = Form.useWatch('entry_modes', crud.form) || [];
   const watchedStudyLevel = Form.useWatch('study_level', crud.form);
   const selectedCollegeId = Form.useWatch('faculty_id', crud.form);
@@ -869,6 +878,105 @@ export function ProgrammesPage() {
   const pgCount = rows.filter((row) => hasMode(row, 'pg')).length;
   const visibleRows = modeFilter ? rows.filter((row) => hasMode(row, modeFilter)) : rows;
   const toggleMode = (mode: string) => setModeFilter((current) => (current === mode ? null : mode));
+
+  const openProgrammeEditor = (row: Program) => {
+    crud.openEdit(row, {
+      faculty_id: row.department?.faculty_id ?? row.department?.faculty?.id,
+      department_id: row.department_id ?? row.department?.id,
+      name: row.name,
+      code: row.code,
+      award_type: row.award_type,
+      study_level: row.study_level,
+      entry_modes: row.entry_modes ?? [],
+      duration_years: row.duration_years,
+      course_ids: row.courses?.map((c) => c.id) ?? [],
+      is_active: row.is_active,
+      is_research_degree: !!row.is_research_degree,
+      specialisation_required: !!row.specialisation_required,
+      specialisations: (row.specialisations ?? []).map((spec, index) => ({
+        id: spec.id,
+        name: spec.name,
+        code: spec.code || '',
+        is_active: spec.is_active !== false,
+        display_order: spec.display_order ?? index + 1,
+      })),
+      workflow_template_id: row.workflow_template_id ?? row.workflow_template?.id,
+      eligibility: {
+        min_classification: row.eligibility?.min_classification || undefined,
+        nysc_required: !!row.eligibility?.nysc_required,
+        min_referees: row.eligibility?.min_referees ?? 2,
+        min_prior_award: row.eligibility?.min_prior_award || undefined,
+        qualifying_note: row.eligibility?.qualifying_note || '',
+        notes: row.eligibility?.notes || '',
+      },
+    });
+  };
+
+  const specialisationCatalog = useMemo<SpecialisationCatalogRow[]>(() => (
+    rows.flatMap((program) => (program.specialisations ?? []).map((spec, index) => ({
+      key: `${program.id}-${spec.id ?? `new-${index}`}`,
+      id: spec.id,
+      name: spec.name,
+      code: spec.code || '',
+      is_active: spec.is_active !== false,
+      display_order: spec.display_order ?? index + 1,
+      program_id: program.id,
+      program_name: program.name,
+      program_code: program.code,
+      department_name: program.department?.name,
+      specialisation_required: !!program.specialisation_required,
+    })))
+  ), [rows]);
+
+  const visibleSpecialisations = useMemo(() => {
+    const term = specialisationSearch.trim().toLowerCase();
+    if (!term) return specialisationCatalog;
+    return specialisationCatalog.filter((row) => [
+      row.name,
+      row.code,
+      row.program_name,
+      row.program_code,
+      row.department_name,
+    ].some((value) => String(value || '').toLowerCase().includes(term)));
+  }, [specialisationCatalog, specialisationSearch]);
+
+  const specialisationColumns: ColumnsType<SpecialisationCatalogRow> = [
+    { title: 'Specialisation', dataIndex: 'name', key: 'name' },
+    { title: 'Code', dataIndex: 'code', key: 'code', width: 100, render: (value) => value || '—' },
+    {
+      title: 'Programme',
+      key: 'programme',
+      render: (_, row) => (row.program_code ? `${row.program_name} (${row.program_code})` : row.program_name),
+    },
+    { title: 'Department', dataIndex: 'department_name', key: 'department', width: 180, render: (value) => value || '—' },
+    {
+      title: 'Required',
+      key: 'required',
+      width: 100,
+      render: (_, row) => (row.specialisation_required ? <Tag color="blue">Required</Tag> : <Tag>Optional</Tag>),
+    },
+    {
+      title: 'Status',
+      dataIndex: 'is_active',
+      key: 'is_active',
+      width: 100,
+      render: (value) => <Tag color={value !== false ? 'success' : 'default'}>{value !== false ? 'Active' : 'Inactive'}</Tag>,
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 120,
+      fixed: 'right',
+      render: (_, row) => {
+        const program = rows.find((item) => item.id === row.program_id);
+        return (
+          <Button type="link" size="small" disabled={!program} onClick={() => program && openProgrammeEditor(program)}>
+            Edit programme
+          </Button>
+        );
+      },
+    },
+  ];
 
   const columns: ColumnsType<Program> = [
     { title: 'Programme', dataIndex: 'name', key: 'name' },
@@ -904,36 +1012,7 @@ export function ProgrammesPage() {
     { title: 'Department', key: 'department', render: (_, r) => r.department?.name || '—' },
     { title: 'Status', dataIndex: 'is_active', key: 'is_active', width: 90, render: (v) => <Tag color={v ? 'success' : 'default'}>{v ? 'Active' : 'Inactive'}</Tag> },
     actionColumn(
-      (row) => crud.openEdit(row, {
-        faculty_id: row.department?.faculty_id ?? row.department?.faculty?.id,
-        department_id: row.department_id ?? row.department?.id,
-        name: row.name,
-        code: row.code,
-        award_type: row.award_type,
-        study_level: row.study_level,
-        entry_modes: row.entry_modes ?? [],
-        duration_years: row.duration_years,
-        course_ids: row.courses?.map((c) => c.id) ?? [],
-        is_active: row.is_active,
-        is_research_degree: !!row.is_research_degree,
-        specialisation_required: !!row.specialisation_required,
-        specialisations: (row.specialisations ?? []).map((spec, index) => ({
-          id: spec.id,
-          name: spec.name,
-          code: spec.code || '',
-          is_active: spec.is_active !== false,
-          display_order: spec.display_order ?? index + 1,
-        })),
-        workflow_template_id: row.workflow_template_id ?? row.workflow_template?.id,
-        eligibility: {
-          min_classification: row.eligibility?.min_classification || undefined,
-          nysc_required: !!row.eligibility?.nysc_required,
-          min_referees: row.eligibility?.min_referees ?? 2,
-          min_prior_award: row.eligibility?.min_prior_award || undefined,
-          qualifying_note: row.eligibility?.qualifying_note || '',
-          notes: row.eligibility?.notes || '',
-        },
-      }),
+      (row) => openProgrammeEditor(row),
       (row) => crud.remove(`/api/programs/${row.id}`, reload),
     ),
   ];
@@ -1035,6 +1114,35 @@ export function ProgrammesPage() {
         onImported={reload}
       />
       <Table rowKey="id" columns={columns} dataSource={visibleRows} loading={loading} scroll={{ x: 1500 }} pagination={{ pageSize: 15 }} locale={{ emptyText: modeFilter ? 'No programmes in this category.' : 'No programmes yet.' }} />
+      <div className="border-t border-slate-200 px-4 py-4 space-y-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900 m-0">Areas of specialisation</h3>
+            <p className="text-xs text-slate-500 m-0 mt-1">
+              All specialisations created on programmes. Add or change them by editing a postgraduate programme.
+            </p>
+          </div>
+          <Input.Search
+            allowClear
+            className="sm:max-w-xs"
+            placeholder="Search specialisation or programme"
+            value={specialisationSearch}
+            onChange={(event) => setSpecialisationSearch(event.target.value)}
+          />
+        </div>
+        <Table
+          rowKey="key"
+          size="middle"
+          columns={specialisationColumns}
+          dataSource={visibleSpecialisations}
+          loading={loading}
+          scroll={{ x: 900 }}
+          pagination={{ pageSize: 10 }}
+          locale={{ emptyText: specialisationSearch
+            ? 'No specialisations match this search.'
+            : 'No areas of specialisation yet. Edit a postgraduate programme and add specialisations there.' }}
+        />
+      </div>
       <CrudModal title="programme" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit} width={720}>
         <Form.Item name="faculty_id" label="College" rules={[{ required: true, message: 'Select a college' }]}>
           <Select

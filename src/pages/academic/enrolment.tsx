@@ -43,7 +43,7 @@ type ProgramRef = { id: number; name: string; code?: string | null; courses?: { 
 type Offering = {
   id: number;
   section?: string;
-  capacity: number | null;
+  capacity?: number | null;
   seats_left?: number | null;
   unlimited?: boolean;
   enrolled_count?: number;
@@ -620,7 +620,7 @@ export function OfferingsPage() {
       ),
     },
     ...(canMutateOfferings
-      ? [actionColumn(
+      ? [actionColumn<Offering>(
         (row) => crud.openEdit(row, {
           course_id: row.course_id ?? row.course?.id,
           academic_term_id: row.academic_term_id ?? row.term?.id,
