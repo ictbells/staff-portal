@@ -18,6 +18,8 @@ type ProgramOption = {
   id: number;
   name?: string;
   code?: string | null;
+  specialisation_required?: boolean;
+  specialisations?: { id: number; name: string; code?: string | null; is_active?: boolean }[];
   department?: { id?: number; name?: string; faculty?: { id?: number; name?: string } };
 };
 type GeoState = { state_id: number; state_title: string };
@@ -161,6 +163,7 @@ type FormState = {
   first_choice_college_id: number | '';
   first_choice_department_id: number | '';
   first_choice_program_id: number | '';
+  specialisation_id: number | '';
   second_choice_college_id: number | '';
   second_choice_department_id: number | '';
   second_choice_program_id: number | '';
@@ -576,6 +579,7 @@ function formFromApp(app: FileApp, programs: ProgramOption[]): FormState {
     first_choice_college_id: Number(pick(programme, 'first_choice_college_id') || facultyIdOf(first) || 0) || '',
     first_choice_department_id: Number(pick(programme, 'first_choice_department_id') || departmentIdOf(first) || 0) || '',
     first_choice_program_id: firstId,
+    specialisation_id: Number(pick(programme, 'specialisation_id') || app.specialisation_id || 0) || '',
     second_choice_college_id: Number(pick(programme, 'second_choice_college_id') || facultyIdOf(second) || 0) || '',
     second_choice_department_id: Number(pick(programme, 'second_choice_department_id') || departmentIdOf(second) || 0) || '',
     second_choice_program_id: secondId,
@@ -844,6 +848,7 @@ export function ApplicationFileDrawer({
           first_choice_program_id: program?.id || ('' as const),
           first_choice_college_id: facultyIdOf(program) || ('' as const),
           first_choice_department_id: departmentIdOf(program) || ('' as const),
+          specialisation_id: '' as const,
         };
         if (program && Number(prev.second_choice_program_id) === Number(program.id)) {
           next.second_choice_program_id = '';
@@ -971,6 +976,17 @@ export function ApplicationFileDrawer({
       message.error('Select a first-choice programme.');
       return;
     }
+    const firstProgramme = programs.find((program) => program.id === Number(form.first_choice_program_id));
+    const activeSpecialisations = (firstProgramme?.specialisations || []).filter((row) => row.is_active !== false);
+    if (
+      app.entry_mode === 'pg'
+      && firstProgramme?.specialisation_required
+      && activeSpecialisations.length > 0
+      && !Number(form.specialisation_id)
+    ) {
+      message.error('Select an area of specialisation for this programme.');
+      return;
+    }
     const foreignApplicant = app.country === 'Non-Nigeria' || app.billing_currency === 'USD';
     if (!foreignApplicant && form.nin && form.nin.length !== 11) {
       message.error('NIN must be 11 digits.');
@@ -1035,6 +1051,7 @@ export function ApplicationFileDrawer({
         first_choice_college_id: facultyIdOf(toProgram) || null,
         first_choice_department_id: departmentIdOf(toProgram) || null,
         first_choice_program_id: form.first_choice_program_id,
+        specialisation_id: app.entry_mode === 'pg' ? (form.specialisation_id || null) : null,
         second_choice_college_id: app.entry_mode === 'jupeb' ? null : (facultyIdOf(programs.find((program) => program.id === Number(form.second_choice_program_id))) || null),
         second_choice_department_id: app.entry_mode === 'jupeb' ? null : (departmentIdOf(programs.find((program) => program.id === Number(form.second_choice_program_id))) || null),
         second_choice_program_id: app.entry_mode === 'jupeb' ? null : (form.second_choice_program_id || null),
@@ -1324,6 +1341,30 @@ export function ApplicationFileDrawer({
                 <Input disabled value={departmentNameOf(toProgram)} placeholder="Filled from programme" />
               </Field>
             </div>
+            {app.entry_mode === 'pg' && (() => {
+              const options = (toProgram?.specialisations || []).filter((row) => row.is_active !== false);
+              if (!options.length && !toProgram?.specialisation_required) return null;
+              return (
+                <div className="pt-2">
+                  <Field label={toProgram?.specialisation_required ? 'Area of specialisation (required)' : 'Area of specialisation'}>
+                    <Select
+                      className="w-full"
+                      allowClear={!toProgram?.specialisation_required}
+                      showSearch
+                      optionFilterProp="label"
+                      placeholder={options.length ? 'Select specialisation' : 'No specialisations configured'}
+                      disabled={!options.length}
+                      value={form.specialisation_id || undefined}
+                      options={options.map((row) => ({
+                        value: row.id,
+                        label: row.code ? `${row.name} (${row.code})` : row.name,
+                      }))}
+                      onChange={(value) => setField('specialisation_id', value || '')}
+                    />
+                  </Field>
+                </div>
+              );
+            })()}
             {app.entry_mode !== 'jupeb' && (
             <>
             <p className="text-xs font-medium text-slate-500 pt-2">Second choice</p>

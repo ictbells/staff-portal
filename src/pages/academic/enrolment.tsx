@@ -50,11 +50,13 @@ type Offering = {
   course_id?: number;
   academic_term_id?: number;
   faculty_staff_id?: number | null;
+  faculty_staff_ids?: number[];
   lecturer_name?: string | null;
   lecturer_display_name?: string | null;
   course?: CourseRef;
   term?: Term;
   lecturer?: { id?: number; user?: { name?: string } };
+  lecturers?: { id?: number; user?: { name?: string } }[];
 };
 type LecturerOption = {
   id: number;
@@ -138,8 +140,25 @@ function ResourceShell({
   );
 }
 
+function offeringLecturerIds(row: Offering): number[] {
+  if (Array.isArray(row.faculty_staff_ids) && row.faculty_staff_ids.length) {
+    return row.faculty_staff_ids.map(Number).filter((id) => id > 0);
+  }
+  if (Array.isArray(row.lecturers) && row.lecturers.length) {
+    return row.lecturers.map((lecturer) => Number(lecturer.id)).filter((id) => id > 0);
+  }
+  const single = Number(row.faculty_staff_id ?? row.lecturer?.id ?? 0);
+  return single > 0 ? [single] : [];
+}
+
 function offeringLecturerName(row: Offering) {
-  return row.lecturer_display_name || row.lecturer_name || row.lecturer?.user?.name || '—';
+  if (row.lecturer_display_name) return row.lecturer_display_name;
+  if (row.lecturer_name) return row.lecturer_name;
+  const names = (row.lecturers || [])
+    .map((lecturer) => lecturer.user?.name)
+    .filter(Boolean);
+  if (names.length) return names.join(', ');
+  return row.lecturer?.user?.name || '—';
 }
 
 function offeringSeatsLabel(row: { capacity?: number | null; seats_left?: number | null; unlimited?: boolean; enrolled_count?: number }) {
@@ -525,7 +544,7 @@ export function OfferingsPage() {
       (row) => crud.openEdit(row, {
         course_id: row.course_id ?? row.course?.id,
         academic_term_id: row.academic_term_id ?? row.term?.id,
-        faculty_staff_id: row.faculty_staff_id ?? row.lecturer?.id ?? undefined,
+        faculty_staff_ids: offeringLecturerIds(row),
         lecturer_name: row.lecturer_name || '',
         section: row.section || 'A',
         capacity: row.capacity,
@@ -544,9 +563,13 @@ export function OfferingsPage() {
       message.error('Select at least one course.');
       return;
     }
+    const lecturerIds = (Array.isArray(values.faculty_staff_ids) ? values.faculty_staff_ids : [])
+      .map((id: unknown) => Number(id))
+      .filter((id: number) => Number.isInteger(id) && id > 0);
     const payload: Record<string, unknown> = {
       academic_term_id: values.academic_term_id,
-      faculty_staff_id: values.faculty_staff_id || null,
+      faculty_staff_ids: lecturerIds,
+      faculty_staff_id: lecturerIds[0] || null,
       lecturer_name: values.lecturer_name || null,
       section: values.section || 'A',
       capacity: values.capacity ?? null,
@@ -566,7 +589,7 @@ export function OfferingsPage() {
       description="Publish programme courses as section A, then set lecturers and capacity. Students register from the current semester."
       loading={loading}
       onRefresh={reload}
-      onAdd={() => crud.openCreate({ section: 'A', academic_term_id: currentTermId, course_id: [] })}
+      onAdd={() => crud.openCreate({ section: 'A', academic_term_id: currentTermId, course_id: [], faculty_staff_ids: [] })}
       canAdd={courses.length > 0 && semesterTerms.length > 0}
       count={rows.length}
       countLabel="Offerings"
@@ -666,14 +689,16 @@ export function OfferingsPage() {
             <Select options={formSemesterOptions} />
           </Form.Item>
           <Form.Item
-            name="faculty_staff_id"
-            label="Lecturer (portal account)"
-            extra="Assign a staff account so they can enter and upload scores for this offering. Free-text name alone does not grant access."
+            name="faculty_staff_ids"
+            label="Lecturers (portal accounts)"
+            extra="Assign one or more staff accounts so they can enter and upload scores for this offering. Free-text name alone does not grant access."
           >
             <Select
+              mode="multiple"
               allowClear
               showSearch
               optionFilterProp="label"
+              maxTagCount="responsive"
               placeholder="Select lecturer staff"
               options={lecturerOptions}
             />
@@ -681,7 +706,7 @@ export function OfferingsPage() {
           <Form.Item
             name="lecturer_name"
             label="Lecturer name (display only)"
-            extra="Optional label when no portal account is assigned, or to override the displayed name."
+            extra="Optional label when no portal account is assigned, or to override the displayed names."
           >
             <Input placeholder="e.g. Dr. Ada Okonkwo" allowClear />
           </Form.Item>

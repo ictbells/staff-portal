@@ -159,11 +159,20 @@ type SessionClosePreview = {
   skipped_no_program_count: number;
   samples?: Record<string, Array<{ matric_number?: string; name?: string; from_level?: number; to_level?: number }>>;
 };
+type ProgrammeSpecialisation = {
+  id?: number;
+  name: string;
+  code?: string | null;
+  is_active?: boolean;
+  display_order?: number;
+};
 type Program = {
   id: number; name: string; code?: string; award_type: string; study_level: string;
   entry_modes?: string[]; duration_years: number; tuition_amount?: number | string; is_active: boolean;
   department_id?: number; department?: Department; courses?: CourseRef[];
-  is_research_degree?: boolean; workflow_template_id?: number | null;
+  is_research_degree?: boolean; specialisation_required?: boolean;
+  specialisations?: ProgrammeSpecialisation[];
+  workflow_template_id?: number | null;
   eligibility?: {
     min_classification?: string | null;
     nysc_required?: boolean;
@@ -877,6 +886,20 @@ export function ProgrammesPage() {
     { title: 'Admission categories', key: 'entry_modes', width: 180, render: (_, r) => entryModeTags(r.entry_modes) },
     { title: 'Workflow', key: 'workflow', width: 150, render: (_, r) => r.workflow_template?.name || '—' },
     { title: 'Research', key: 'research', width: 90, render: (_, r) => r.is_research_degree ? <Tag color="purple">Research</Tag> : '—' },
+    {
+      title: 'Specialisations',
+      key: 'specialisations',
+      width: 120,
+      render: (_, r) => {
+        const count = r.specialisations?.length ?? 0;
+        if (!count) return '—';
+        return (
+          <Tag color={r.specialisation_required ? 'blue' : 'default'}>
+            {count}{r.specialisation_required ? ' · required' : ''}
+          </Tag>
+        );
+      },
+    },
     { title: 'Courses', key: 'courses', width: 160, render: (_, r) => courseTags(r.courses) },
     { title: 'Department', key: 'department', render: (_, r) => r.department?.name || '—' },
     { title: 'Status', dataIndex: 'is_active', key: 'is_active', width: 90, render: (v) => <Tag color={v ? 'success' : 'default'}>{v ? 'Active' : 'Inactive'}</Tag> },
@@ -893,6 +916,14 @@ export function ProgrammesPage() {
         course_ids: row.courses?.map((c) => c.id) ?? [],
         is_active: row.is_active,
         is_research_degree: !!row.is_research_degree,
+        specialisation_required: !!row.specialisation_required,
+        specialisations: (row.specialisations ?? []).map((spec, index) => ({
+          id: spec.id,
+          name: spec.name,
+          code: spec.code || '',
+          is_active: spec.is_active !== false,
+          display_order: spec.display_order ?? index + 1,
+        })),
         workflow_template_id: row.workflow_template_id ?? row.workflow_template?.id,
         eligibility: {
           min_classification: row.eligibility?.min_classification || undefined,
@@ -909,10 +940,24 @@ export function ProgrammesPage() {
 
   const submit = async () => {
     const values = await crud.form.validateFields();
-    const { faculty_id: _collegeId, eligibility = {}, ...rest } = values;
+    const { faculty_id: _collegeId, eligibility = {}, specialisations = [], ...rest } = values;
+    const isPg = Array.isArray(values.entry_modes) && values.entry_modes.includes('pg');
+    const cleanedSpecialisations = isPg
+      ? (specialisations as ProgrammeSpecialisation[])
+        .filter((row) => String(row?.name || '').trim())
+        .map((row, index) => ({
+          id: row.id || undefined,
+          name: String(row.name).trim(),
+          code: row.code ? String(row.code).trim() : null,
+          is_active: row.is_active !== false,
+          display_order: row.display_order ?? index + 1,
+        }))
+      : [];
     await crud.save('/api/programs', (id) => `/api/programs/${id}`, {
       ...rest,
       is_research_degree: !!values.is_research_degree,
+      specialisation_required: isPg ? !!values.specialisation_required : false,
+      specialisations: cleanedSpecialisations,
       workflow_template_id: values.workflow_template_id || null,
       eligibility: {
         min_classification: eligibility.min_classification || null,
@@ -931,7 +976,17 @@ export function ProgrammesPage() {
       description="Define programmes. Assign their curriculum under Academic → Programme courses. School fees are set under Fees & payments → Programme fees."
       loading={loading}
       onRefresh={reload}
-      onAdd={() => crud.openCreate({ duration_years: 4, is_active: true, study_level: 'undergraduate', entry_modes: ['utme'], course_ids: [], is_research_degree: false, eligibility: { min_referees: 2, nysc_required: false } })}
+      onAdd={() => crud.openCreate({
+        duration_years: 4,
+        is_active: true,
+        study_level: 'undergraduate',
+        entry_modes: ['utme'],
+        course_ids: [],
+        is_research_degree: false,
+        specialisation_required: false,
+        specialisations: [],
+        eligibility: { min_referees: 2, nysc_required: false },
+      })}
       canAdd={faculties.length > 0 && departments.length > 0}
       stats={(
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
@@ -980,7 +1035,7 @@ export function ProgrammesPage() {
         onImported={reload}
       />
       <Table rowKey="id" columns={columns} dataSource={visibleRows} loading={loading} scroll={{ x: 1500 }} pagination={{ pageSize: 15 }} locale={{ emptyText: modeFilter ? 'No programmes in this category.' : 'No programmes yet.' }} />
-      <CrudModal title="programme" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit} width={640}>
+      <CrudModal title="programme" open={crud.open} saving={crud.saving} isEdit={crud.isEdit} form={crud.form} onClose={crud.close} onSubmit={submit} width={720}>
         <Form.Item name="faculty_id" label="College" rules={[{ required: true, message: 'Select a college' }]}>
           <Select
             options={faculties.map((f) => ({
@@ -1078,6 +1133,64 @@ export function ProgrammesPage() {
         <Form.Item name="is_research_degree" label="Research degree" valuePropName="checked" extra="Requires a proposed area and supervisor preference on the applicant form.">
           <Switch />
         </Form.Item>
+        {showPgEligibility && (
+          <>
+            <Form.Item
+              name="specialisation_required"
+              label="Specialisation required"
+              valuePropName="checked"
+              extra="When on, applicants must pick an area of specialisation after choosing this programme. When off, the list is optional."
+            >
+              <Switch />
+            </Form.Item>
+            <Form.List name="specialisations">
+              {(fields, { add, remove }) => (
+                <div className="space-y-3 mb-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-slate-800 m-0">Areas of specialisation</p>
+                    <Button type="dashed" size="small" onClick={() => add({ is_active: true })}>Add specialisation</Button>
+                  </div>
+                  <p className="text-xs text-slate-500 m-0">
+                    Applicants see active rows after they select this programme. Leave empty if the programme has no specialisations.
+                  </p>
+                  {fields.map((field) => (
+                    <div key={field.key} className="rounded-lg border border-slate-200 p-3 space-y-2">
+                      <Form.Item {...field} name={[field.name, 'id']} hidden><Input /></Form.Item>
+                      <div className="flex items-start justify-between gap-2">
+                        <Form.Item
+                          {...field}
+                          name={[field.name, 'name']}
+                          label="Name"
+                          className="flex-1 mb-2"
+                          rules={[{ required: true, message: 'Enter a name' }]}
+                        >
+                          <Input placeholder="e.g. Software Engineering" />
+                        </Form.Item>
+                        <Button type="link" danger size="small" className="mt-7" onClick={() => remove(field.name)}>
+                          Remove
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3">
+                        <Form.Item {...field} name={[field.name, 'code']} label="Code" className="mb-2">
+                          <Input placeholder="Optional" />
+                        </Form.Item>
+                        <Form.Item
+                          {...field}
+                          name={[field.name, 'is_active']}
+                          label="Active"
+                          valuePropName="checked"
+                          className="mb-2"
+                        >
+                          <Switch />
+                        </Form.Item>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Form.List>
+          </>
+        )}
         <Form.Item name="course_ids" label="Courses in curriculum" extra="Optional. Saving maps these courses on Academic → Programme courses. You can also assign them there after creating the catalogue course.">
           <Select
             mode="multiple"
