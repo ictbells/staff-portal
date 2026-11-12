@@ -95,6 +95,8 @@ jobs:
           fi
           echo "Building with VITE_API_URL=$VITE_API_URL VITE_STUDENT_URL=$VITE_STUDENT_URL"
           if [[ -f package-lock.json ]]; then npm ci; else npm install; fi
+          # Apply compatible dependency fixes; do not fail the deploy if some advisories remain.
+          npm audit fix || true
           npm run typecheck
           npm run build
 

@@ -979,11 +979,18 @@ export function ProgrammesPage() {
   ];
 
   const columns: ColumnsType<Program> = [
-    { title: 'Programme', dataIndex: 'name', key: 'name' },
-    { title: 'Code', dataIndex: 'code', key: 'code', width: 90, render: (v) => v || '—' },
-    { title: 'Award', dataIndex: 'award_type', key: 'award_type', width: 90 },
+    {
+      title: 'Programme',
+      dataIndex: 'name',
+      key: 'name',
+      width: 240,
+      ellipsis: true,
+      render: (value: string) => <span className="whitespace-nowrap font-medium text-slate-900">{value}</span>,
+    },
+    { title: 'Code', dataIndex: 'code', key: 'code', width: 100, ellipsis: true, render: (v) => v || '—' },
+    { title: 'Award', dataIndex: 'award_type', key: 'award_type', width: 100, ellipsis: true },
     { title: 'Years', dataIndex: 'duration_years', key: 'duration_years', width: 70 },
-    { title: 'Track', dataIndex: 'study_level', key: 'study_level', width: 120, render: (v) => <Tag>{studyLevelLabel(v)}</Tag> },
+    { title: 'Track', dataIndex: 'study_level', key: 'study_level', width: 130, render: (v) => <Tag>{studyLevelLabel(v)}</Tag> },
     {
       title: 'School fees total',
       dataIndex: 'tuition_amount',
@@ -991,13 +998,13 @@ export function ProgrammesPage() {
       width: 140,
       render: (value?: number | string) => formatNaira(value),
     },
-    { title: 'Admission categories', key: 'entry_modes', width: 180, render: (_, r) => entryModeTags(r.entry_modes) },
-    { title: 'Workflow', key: 'workflow', width: 150, render: (_, r) => r.workflow_template?.name || '—' },
-    { title: 'Research', key: 'research', width: 90, render: (_, r) => r.is_research_degree ? <Tag color="purple">Research</Tag> : '—' },
+    { title: 'Admission categories', key: 'entry_modes', width: 200, render: (_, r) => entryModeTags(r.entry_modes) },
+    { title: 'Workflow', key: 'workflow', width: 170, ellipsis: true, render: (_, r) => r.workflow_template?.name || '—' },
+    { title: 'Research', key: 'research', width: 100, render: (_, r) => r.is_research_degree ? <Tag color="purple">Research</Tag> : '—' },
     {
       title: 'Specialisations',
       key: 'specialisations',
-      width: 120,
+      width: 130,
       render: (_, r) => {
         const count = r.specialisations?.length ?? 0;
         if (!count) return '—';
@@ -1008,9 +1015,9 @@ export function ProgrammesPage() {
         );
       },
     },
-    { title: 'Courses', key: 'courses', width: 160, render: (_, r) => courseTags(r.courses) },
-    { title: 'Department', key: 'department', render: (_, r) => r.department?.name || '—' },
-    { title: 'Status', dataIndex: 'is_active', key: 'is_active', width: 90, render: (v) => <Tag color={v ? 'success' : 'default'}>{v ? 'Active' : 'Inactive'}</Tag> },
+    { title: 'Courses', key: 'courses', width: 180, ellipsis: true, render: (_, r) => courseTags(r.courses) },
+    { title: 'Department', key: 'department', width: 180, ellipsis: true, render: (_, r) => r.department?.name || '—' },
+    { title: 'Status', dataIndex: 'is_active', key: 'is_active', width: 100, render: (v) => <Tag color={v ? 'success' : 'default'}>{v ? 'Active' : 'Inactive'}</Tag> },
     actionColumn(
       (row) => openProgrammeEditor(row),
       (row) => crud.remove(`/api/programs/${row.id}`, reload),
@@ -1113,7 +1120,16 @@ export function ProgrammesPage() {
         description="Upload Excel with columns: name, department_id, award_type, study_level, duration_years, entry_modes, plus optional code. Matching codes (or the same name in the same department) are skipped. Copy department_id from the Departments lookup sheet. Import departments first."
         onImported={reload}
       />
-      <Table rowKey="id" columns={columns} dataSource={visibleRows} loading={loading} scroll={{ x: 1500 }} pagination={{ pageSize: 15 }} locale={{ emptyText: modeFilter ? 'No programmes in this category.' : 'No programmes yet.' }} />
+      <Table
+        rowKey="id"
+        columns={columns}
+        dataSource={visibleRows}
+        loading={loading}
+        tableLayout="fixed"
+        scroll={{ x: 2100 }}
+        pagination={{ pageSize: 15 }}
+        locale={{ emptyText: modeFilter ? 'No programmes in this category.' : 'No programmes yet.' }}
+      />
       <div className="border-t border-slate-200 px-4 py-4 space-y-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
