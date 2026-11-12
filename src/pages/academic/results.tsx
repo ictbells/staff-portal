@@ -411,13 +411,13 @@ export function ResultsStudentsPage() {
   const [facultyId, setFacultyId] = useState<number | undefined>();
   const [departmentId, setDepartmentId] = useState<number | undefined>();
   const [programId, setProgramId] = useState<number | undefined>();
-  const [courseId, setCourseId] = useState<number | undefined>();
-  const [courseOptions, setCourseOptions] = useState<{ value: number; label: string }[]>([]);
+  const [offeringId, setOfferingId] = useState<number | undefined>();
+  const [offeringOptions, setOfferingOptions] = useState<{ value: number; label: string }[]>([]);
   const [rows, setRows] = useState<any[]>([]);
 
   useEffect(() => {
     if (!isLecturer) {
-      setCourseOptions([]);
+      setOfferingOptions([]);
       return;
     }
     api.get('/api/academic/results/offerings', {
@@ -425,21 +425,24 @@ export function ResultsStudentsPage() {
     })
       .then((r) => {
         const offerings = Array.isArray(r.data) ? r.data : r.data?.data || [];
-        const seen = new Set<number>();
-        const options: { value: number; label: string }[] = [];
-        for (const offering of offerings) {
-          const id = Number(offering.course_id || offering.course?.id || 0);
-          if (!id || seen.has(id)) continue;
-          seen.add(id);
-          const code = offering.course?.code || `#${id}`;
+        const options: { value: number; label: string }[] = offerings.map((offering: any) => {
+          const code = offering.course?.code || `Course #${offering.course_id || offering.id}`;
           const title = offering.course?.title || '';
-          options.push({ value: id, label: title ? `${code} · ${title}` : code });
-        }
+          const section = offering.section && offering.section !== 'A' ? ` · Sec ${offering.section}` : '';
+          const term = offering.term
+            ? ` · ${[offering.term.session_label, offering.term.name].filter(Boolean).join(' ')}`.trim()
+            : '';
+          return {
+            value: Number(offering.id),
+            label: `${code}${title ? ` · ${title}` : ''}${section}${term}`,
+          };
+        });
         options.sort((a, b) => a.label.localeCompare(b.label));
-        setCourseOptions(options);
-        setCourseId((current) => (current && !seen.has(current) ? undefined : current));
+        const ids = new Set(options.map((option) => option.value));
+        setOfferingOptions(options);
+        setOfferingId((current) => (current && !ids.has(current) ? undefined : current));
       })
-      .catch(() => setCourseOptions([]));
+      .catch(() => setOfferingOptions([]));
   }, [isLecturer, sessionId]);
 
   const programOptions = programs
@@ -465,7 +468,7 @@ export function ResultsStudentsPage() {
         level,
         academic_session_id: sessionId,
         ...(isLecturer
-          ? { course_id: courseId }
+          ? { course_offering_id: offeringId }
           : {
             faculty_id: facultyId,
             department_id: departmentId,
@@ -476,7 +479,7 @@ export function ResultsStudentsPage() {
       .then((r) => setRows(r.data?.data || r.data || []))
       .catch(() => message.error('Could not search students'))
       .finally(() => setLoading(false));
-  }, [search, level, sessionId, courseId, facultyId, departmentId, programId, isLecturer, isGlobal]);
+  }, [search, level, sessionId, offeringId, facultyId, departmentId, programId, isLecturer, isGlobal]);
   useEffect(() => { load(); }, [load]);
   const columns: ColumnsType = [
     { title: 'Matric', dataIndex: 'matric_number' },
@@ -492,7 +495,7 @@ export function ResultsStudentsPage() {
     <ResourceShell
       title="Result entry"
       description={isLecturer
-        ? 'Students on your assigned courses. Filter by course, level, or session.'
+        ? 'Only students registered on your assigned offerings. Filter by offering, level, or session.'
         : 'Search students and enter CA/exam scores.'}
       loading={loading}
       onRefresh={load}
@@ -500,14 +503,14 @@ export function ResultsStudentsPage() {
         <Space wrap>
           {isLecturer ? (
             <Select
-              placeholder="Course"
+              placeholder="Course offering"
               allowClear
               showSearch
               optionFilterProp="label"
-              style={{ width: 260 }}
-              value={courseId}
-              options={courseOptions}
-              onChange={setCourseId}
+              style={{ width: 320 }}
+              value={offeringId}
+              options={offeringOptions}
+              onChange={setOfferingId}
             />
           ) : (
             <>
@@ -860,7 +863,10 @@ export function ResultsStudentDetailPage() {
               optionFilterProp="label"
               placeholder="Search offering"
               style={{ minWidth: 260 }}
-              options={offerings.map((o) => ({
+              options={(Array.isArray(payload?.enrolled_offering_ids) && payload.enrolled_offering_ids.length
+                ? offerings.filter((o) => payload.enrolled_offering_ids.includes(o.id))
+                : offerings
+              ).map((o) => ({
                 value: o.id,
                 label: `${o.course?.code || o.id} · ${o.course?.title || ''} · ${o.term?.session_label || ''} ${o.term?.name || ''}`.trim(),
               }))}
