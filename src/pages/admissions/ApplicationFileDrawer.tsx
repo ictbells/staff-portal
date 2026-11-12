@@ -88,8 +88,12 @@ type FileApp = {
     id?: number;
     name?: string;
     code?: string;
+    specialisation_required?: boolean;
+    specialisations?: { id: number; name: string; code?: string | null; is_active?: boolean }[];
     department?: { id?: number; name?: string; faculty?: { id?: number; name?: string } };
   };
+  specialisation_id?: number | null;
+  specialisation?: { id?: number; name?: string; code?: string | null } | null;
   intake?: { name?: string; term?: { session_label?: string } };
   application_fee_invoice?: { status?: string };
   offer_reference?: string | null;
