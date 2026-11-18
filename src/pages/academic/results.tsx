@@ -367,11 +367,53 @@ function listDownloadItems(
 function sessionalDownloadItems(
   onPick: (format: 'pdf' | 'doc' | 'html') => void,
 ): MenuProps['items'] {
+  return layoutDownloadItems('sessional', onPick);
+}
+
+function layoutDownloadItems(
+  prefix: string,
+  onPick: (format: 'pdf' | 'doc' | 'html') => void,
+): MenuProps['items'] {
   return [
-    { key: 'sessional-pdf', label: 'PDF', onClick: () => onPick('pdf') },
-    { key: 'sessional-doc', label: 'MS Word (.doc)', onClick: () => onPick('doc') },
-    { key: 'sessional-html', label: 'Print preview', onClick: () => onPick('html') },
+    { key: `${prefix}-pdf`, label: 'PDF', onClick: () => onPick('pdf') },
+    { key: `${prefix}-doc`, label: 'MS Word (.doc)', onClick: () => onPick('doc') },
+    { key: `${prefix}-html`, label: 'Print preview', onClick: () => onPick('html') },
   ];
+}
+
+function senateSpecialtyDownloads(options: {
+  path: string;
+  baseParams: Record<string, string | number | undefined>;
+  termLabel: string;
+  extra?: { requireDepartment?: boolean; requireFaculty?: boolean };
+}) {
+  const { path, baseParams, termLabel, extra } = options;
+  const session = termLabel.replace(/[/\s]/g, '-');
+  const layouts: Array<{ key: string; label: string; layout: string; filename: string }> = [
+    { key: 'sessional', label: 'Sessional broadsheet', layout: 'sessional', filename: `sessional-broadsheet-${session}` },
+    { key: 'result-summary', label: 'Result Summary', layout: 'result_summary', filename: `result-summary-${session}` },
+    { key: 'graduating', label: 'Graduating list', layout: 'graduating', filename: `graduating-list-${session}` },
+    { key: 'non-graduating', label: 'Non Graduating list', layout: 'non_graduating', filename: `non-graduating-list-${session}` },
+  ];
+  return layouts.map((item) => (
+    <Dropdown
+      key={item.key}
+      menu={{
+        items: layoutDownloadItems(item.key, (format) => {
+          runListDownload({
+            path,
+            params: { ...baseParams, layout: item.layout },
+            format,
+            filename: item.filename,
+            extra,
+          });
+        }),
+      }}
+      trigger={['click']}
+    >
+      <Button icon={<Download size={14} />}>{item.label}</Button>
+    </Dropdown>
+  ));
 }
 
 function runListDownload(options: {
@@ -1263,35 +1305,20 @@ export function ResultsDepartmentUploadsPage() {
           >
             <Button icon={<Download size={14} />}>Department list</Button>
           </Dropdown>
-          <Dropdown
-            menu={{
-              items: sessionalDownloadItems((format) => {
-                const departmentId = filters.department_id || uniqueNumericId(rows.map(gradeDepartmentId));
-                const params = {
-                  academic_term_id: filters.academic_term_id,
-                  academic_session_id: filters.academic_session_id,
-                  department_id: departmentId,
-                  status: filters.status,
-                  level: filters.level,
-                  sitting: filters.sitting,
-                  step: 'department',
-                  layout: 'sessional',
-                };
-                const term = terms.find((t) => t.id === filters.academic_term_id);
-                const filename = `sessional-broadsheet-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}`;
-                runListDownload({
-                  path: '/api/academic/results/reports/submission-list/department',
-                  params,
-                  format,
-                  filename,
-                  extra: { requireDepartment: true },
-                });
-              }),
-            }}
-            trigger={['click']}
-          >
-            <Button icon={<Download size={14} />}>Sessional broadsheet</Button>
-          </Dropdown>
+          {senateSpecialtyDownloads({
+            path: '/api/academic/results/reports/submission-list/department',
+            baseParams: {
+              academic_term_id: filters.academic_term_id,
+              academic_session_id: filters.academic_session_id,
+              department_id: filters.department_id || uniqueNumericId(rows.map(gradeDepartmentId)),
+              status: filters.status,
+              level: filters.level,
+              sitting: filters.sitting,
+              step: 'department',
+            },
+            termLabel: terms.find((t) => t.id === filters.academic_term_id)?.session_label || 'session',
+            extra: { requireDepartment: true },
+          })}
         </Space>
       )}
     >
@@ -1481,41 +1508,29 @@ export function ResultsCollegeUploadsPage() {
           >
             <Button icon={<Download size={14} />}>College list</Button>
           </Dropdown>
-          <Dropdown
-            menu={{
-              items: sessionalDownloadItems((format) => {
-                const departmentId = filters.department_id || uniqueNumericId(rows.map(gradeDepartmentId));
-                const facultyId = filters.faculty_id
-                  || departments.find((d) => d.id === departmentId)?.faculty_id;
-                const path = departmentId
-                  ? '/api/academic/results/reports/submission-list/department'
-                  : '/api/academic/results/reports/submission-list/faculty';
-                const params = {
-                  academic_term_id: filters.academic_term_id,
-                  academic_session_id: filters.academic_session_id,
-                  department_id: departmentId,
-                  faculty_id: facultyId,
-                  status: filters.status,
-                  level: filters.level,
-                  sitting: filters.sitting,
-                  step: 'college',
-                  layout: 'sessional',
-                };
-                const term = terms.find((t) => t.id === filters.academic_term_id);
-                const filename = `sessional-broadsheet-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}`;
-                runListDownload({
-                  path,
-                  params,
-                  format,
-                  filename,
-                  extra: departmentId ? { requireDepartment: true } : { requireFaculty: true },
-                });
-              }),
-            }}
-            trigger={['click']}
-          >
-            <Button icon={<Download size={14} />}>Sessional broadsheet</Button>
-          </Dropdown>
+          {(() => {
+            const departmentId = filters.department_id || uniqueNumericId(rows.map(gradeDepartmentId));
+            const facultyId = filters.faculty_id
+              || departments.find((d) => d.id === departmentId)?.faculty_id;
+            const path = departmentId
+              ? '/api/academic/results/reports/submission-list/department'
+              : '/api/academic/results/reports/submission-list/faculty';
+            return senateSpecialtyDownloads({
+              path,
+              baseParams: {
+                academic_term_id: filters.academic_term_id,
+                academic_session_id: filters.academic_session_id,
+                department_id: departmentId,
+                faculty_id: facultyId,
+                status: filters.status,
+                level: filters.level,
+                sitting: filters.sitting,
+                step: 'college',
+              },
+              termLabel: terms.find((t) => t.id === filters.academic_term_id)?.session_label || 'session',
+              extra: departmentId ? { requireDepartment: true } : { requireFaculty: true },
+            });
+          })()}
         </Space>
       )}
     >
@@ -1675,36 +1690,21 @@ export function ResultsApprovalsPage() {
           >
             <Button icon={<Download size={14} />}>Committee list</Button>
           </Dropdown>
-          <Dropdown
-            menu={{
-              items: sessionalDownloadItems((format) => {
-                const facultyId = filters.faculty_id
-                  || departments.find((d) => d.id === filters.department_id)?.faculty_id;
-                const params = {
-                  academic_term_id: filters.academic_term_id,
-                  faculty_id: facultyId,
-                  department_id: filters.department_id,
-                  status: filters.status,
-                  level: filters.level,
-                  sitting: filters.sitting,
-                  step: 'deans',
-                  layout: 'sessional',
-                };
-                const term = terms.find((t) => t.id === filters.academic_term_id);
-                const filename = `sessional-broadsheet-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}`;
-                runListDownload({
-                  path: '/api/academic/results/reports/submission-list/faculty',
-                  params,
-                  format,
-                  filename,
-                  extra: { requireFaculty: true },
-                });
-              }),
-            }}
-            trigger={['click']}
-          >
-            <Button icon={<Download size={14} />}>Sessional broadsheet</Button>
-          </Dropdown>
+          {senateSpecialtyDownloads({
+            path: '/api/academic/results/reports/submission-list/faculty',
+            baseParams: {
+              academic_term_id: filters.academic_term_id,
+              faculty_id: filters.faculty_id
+                || departments.find((d) => d.id === filters.department_id)?.faculty_id,
+              department_id: filters.department_id,
+              status: filters.status,
+              level: filters.level,
+              sitting: filters.sitting,
+              step: 'deans',
+            },
+            termLabel: terms.find((t) => t.id === filters.academic_term_id)?.session_label || 'session',
+            extra: { requireFaculty: true },
+          })}
         </Space>
       )}
     >
@@ -1885,39 +1885,27 @@ export function ResultsBoardPage() {
           >
             <Button icon={<Download size={14} />}>Senate list</Button>
           </Dropdown>
-          <Dropdown
-            menu={{
-              items: sessionalDownloadItems((format) => {
-                const path = filters.department_id && !filters.faculty_id
-                  ? '/api/academic/results/board-lists/department'
-                  : '/api/academic/results/board-lists/faculty';
-                const params = {
-                  academic_term_id: filters.academic_term_id,
-                  faculty_id: filters.faculty_id,
-                  department_id: filters.department_id,
-                  status: filters.status || 'board_ready',
-                  level: filters.level,
-                  sitting: filters.sitting,
-                  layout: 'sessional',
-                };
-                const term = terms.find((t) => t.id === filters.academic_term_id);
-                const filename = `sessional-broadsheet-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}`;
-                runListDownload({
-                  path,
-                  params,
-                  format,
-                  filename,
-                  extra: {
-                    requireFaculty: path.endsWith('/faculty'),
-                    requireDepartment: path.endsWith('/department'),
-                  },
-                });
-              }),
-            }}
-            trigger={['click']}
-          >
-            <Button icon={<Download size={14} />}>Sessional broadsheet</Button>
-          </Dropdown>
+          {(() => {
+            const path = filters.department_id && !filters.faculty_id
+              ? '/api/academic/results/board-lists/department'
+              : '/api/academic/results/board-lists/faculty';
+            return senateSpecialtyDownloads({
+              path,
+              baseParams: {
+                academic_term_id: filters.academic_term_id,
+                faculty_id: filters.faculty_id,
+                department_id: filters.department_id,
+                status: filters.status || 'board_ready',
+                level: filters.level,
+                sitting: filters.sitting,
+              },
+              termLabel: terms.find((t) => t.id === filters.academic_term_id)?.session_label || 'session',
+              extra: {
+                requireFaculty: path.endsWith('/faculty'),
+                requireDepartment: path.endsWith('/department'),
+              },
+            });
+          })()}
         </Space>
       )}
     >
