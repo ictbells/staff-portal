@@ -364,6 +364,39 @@ function listDownloadItems(
   ];
 }
 
+function sessionalDownloadItems(
+  onPick: (format: 'pdf' | 'doc' | 'html') => void,
+): MenuProps['items'] {
+  return [
+    { key: 'sessional-pdf', label: 'PDF', onClick: () => onPick('pdf') },
+    { key: 'sessional-doc', label: 'MS Word (.doc)', onClick: () => onPick('doc') },
+    { key: 'sessional-html', label: 'Print preview', onClick: () => onPick('html') },
+  ];
+}
+
+function runListDownload(options: {
+  path: string;
+  params: Record<string, string | number | undefined>;
+  format: 'pdf' | 'doc' | 'html';
+  filename: string;
+  extra?: { requireDepartment?: boolean; requireFaculty?: boolean };
+}) {
+  const { path, params, format, filename, extra } = options;
+  if (format === 'html') {
+    if (extra?.requireDepartment && !params.department_id) {
+      message.warning('Select a department to download the list.');
+      return;
+    }
+    if (extra?.requireFaculty && !params.faculty_id) {
+      message.warning('Select a college to download the list.');
+      return;
+    }
+    openPrintable(path, params);
+    return;
+  }
+  void downloadSubmissionList(path, params, format, filename, extra);
+}
+
 export function ResultsDashboardPage() {
   const { has } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -1230,6 +1263,35 @@ export function ResultsDepartmentUploadsPage() {
           >
             <Button icon={<Download size={14} />}>Department list</Button>
           </Dropdown>
+          <Dropdown
+            menu={{
+              items: sessionalDownloadItems((format) => {
+                const departmentId = filters.department_id || uniqueNumericId(rows.map(gradeDepartmentId));
+                const params = {
+                  academic_term_id: filters.academic_term_id,
+                  academic_session_id: filters.academic_session_id,
+                  department_id: departmentId,
+                  status: filters.status,
+                  level: filters.level,
+                  sitting: filters.sitting,
+                  step: 'department',
+                  layout: 'sessional',
+                };
+                const term = terms.find((t) => t.id === filters.academic_term_id);
+                const filename = `sessional-broadsheet-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}`;
+                runListDownload({
+                  path: '/api/academic/results/reports/submission-list/department',
+                  params,
+                  format,
+                  filename,
+                  extra: { requireDepartment: true },
+                });
+              }),
+            }}
+            trigger={['click']}
+          >
+            <Button icon={<Download size={14} />}>Sessional broadsheet</Button>
+          </Dropdown>
         </Space>
       )}
     >
@@ -1419,6 +1481,41 @@ export function ResultsCollegeUploadsPage() {
           >
             <Button icon={<Download size={14} />}>College list</Button>
           </Dropdown>
+          <Dropdown
+            menu={{
+              items: sessionalDownloadItems((format) => {
+                const departmentId = filters.department_id || uniqueNumericId(rows.map(gradeDepartmentId));
+                const facultyId = filters.faculty_id
+                  || departments.find((d) => d.id === departmentId)?.faculty_id;
+                const path = departmentId
+                  ? '/api/academic/results/reports/submission-list/department'
+                  : '/api/academic/results/reports/submission-list/faculty';
+                const params = {
+                  academic_term_id: filters.academic_term_id,
+                  academic_session_id: filters.academic_session_id,
+                  department_id: departmentId,
+                  faculty_id: facultyId,
+                  status: filters.status,
+                  level: filters.level,
+                  sitting: filters.sitting,
+                  step: 'college',
+                  layout: 'sessional',
+                };
+                const term = terms.find((t) => t.id === filters.academic_term_id);
+                const filename = `sessional-broadsheet-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}`;
+                runListDownload({
+                  path,
+                  params,
+                  format,
+                  filename,
+                  extra: departmentId ? { requireDepartment: true } : { requireFaculty: true },
+                });
+              }),
+            }}
+            trigger={['click']}
+          >
+            <Button icon={<Download size={14} />}>Sessional broadsheet</Button>
+          </Dropdown>
         </Space>
       )}
     >
@@ -1577,6 +1674,36 @@ export function ResultsApprovalsPage() {
             trigger={['click']}
           >
             <Button icon={<Download size={14} />}>Committee list</Button>
+          </Dropdown>
+          <Dropdown
+            menu={{
+              items: sessionalDownloadItems((format) => {
+                const facultyId = filters.faculty_id
+                  || departments.find((d) => d.id === filters.department_id)?.faculty_id;
+                const params = {
+                  academic_term_id: filters.academic_term_id,
+                  faculty_id: facultyId,
+                  department_id: filters.department_id,
+                  status: filters.status,
+                  level: filters.level,
+                  sitting: filters.sitting,
+                  step: 'deans',
+                  layout: 'sessional',
+                };
+                const term = terms.find((t) => t.id === filters.academic_term_id);
+                const filename = `sessional-broadsheet-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}`;
+                runListDownload({
+                  path: '/api/academic/results/reports/submission-list/faculty',
+                  params,
+                  format,
+                  filename,
+                  extra: { requireFaculty: true },
+                });
+              }),
+            }}
+            trigger={['click']}
+          >
+            <Button icon={<Download size={14} />}>Sessional broadsheet</Button>
           </Dropdown>
         </Space>
       )}
@@ -1757,6 +1884,39 @@ export function ResultsBoardPage() {
             trigger={['click']}
           >
             <Button icon={<Download size={14} />}>Senate list</Button>
+          </Dropdown>
+          <Dropdown
+            menu={{
+              items: sessionalDownloadItems((format) => {
+                const path = filters.department_id && !filters.faculty_id
+                  ? '/api/academic/results/board-lists/department'
+                  : '/api/academic/results/board-lists/faculty';
+                const params = {
+                  academic_term_id: filters.academic_term_id,
+                  faculty_id: filters.faculty_id,
+                  department_id: filters.department_id,
+                  status: filters.status || 'board_ready',
+                  level: filters.level,
+                  sitting: filters.sitting,
+                  layout: 'sessional',
+                };
+                const term = terms.find((t) => t.id === filters.academic_term_id);
+                const filename = `sessional-broadsheet-${(term?.session_label || 'session').replace(/[/\s]/g, '-')}`;
+                runListDownload({
+                  path,
+                  params,
+                  format,
+                  filename,
+                  extra: {
+                    requireFaculty: path.endsWith('/faculty'),
+                    requireDepartment: path.endsWith('/department'),
+                  },
+                });
+              }),
+            }}
+            trigger={['click']}
+          >
+            <Button icon={<Download size={14} />}>Sessional broadsheet</Button>
           </Dropdown>
         </Space>
       )}
